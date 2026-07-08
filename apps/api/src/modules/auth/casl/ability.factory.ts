@@ -2,8 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { AbilityBuilder, createMongoAbility, type MongoAbility } from '@casl/ability';
 import type { AuthenticatedUser } from '../authenticated-user';
 
-export type Action = 'manage' | 'read' | 'checkin' | 'start' | 'finish';
-export type Subject = 'Appointment' | 'WaitingRoom' | 'all';
+export type Action = 'manage' | 'read' | 'create' | 'write' | 'checkin' | 'start' | 'finish';
+export type Subject =
+  | 'Appointment'
+  | 'WaitingRoom'
+  | 'Patient'
+  | 'Consultation'
+  | 'Dashboard'
+  | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
 /**
@@ -15,23 +21,31 @@ export class CaslAbilityFactory {
   createForUser(user: AuthenticatedUser): AppAbility {
     const { can, build } = new AbilityBuilder<AppAbility>(createMongoAbility);
 
-    // Todos los roles ven la sala de espera de su clínica.
+    // Todos los roles ven la sala de espera, el directorio de pacientes y el dashboard.
     can('read', 'WaitingRoom');
     can('read', 'Appointment');
+    can('read', 'Patient');
+    can('read', 'Dashboard');
 
     switch (user.rol) {
       case 'admin':
         can('manage', 'all');
         break;
       case 'asistente':
-        // El asistente gestiona llegadas (check-in) pero no la consulta clínica.
+        // El asistente gestiona llegadas (check-in) y da de alta pacientes,
+        // pero NO accede al contenido clínico (Consultation).
         can('checkin', 'Appointment');
+        can('create', 'Patient');
         break;
       case 'medico':
-        // El médico marca llegada e inicia/cierra la consulta.
+        // El médico marca llegada, da de alta pacientes y maneja la consulta
+        // clínica completa (iniciar, editar la nota, cerrar y leer expediente).
         can('checkin', 'Appointment');
-        can('start', 'Appointment');
-        can('finish', 'Appointment');
+        can('create', 'Patient');
+        can('start', 'Consultation');
+        can('write', 'Consultation');
+        can('finish', 'Consultation');
+        can('read', 'Consultation');
         break;
     }
 

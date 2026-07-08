@@ -47,6 +47,7 @@ async function main() {
     ['José Antonio Ramírez', '1965-01-09', 'DM2 · Seguimiento'],
   ] as const;
 
+  const patientIdsA: string[] = [];
   for (const [nombre, fnac, motivo] of patientsA) {
     const patientId = (
       await c.query(
@@ -54,6 +55,7 @@ async function main() {
         [tenantA, nombre, fnac],
       )
     ).rows[0].id as string;
+    patientIdsA.push(patientId);
 
     // Cita agendada para hoy (lista para check-in).
     await c.query(
@@ -61,6 +63,35 @@ async function main() {
        VALUES ($1,$2,$3,$4, now() + interval '30 min', now() + interval '50 min', 'agendada')`,
       [tenantA, patientId, medicoA, motivo],
     );
+  }
+
+  // Historial de la semana para que el dashboard muestre KPIs realistas:
+  // citas finalizadas (con duración real) y algunas no asistidas, repartidas
+  // en los últimos 6 días.
+  const motivosDemo = ['Control', 'Seguimiento DM2', 'Cefalea', 'Revisión', 'Dislipidemia'];
+  for (let dia = 6; dia >= 1; dia--) {
+    const citasEseDia = 3 + (dia % 4); // 3–6 citas por día
+    for (let k = 0; k < citasEseDia; k++) {
+      const patientId = patientIdsA[k % patientIdsA.length];
+      const hora = 9 + k; // 9:00, 10:00, …
+      const noShow = (dia + k) % 7 === 0; // ~1 de cada 7
+      const durMin = 15 + ((dia * 7 + k * 3) % 20); // 15–34 min
+      const inicioProg = `now()::date - interval '${dia} days' + interval '${hora} hours'`;
+      if (noShow) {
+        await c.query(
+          `INSERT INTO appointments(tenant_id,patient_id,doctor_id,motivo,inicio_programado,fin_programado,estatus)
+           VALUES ($1,$2,$3,$4, ${inicioProg}, ${inicioProg} + interval '20 min', 'no_asistio')`,
+          [tenantA, patientId, medicoA, motivosDemo[k % motivosDemo.length]],
+        );
+      } else {
+        await c.query(
+          `INSERT INTO appointments(tenant_id,patient_id,doctor_id,motivo,inicio_programado,fin_programado,estatus,checkin_at,inicio_real,fin_real)
+           VALUES ($1,$2,$3,$4, ${inicioProg}, ${inicioProg} + interval '30 min', 'finalizada',
+                   ${inicioProg} - interval '10 min', ${inicioProg}, ${inicioProg} + interval '${durMin} min')`,
+          [tenantA, patientId, medicoA, motivosDemo[k % motivosDemo.length]],
+        );
+      }
+    }
   }
 
   // ── Tenant B: Clínica Sur (para probar aislamiento) ────────────

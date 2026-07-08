@@ -7,6 +7,9 @@ import { DomainExceptionFilter } from './common/errors/domain-exception.filter';
 import { AuditModule } from './common/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { PatientsModule } from './modules/patients/patients.module';
+import { ClinicalRecordsModule } from './modules/clinical-records/clinical-records.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -15,6 +18,9 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
     AuditModule,
     AuthModule,
     AppointmentsModule,
+    PatientsModule,
+    ClinicalRecordsModule,
+    DashboardModule,
   ],
   providers: [
     // Global: tras autenticar, corre cada request dentro del AsyncLocalStorage

@@ -11,7 +11,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return;
-    router.replace(token ? '/sala-de-espera' : '/login');
+    router.replace(token ? '/dashboard' : '/login');
   }, [ready, token, router]);
 
   return <main className="grid min-h-screen place-items-center text-slate-400">Cargando…</main>;

@@ -73,5 +73,43 @@ export const auditLog = pgTable('audit_log', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
-export const schema = { tenants, users, patients, appointments, auditLog };
+export const clinicalRecords = pgTable('clinical_records', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  patientId: uuid('patient_id').notNull(),
+  abiertoEn: timestamp('abierto_en', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const clinicalNotes = pgTable('clinical_notes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  clinicalRecordId: uuid('clinical_record_id').notNull(),
+  appointmentId: uuid('appointment_id').notNull(),
+  doctorId: uuid('doctor_id').notNull(),
+  tipoNota: text('tipo_nota').notNull().default('nota_evolucion'),
+  contenidoNom004: jsonb('contenido_nom004').notNull().default({}),
+  estatus: text('estatus').notNull().default('borrador'), // 'borrador' | 'cerrada'
+  cerradoEn: timestamp('cerrado_en', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const noteAmendments = pgTable('note_amendments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  clinicalNoteId: uuid('clinical_note_id').notNull(),
+  doctorId: uuid('doctor_id').notNull(),
+  textoCorreccion: text('texto_correccion').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const schema = {
+  tenants,
+  users,
+  patients,
+  appointments,
+  auditLog,
+  clinicalRecords,
+  clinicalNotes,
+  noteAmendments,
+};
 export type DbSchema = typeof schema;

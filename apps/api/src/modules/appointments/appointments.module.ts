@@ -28,5 +28,8 @@ import { WaitingRoomGateway } from './infrastructure/waiting-room.gateway';
     { provide: APPOINTMENT_REPOSITORY, useClass: DrizzleAppointmentRepository },
     { provide: WAITING_ROOM_NOTIFIER, useExisting: WaitingRoomGateway },
   ],
+  // Se exportan para que clinical-records reutilice la transición de cita y la
+  // notificación realtime sin re-implementarlas.
+  exports: [APPOINTMENT_REPOSITORY, WAITING_ROOM_NOTIFIER],
 })
 export class AppointmentsModule {}

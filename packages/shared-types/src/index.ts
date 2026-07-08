@@ -29,6 +29,23 @@ export interface Patient {
   telefono: string | null;
 }
 
+/** Datos para dar de alta un paciente (el tenant lo asigna el backend). */
+export interface CreatePatientRequest {
+  nombre: string;
+  fechaNacimiento: string; // ISO date (YYYY-MM-DD)
+  curp?: string | null;
+  telefono?: string | null;
+}
+
+/** Resultado del buscador de pacientes. */
+export interface PatientSummary {
+  id: string;
+  nombre: string;
+  edad: number;
+  curp: string | null;
+  telefono: string | null;
+}
+
 export interface Appointment {
   id: string;
   tenantId: string;
@@ -82,4 +99,124 @@ export interface LoginResponse {
     nombre: string;
     rol: UserRole;
   };
+}
+
+// ── Expediente clínico / NOM-004 ─────────────────────────────────
+
+export const CLINICAL_NOTE_TYPES = ['nota_evolucion', 'historia_clinica'] as const;
+export type ClinicalNoteType = (typeof CLINICAL_NOTE_TYPES)[number];
+
+export const CLINICAL_NOTE_STATUSES = ['borrador', 'cerrada'] as const;
+export type ClinicalNoteStatus = (typeof CLINICAL_NOTE_STATUSES)[number];
+
+/** Signos vitales. `ta` (tensión arterial) es obligatorio para cerrar (NOM-004). */
+export interface SignosVitales {
+  ta: string | null; // p.ej. "120/80"
+  fc: string | null; // frecuencia cardiaca
+  fr: string | null; // frecuencia respiratoria
+  temp: string | null; // °C
+  spo2: string | null; // %
+  peso: string | null; // kg
+  talla: string | null; // m
+}
+
+export interface DiagnosticoCie10 {
+  cie10: string;
+  descripcion: string;
+}
+
+export interface FirmaMedica {
+  medicoNombre: string;
+  cedula: string | null;
+  fecha: string; // ISO datetime del cierre
+}
+
+/**
+ * Contenido estructurado de una nota de evolución (consulta subsecuente).
+ * Se guarda como JSONB en `clinical_notes.contenido_nom004`. Mezcla texto
+ * enriquecido (HTML de TipTap) con datos estructurados aprovechables para
+ * estadísticas (diagnósticos, signos vitales).
+ */
+export interface NotaEvolucionContent {
+  tipoNota: 'nota_evolucion';
+  padecimientoActual: string; // HTML (TipTap)
+  exploracionFisica: {
+    signosVitales: SignosVitales;
+    hallazgos?: string;
+  };
+  diagnosticos: DiagnosticoCie10[];
+  planTerapeutico: string;
+  firma?: FirmaMedica; // se llena al cerrar
+}
+
+/** Contenido vacío inicial de un borrador de nota de evolución. */
+export const EMPTY_NOTA_EVOLUCION: NotaEvolucionContent = {
+  tipoNota: 'nota_evolucion',
+  padecimientoActual: '',
+  exploracionFisica: {
+    signosVitales: { ta: null, fc: null, fr: null, temp: null, spo2: null, peso: null, talla: null },
+    hallazgos: '',
+  },
+  diagnosticos: [],
+  planTerapeutico: '',
+};
+
+export interface ClinicalNoteView {
+  id: string;
+  appointmentId: string;
+  doctorId: string;
+  tipoNota: ClinicalNoteType;
+  estatus: ClinicalNoteStatus;
+  contenido: NotaEvolucionContent;
+  cerradoEn: string | null;
+  createdAt: string;
+}
+
+export interface ClinicalRecordView {
+  recordId: string;
+  patientId: string;
+  patientNombre: string;
+  abiertoEn: string;
+  notas: ClinicalNoteView[];
+}
+
+// ── DTOs de consulta ─────────────────────────────────────────────
+
+export interface StartConsultationResponse {
+  appointmentId: string;
+  noteId: string;
+  patientId: string;
+}
+
+export interface SaveNoteDraftRequest {
+  contenido: NotaEvolucionContent;
+}
+
+export interface FinishConsultationRequest {
+  contenido: NotaEvolucionContent;
+}
+
+export interface FinishConsultationResponse {
+  appointmentId: string;
+  noteId: string;
+  estatus: ClinicalNoteStatus;
+  cerradoEn: string;
+}
+
+// ── Dashboard ────────────────────────────────────────────────────
+
+export interface CitasPorDia {
+  fecha: string; // ISO date (YYYY-MM-DD)
+  label: string; // inicial del día: L, M, M, J, V, S, D
+  total: number;
+}
+
+export interface DashboardStats {
+  citasHoy: number;
+  completadasHoy: number;
+  enEsperaHoy: number;
+  tiempoPromedioMin: number | null; // duración promedio real de consulta (últimos 30 días)
+  citasDelMes: number;
+  tasaNoShows: number; // porcentaje 0-100 del mes en curso
+  citasPorDia: CitasPorDia[]; // últimos 7 días
 }

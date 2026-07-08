@@ -18,12 +18,16 @@ function waitMinutes(checkinAt: string | null): number | null {
 export function WaitingRoomCard({
   entry,
   canCheckIn,
+  canConsult,
   onCheckIn,
+  onStartConsultation,
   pending,
 }: {
   entry: WaitingRoomEntry;
   canCheckIn: boolean;
+  canConsult: boolean;
   onCheckIn: (id: string) => void;
+  onStartConsultation: (id: string) => void;
   pending: boolean;
 }) {
   const wait = waitMinutes(entry.checkinAt);
@@ -63,9 +67,22 @@ export function WaitingRoomCard({
         </button>
       )}
 
-      {entry.estatus === 'en_espera' && (
-        <button className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green py-2 text-sm font-semibold text-white transition hover:opacity-95">
-          Iniciar consulta
+      {entry.estatus === 'en_espera' && canConsult && (
+        <button
+          onClick={() => onStartConsultation(entry.appointmentId)}
+          disabled={pending}
+          className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
+        >
+          {pending ? 'Abriendo…' : 'Iniciar consulta'}
+        </button>
+      )}
+
+      {entry.estatus === 'en_consulta' && canConsult && (
+        <button
+          onClick={() => onStartConsultation(entry.appointmentId)}
+          className="rounded-lg border border-brand-blue py-2 text-sm font-semibold text-brand-blue transition hover:bg-brand-blue/5"
+        >
+          Continuar consulta →
         </button>
       )}
     </div>
