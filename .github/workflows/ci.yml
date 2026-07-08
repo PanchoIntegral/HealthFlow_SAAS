@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DB_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/healthflow
+      DATABASE_URL: postgresql://healthflow_app:healthflow_app_pwd@localhost:5432/healthflow
+      APP_DB_USER: healthflow_app
+      APP_DB_PASSWORD: healthflow_app_pwd
+      JWT_SECRET: ci-secret
+      JWT_EXPIRES_IN: 1d
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Preparar base de datos (rol de app + RLS + seed)
+        run: |
+          pnpm --filter @healthflow/api db:setup
+          pnpm --filter @healthflow/api db:migrate
+          pnpm --filter @healthflow/api db:seed
+
+      - name: Typecheck
+        run: pnpm lint
+
+      - name: Tests (dominio + integración RLS)
+        run: pnpm --filter @healthflow/api test
+
+      - name: Build (api + web)
+        run: pnpm build

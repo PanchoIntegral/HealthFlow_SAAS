@@ -1,0 +1,27 @@
+# Para CI y para quien no tenga Postgres local. En desarrollo local se puede
+# usar directamente el Postgres de Homebrew (ver README). Redis se incluye para
+# fases futuras (BullMQ); el slice de sala de espera NO lo requiere.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jorge
+      POSTGRES_PASSWORD: jorge
+      POSTGRES_DB: healthflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jorge -d healthflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
