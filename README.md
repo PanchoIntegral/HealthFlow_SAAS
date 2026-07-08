@@ -88,3 +88,4 @@ packages/
 Expediente clínico (`clinical_records`/`notes`/`amendments`), editor NOM-004 con TipTap,
 validador de cierre, calendario, dashboard, jobs BullMQ (no-show automático). Todo reusa el
 patrón hexagonal ya establecido por el módulo `appointments`.
+# HealthFlow_SAAS
