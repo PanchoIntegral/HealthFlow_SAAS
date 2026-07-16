@@ -18,3 +18,109 @@ body {
   color: #94a3b8; /* slate-400 */
   pointer-events: none;
 }
+
+/* Calendario (react-big-calendar): overrides para alinear con la identidad visual de HealthFlow. */
+.hf-calendar .rbc-time-view,
+.hf-calendar .rbc-month-view {
+  border: none;
+}
+
+.hf-calendar .rbc-header {
+  padding: 10px 4px;
+  border-bottom: 1px solid theme('colors.slate.100');
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: theme('colors.slate.400');
+}
+
+.hf-calendar .rbc-header + .rbc-header,
+.hf-calendar .rbc-day-bg + .rbc-day-bg,
+.hf-calendar .rbc-time-header-content,
+.hf-calendar .rbc-time-content > * + * > *,
+.hf-calendar .rbc-month-row + .rbc-month-row,
+.hf-calendar .rbc-timeslot-group,
+.hf-calendar .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
+  border-color: theme('colors.slate.100');
+}
+
+.hf-calendar .rbc-off-range-bg {
+  background: theme('colors.slate.50');
+}
+
+.hf-calendar .rbc-today {
+  background-color: rgb(37 99 235 / 0.06);
+}
+
+.hf-calendar .rbc-header.rbc-today {
+  color: theme('colors.brand.blue');
+  font-weight: 700;
+}
+
+.hf-calendar .rbc-current-time-indicator {
+  background-color: theme('colors.brand.green');
+  height: 2px;
+}
+
+.hf-calendar .rbc-event {
+  border: none;
+  border-radius: 8px;
+  padding: 3px 6px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
+}
+
+.hf-calendar .rbc-event:focus {
+  outline: none;
+}
+
+.hf-calendar .rbc-event.rbc-selected {
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 0.45);
+}
+
+.hf-calendar .rbc-event-label {
+  font-size: 0.68rem;
+  opacity: 0.85;
+}
+
+.hf-calendar .rbc-event-content {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.hf-calendar .rbc-slot-selection {
+  background-color: rgb(37 99 235 / 0.15);
+  border-radius: 6px;
+}
+
+.hf-calendar .rbc-time-gutter .rbc-label,
+.hf-calendar .rbc-date-cell {
+  font-size: 0.72rem;
+  color: theme('colors.slate.400');
+}
+
+.hf-calendar .rbc-date-cell.rbc-now {
+  color: theme('colors.brand.blue');
+  font-weight: 700;
+}
+
+.hf-calendar .rbc-agenda-view table.rbc-agenda-table thead {
+  color: theme('colors.slate.400');
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hf-calendar .rbc-agenda-view table.rbc-agenda-table tbody > tr:hover {
+  background-color: theme('colors.slate.50');
+}
+
+.hf-calendar .rbc-show-more {
+  color: theme('colors.brand.blue');
+  font-weight: 600;
+  background: none;
+}
+
+.hf-calendar .rbc-button-link:hover {
+  color: theme('colors.brand.blue');
+}

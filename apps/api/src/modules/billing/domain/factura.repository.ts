@@ -43,12 +43,13 @@ export interface FacturaRepository {
   saveReceptor(tx: Tx, receptor: ReceptorFiscal): Promise<string>;
 
   // ── Finanzas (reporting) ──
+  // `mes` es el primer día del mes ancla en formato 'YYYY-MM-01'.
 
-  /** Facturas con nombre del paciente, más recientes primero. */
-  listFacturas(tx: Tx, limit: number): Promise<FacturaListItem[]>;
+  /** Facturas del mes indicado con nombre del paciente, más recientes primero. */
+  listFacturas(tx: Tx, limit: number, mes: string): Promise<FacturaListItem[]>;
 
-  /** Agregados de ingreso: solo facturas TIMBRADAS cuentan como ganancia. */
-  totalesFinanzas(tx: Tx): Promise<{
+  /** Agregados de ingreso del mes/año ancla: solo TIMBRADAS cuentan como ganancia. */
+  totalesFinanzas(tx: Tx, mes: string): Promise<{
     facturadoMes: string;
     facturadoAnio: string;
     facturasMes: number;

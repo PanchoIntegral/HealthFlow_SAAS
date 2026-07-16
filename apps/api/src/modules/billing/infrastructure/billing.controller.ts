@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PoliciesGuard, RequirePolicy } from '../../auth/casl/policies.guard';
@@ -31,8 +41,11 @@ export class BillingController {
   /** Resumen financiero (ingresos). Subject CASL propio: SOLO médico/admin. */
   @Get('finanzas')
   @RequirePolicy('read', 'Finanzas')
-  finanzas() {
-    return this.getFinanzas.execute();
+  finanzas(@Query('mes') mes?: string) {
+    if (mes !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
+      throw new BadRequestException('mes debe tener formato YYYY-MM');
+    }
+    return this.getFinanzas.execute(mes);
   }
 
   /** Estado de facturación de una cita (última factura o null si no hay). */

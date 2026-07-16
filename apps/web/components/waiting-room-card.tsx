@@ -2,6 +2,8 @@ import type { WaitingRoomEntry } from '@healthflow/shared-types';
 import { StatusBadge } from './status-badge';
 import { FacturaPanel } from './factura-panel';
 
+const TERMINAL_STATUSES = new Set(['finalizada', 'cancelada', 'no_asistio']);
+
 function initials(nombre: string): string {
   return nombre
     .split(' ')
@@ -14,6 +16,10 @@ function initials(nombre: string): string {
 function waitMinutes(checkinAt: string | null): number | null {
   if (!checkinAt) return null;
   return Math.max(0, Math.round((Date.now() - new Date(checkinAt).getTime()) / 60000));
+}
+
+function hora(iso: string): string {
+  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 }
 
 export function WaitingRoomCard({
@@ -32,12 +38,17 @@ export function WaitingRoomCard({
   pending: boolean;
 }) {
   const wait = waitMinutes(entry.checkinAt);
+  const urgent = wait !== null && wait >= 20;
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+    <div
+      className={`flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm transition hover:shadow-md ${
+        urgent && entry.estatus === 'en_espera' ? 'border-red-200' : 'border-slate-200'
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
             {initials(entry.patientNombre)}
           </div>
           <div>
@@ -45,7 +56,13 @@ export function WaitingRoomCard({
             <p className="text-xs text-slate-500">{entry.patientEdad} años</p>
           </div>
         </div>
-        <StatusBadge status={entry.estatus} />
+        {TERMINAL_STATUSES.has(entry.estatus) ? (
+          <StatusBadge status={entry.estatus} />
+        ) : (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+            {hora(entry.inicioProgramado)}
+          </span>
+        )}
       </div>
 
       {entry.motivo && (
@@ -55,7 +72,9 @@ export function WaitingRoomCard({
       )}
 
       {entry.estatus === 'en_espera' && wait !== null && (
-        <p className="text-sm font-medium text-amber-600">⏱ Esperando {wait} min</p>
+        <p className={`text-sm font-medium ${urgent ? 'text-red-600' : 'text-amber-600'}`}>
+          ⏱ Esperando {wait} min
+        </p>
       )}
 
       {entry.estatus === 'agendada' && canCheckIn && (

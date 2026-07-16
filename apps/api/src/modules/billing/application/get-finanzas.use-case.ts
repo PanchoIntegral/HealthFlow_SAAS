@@ -17,11 +17,14 @@ export class GetFinanzasUseCase {
     @Inject(FACTURA_REPOSITORY) private readonly facturas: FacturaRepository,
   ) {}
 
-  execute(): Promise<FinanzasResumen> {
+  /** @param mes 'YYYY-MM' opcional; sin él, el mes en curso. */
+  execute(mes?: string): Promise<FinanzasResumen> {
+    // Ancla al primer día del mes — formato ya validado por el controller.
+    const ancla = `${mes ?? new Date().toISOString().slice(0, 7)}-01`;
     return this.tenantDb.run(async (tx) => {
       const [totales, facturas] = [
-        await this.facturas.totalesFinanzas(tx),
-        await this.facturas.listFacturas(tx, MAX_FACTURAS),
+        await this.facturas.totalesFinanzas(tx, ancla),
+        await this.facturas.listFacturas(tx, MAX_FACTURAS, ancla),
       ];
       return { ...totales, facturas };
     });

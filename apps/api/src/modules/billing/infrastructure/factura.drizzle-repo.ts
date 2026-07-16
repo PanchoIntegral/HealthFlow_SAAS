@@ -201,7 +201,7 @@ export class DrizzleFacturaRepository implements FacturaRepository {
     return (result.rows[0] as { id: string }).id;
   }
 
-  async listFacturas(tx: Tx, limit: number): Promise<FacturaListItem[]> {
+  async listFacturas(tx: Tx, limit: number, mes: string): Promise<FacturaListItem[]> {
     const result = await tx.execute(sql`
       SELECT f.id,
              p.nombre AS paciente_nombre,
@@ -214,6 +214,7 @@ export class DrizzleFacturaRepository implements FacturaRepository {
         JOIN appointments a ON a.id = f.appointment_id
         JOIN patients p ON p.id = a.patient_id
        WHERE f.tenant_id = ${this.tenantId}
+         AND date_trunc('month', COALESCE(f.timbrada_en, f.created_at)) = ${mes}::date
        ORDER BY COALESCE(f.timbrada_en, f.created_at) DESC
        LIMIT ${limit}
     `);
@@ -238,7 +239,10 @@ export class DrizzleFacturaRepository implements FacturaRepository {
     }));
   }
 
-  async totalesFinanzas(tx: Tx): Promise<{
+  async totalesFinanzas(
+    tx: Tx,
+    mes: string,
+  ): Promise<{
     facturadoMes: string;
     facturadoAnio: string;
     facturasMes: number;
@@ -249,13 +253,13 @@ export class DrizzleFacturaRepository implements FacturaRepository {
     const kpis = await tx.execute(sql`
       SELECT
         COALESCE(SUM(total) FILTER (WHERE estatus = 'TIMBRADA'
-          AND date_trunc('month', timbrada_en) = date_trunc('month', now())), 0)::numeric(14,2) AS facturado_mes,
+          AND date_trunc('month', timbrada_en) = ${mes}::date), 0)::numeric(14,2) AS facturado_mes,
         COALESCE(SUM(total) FILTER (WHERE estatus = 'TIMBRADA'
-          AND date_trunc('year', timbrada_en) = date_trunc('year', now())), 0)::numeric(14,2) AS facturado_anio,
+          AND date_trunc('year', timbrada_en) = date_trunc('year', ${mes}::date)), 0)::numeric(14,2) AS facturado_anio,
         COUNT(*) FILTER (WHERE estatus = 'TIMBRADA'
-          AND date_trunc('month', timbrada_en) = date_trunc('month', now()))::int AS facturas_mes,
+          AND date_trunc('month', timbrada_en) = ${mes}::date)::int AS facturas_mes,
         COUNT(*) FILTER (WHERE estatus = 'CANCELADA'
-          AND date_trunc('month', cancelada_en) = date_trunc('month', now()))::int AS canceladas_mes
+          AND date_trunc('month', cancelada_en) = ${mes}::date)::int AS canceladas_mes
         FROM facturas
        WHERE tenant_id = ${this.tenantId}
     `);
@@ -266,13 +270,13 @@ export class DrizzleFacturaRepository implements FacturaRepository {
       canceladas_mes: number;
     };
 
-    // Últimos 6 meses (incluye meses en cero para que la gráfica no salte).
+    // 6 meses terminando en el mes ancla (incluye meses en cero para que la gráfica no salte).
     const meses = await tx.execute(sql`
       SELECT to_char(m.mes, 'YYYY-MM') AS mes,
              COALESCE(SUM(f.total), 0)::float8 AS total
         FROM generate_series(
-               date_trunc('month', now()) - interval '5 months',
-               date_trunc('month', now()),
+               ${mes}::date - interval '5 months',
+               ${mes}::date,
                interval '1 month') AS m(mes)
         LEFT JOIN facturas f
           ON f.tenant_id = ${this.tenantId}

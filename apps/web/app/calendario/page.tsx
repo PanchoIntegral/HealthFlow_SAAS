@@ -9,15 +9,32 @@ import {
   Calendar,
   dateFnsLocalizer,
   type SlotInfo,
+  type ToolbarProps,
   type View,
 } from 'react-big-calendar';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { AppointmentView, PatientSummary } from '@healthflow/shared-types';
+import type { AppointmentStatus, AppointmentView, PatientSummary } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
 import { STATUS_HEX, STATUS_LABEL } from '../../components/status-badge';
+
+const VIEW_LABELS: Record<View, string> = {
+  month: 'Mes',
+  week: 'Semana',
+  day: 'Día',
+  work_week: 'Semana laboral',
+  agenda: 'Agenda',
+};
+
+const LEGEND_STATUSES: AppointmentStatus[] = [
+  'agendada',
+  'en_espera',
+  'en_consulta',
+  'finalizada',
+  'cancelada',
+];
 
 const localizer = dateFnsLocalizer({
   format,
@@ -113,19 +130,32 @@ function CalendarioContent() {
   return (
     <AppShell>
       <div className="p-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Calendario</h1>
-          {canManage && (
-            <button
-              onClick={() => setCreating({ start: roundHour(new Date()), end: new Date(roundHour(new Date()).getTime() + 30 * 60000) })}
-              className="rounded-xl bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95"
-            >
-              + Nueva cita
-            </button>
-          )}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Calendario</h1>
+            <p className="text-sm text-slate-500">Consulta y agenda las citas de la clínica.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <ul className="flex flex-wrap items-center gap-3">
+              {LEGEND_STATUSES.map((s) => (
+                <li key={s} className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: STATUS_HEX[s] }} />
+                  {STATUS_LABEL[s]}
+                </li>
+              ))}
+            </ul>
+            {canManage && (
+              <button
+                onClick={() => setCreating({ start: roundHour(new Date()), end: new Date(roundHour(new Date()).getTime() + 30 * 60000) })}
+                className="rounded-xl bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-blue/20 transition hover:opacity-95"
+              >
+                + Nueva cita
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="hf-calendar rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <Calendar
             localizer={localizer}
             culture="es"
@@ -140,12 +170,13 @@ function CalendarioContent() {
             selectable={canManage}
             onSelectSlot={(slot: SlotInfo) => canManage && setCreating({ start: slot.start, end: slot.end })}
             onSelectEvent={(e: CalEvent) => setSelected(e.resource)}
+            components={{ toolbar: CalendarToolbar }}
             eventPropGetter={(e: CalEvent) => ({
               style: {
                 backgroundColor: STATUS_HEX[e.resource.estatus],
                 border: 'none',
-                borderRadius: 6,
-                opacity: e.resource.estatus === 'cancelada' || e.resource.estatus === 'no_asistio' ? 0.5 : 1,
+                borderRadius: 8,
+                opacity: e.resource.estatus === 'cancelada' || e.resource.estatus === 'no_asistio' ? 0.55 : 1,
               },
             })}
           />
@@ -180,6 +211,54 @@ function CalendarioContent() {
         />
       )}
     </AppShell>
+  );
+}
+
+// ── Toolbar del calendario ───────────────────────────────────────
+function CalendarToolbar({ label, view, views, onNavigate, onView }: ToolbarProps<CalEvent, object>) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => onNavigate('TODAY')}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-brand-blue/40 hover:bg-brand-blue/5 hover:text-brand-blue"
+        >
+          Hoy
+        </button>
+        <div className="flex items-center overflow-hidden rounded-lg border border-slate-200">
+          <button
+            onClick={() => onNavigate('PREV')}
+            aria-label="Anterior"
+            className="px-2.5 py-2 text-slate-400 transition hover:bg-slate-50 hover:text-brand-blue"
+          >
+            ‹
+          </button>
+          <div className="h-5 w-px bg-slate-200" />
+          <button
+            onClick={() => onNavigate('NEXT')}
+            aria-label="Siguiente"
+            className="px-2.5 py-2 text-slate-400 transition hover:bg-slate-50 hover:text-brand-blue"
+          >
+            ›
+          </button>
+        </div>
+        <h2 className="text-lg font-semibold capitalize text-slate-900">{label}</h2>
+      </div>
+
+      <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+        {(views as View[]).map((v) => (
+          <button
+            key={v}
+            onClick={() => onView(v)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              view === v ? 'bg-white text-brand-blue shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {VIEW_LABELS[v]}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

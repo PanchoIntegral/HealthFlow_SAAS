@@ -155,5 +155,6 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  finanzas: (token: string) => request<FinanzasResumen>('/billing/finanzas', { token }),
+  finanzas: (token: string, mes?: string) =>
+    request<FinanzasResumen>(`/billing/finanzas${mes ? `?mes=${mes}` : ''}`, { token }),
 };

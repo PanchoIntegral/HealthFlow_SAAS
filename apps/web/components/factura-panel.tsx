@@ -119,14 +119,14 @@ export function FacturaPanel({ appointmentId }: { appointmentId: string }) {
 
       {factura?.estatus === 'TIMBRADA' && (
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
               ● Facturada · {pesos(parseFloat(factura.total))}
             </span>
             {canCancel && (
               <button
                 onClick={() => setModal('cancelar')}
-                className="text-xs font-medium text-slate-400 transition hover:text-red-600"
+                className="whitespace-nowrap text-xs font-medium text-slate-400 transition hover:text-red-600"
               >
                 Cancelar factura
               </button>
