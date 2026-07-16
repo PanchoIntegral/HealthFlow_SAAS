@@ -1,6 +1,14 @@
-import type { WaitingRoomEntry } from '@healthflow/shared-types';
+import type { AppointmentView, DoctorSummary, WaitingRoomEntry } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { Appointment } from './appointment.entity';
+
+export interface NewAppointmentInput {
+  patientId: string;
+  doctorId: string;
+  motivo: string | null;
+  inicioProgramado: Date;
+  finProgramado: Date;
+}
 
 /**
  * Puerto (interface) del repositorio de citas. El dominio/aplicación dependen
@@ -14,6 +22,26 @@ export interface AppointmentRepository {
   /** Vista enriquecida para la sala de espera (citas activas del día). */
   listWaitingRoom(tx: Tx): Promise<WaitingRoomEntry[]>;
   findWaitingRoomEntry(tx: Tx, appointmentId: string): Promise<WaitingRoomEntry | null>;
+
+  /** Agenda una cita nueva (estatus 'agendada') y devuelve su id. */
+  create(tx: Tx, input: NewAppointmentInput): Promise<string>;
+
+  /** Citas del rango [from, to], enriquecidas con nombres, para el calendario. */
+  listByRange(tx: Tx, from: Date, to: Date): Promise<AppointmentView[]>;
+
+  findView(tx: Tx, appointmentId: string): Promise<AppointmentView | null>;
+
+  /** ¿El médico ya tiene una cita activa que se traslapa con ese horario? */
+  hasOverlap(
+    tx: Tx,
+    doctorId: string,
+    inicioProgramado: Date,
+    finProgramado: Date,
+    excludeAppointmentId?: string,
+  ): Promise<boolean>;
+
+  /** Médicos de la clínica activa, para el selector del formulario de cita. */
+  listDoctors(tx: Tx): Promise<DoctorSummary[]>;
 }
 
 export const APPOINTMENT_REPOSITORY = Symbol('APPOINTMENT_REPOSITORY');

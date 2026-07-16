@@ -220,3 +220,63 @@ export interface DashboardStats {
   tasaNoShows: number; // porcentaje 0-100 del mes en curso
   citasPorDia: CitasPorDia[]; // últimos 7 días
 }
+
+// ── Calendario ───────────────────────────────────────────────────
+
+/** Cita enriquecida con nombres, para pintar el calendario. */
+export interface AppointmentView {
+  id: string;
+  patientId: string;
+  patientNombre: string;
+  doctorId: string;
+  doctorNombre: string;
+  motivo: string | null;
+  inicioProgramado: string; // ISO datetime
+  finProgramado: string; // ISO datetime
+  estatus: AppointmentStatus;
+}
+
+export interface CreateAppointmentRequest {
+  patientId: string;
+  doctorId: string;
+  motivo?: string | null;
+  inicioProgramado: string; // ISO datetime
+  finProgramado: string; // ISO datetime
+}
+
+export interface CancelAppointmentRequest {
+  motivo?: string | null;
+}
+
+export interface DoctorSummary {
+  id: string;
+  nombre: string;
+  especialidad: string | null;
+}
+
+// ── Reportes ─────────────────────────────────────────────────────
+
+export interface DiagnosticoFrecuente {
+  cie10: string;
+  descripcion: string;
+  total: number;
+}
+
+export interface ProductividadMedico {
+  doctorId: string;
+  doctorNombre: string;
+  consultas: number;
+  tiempoPromedioMin: number | null;
+}
+
+export interface TendenciaMensual {
+  mes: string; // YYYY-MM
+  label: string; // "Ene 2026"
+  total: number;
+}
+
+export interface ReportsStats {
+  diagnosticosFrecuentes: DiagnosticoFrecuente[];
+  productividadMedicos: ProductividadMedico[];
+  tendenciaMensual: TendenciaMensual[]; // últimos 6 meses
+}

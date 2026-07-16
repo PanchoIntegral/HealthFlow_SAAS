@@ -1,13 +1,18 @@
 import type {
+  AppointmentView,
+  CancelAppointmentRequest,
   ClinicalNoteView,
   ClinicalRecordView,
+  CreateAppointmentRequest,
   CreatePatientRequest,
   DashboardStats,
+  DoctorSummary,
   FinishConsultationResponse,
   LoginRequest,
   LoginResponse,
   NotaEvolucionContent,
   PatientSummary,
+  ReportsStats,
   StartConsultationResponse,
   WaitingRoomEntry,
 } from '@healthflow/shared-types';
@@ -29,6 +34,13 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      // Sesión inválida o expirada (JWT vencido): limpiar y forzar re-login.
+      localStorage.removeItem('healthflow.session');
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
     throw new ApiError(res.status, body.message ?? res.statusText, body);
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
@@ -95,4 +107,29 @@ export const api = {
 
   dashboardStats: (token: string) =>
     request<DashboardStats>('/dashboard/stats', { token }),
+
+  listDoctors: (token: string) =>
+    request<DoctorSummary[]>('/appointments/doctors', { token }),
+
+  listAppointments: (token: string, fromISO: string, toISO: string) =>
+    request<AppointmentView[]>(
+      `/appointments?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
+      { token },
+    ),
+
+  createAppointment: (token: string, body: CreateAppointmentRequest) =>
+    request<AppointmentView>('/appointments', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  cancelAppointment: (token: string, appointmentId: string, body: CancelAppointmentRequest = {}) =>
+    request<AppointmentView>(`/appointments/${appointmentId}/cancel`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  reportsStats: (token: string) => request<ReportsStats>('/reports/stats', { token }),
 };

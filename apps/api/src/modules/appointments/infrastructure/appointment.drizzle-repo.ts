@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
-import type { WaitingRoomEntry, AppointmentStatus } from '@healthflow/shared-types';
+import type {
+  AppointmentStatus,
+  AppointmentView,
+  DoctorSummary,
+  WaitingRoomEntry,
+} from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import { appointments } from '../../../db/schema';
 import { Appointment } from '../domain/appointment.entity';
-import type { AppointmentRepository } from '../domain/appointment.repository';
+import type { AppointmentRepository, NewAppointmentInput } from '../domain/appointment.repository';
 
 interface WaitingRoomRow {
   appointment_id: string;
@@ -16,6 +21,21 @@ interface WaitingRoomRow {
   inicio_programado: Date;
   checkin_at: Date | null;
 }
+
+interface AppointmentViewRow {
+  id: string;
+  patient_id: string;
+  patient_nombre: string;
+  doctor_id: string;
+  doctor_nombre: string;
+  motivo: string | null;
+  inicio_programado: Date;
+  fin_programado: Date;
+  estatus: AppointmentStatus;
+}
+
+/** Estados que NO bloquean el horario del médico al validar traslape. */
+const ESTADOS_NO_BLOQUEANTES = ['cancelada', 'no_asistio'] as const;
 
 /**
  * Adaptador concreto (Drizzle/Postgres) del puerto AppointmentRepository.
@@ -89,6 +109,88 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const row = (result.rows as unknown as WaitingRoomRow[])[0];
     return row ? mapRow(row) : null;
   }
+
+  async create(tx: Tx, input: NewAppointmentInput): Promise<string> {
+    // tenant_id se autocompleta por DEFAULT current_tenant_id() (ver 0005).
+    const result = await tx.execute(sql`
+      INSERT INTO appointments (patient_id, doctor_id, motivo, inicio_programado, fin_programado, estatus)
+      VALUES (${input.patientId}, ${input.doctorId}, ${input.motivo},
+              ${input.inicioProgramado.toISOString()}, ${input.finProgramado.toISOString()}, 'agendada')
+      RETURNING id
+    `);
+    return (result.rows[0] as { id: string }).id;
+  }
+
+  async listByRange(tx: Tx, from: Date, to: Date): Promise<AppointmentView[]> {
+    const result = await tx.execute(sql`
+      SELECT a.id, a.patient_id, p.nombre AS patient_nombre,
+             a.doctor_id, u.nombre AS doctor_nombre,
+             a.motivo, a.inicio_programado, a.fin_programado, a.estatus
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        JOIN users u ON u.id = a.doctor_id
+       WHERE a.inicio_programado < ${to.toISOString()}
+         AND a.fin_programado > ${from.toISOString()}
+       ORDER BY a.inicio_programado ASC
+    `);
+    return (result.rows as unknown as AppointmentViewRow[]).map(mapViewRow);
+  }
+
+  async findView(tx: Tx, appointmentId: string): Promise<AppointmentView | null> {
+    const result = await tx.execute(sql`
+      SELECT a.id, a.patient_id, p.nombre AS patient_nombre,
+             a.doctor_id, u.nombre AS doctor_nombre,
+             a.motivo, a.inicio_programado, a.fin_programado, a.estatus
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        JOIN users u ON u.id = a.doctor_id
+       WHERE a.id = ${appointmentId}
+       LIMIT 1
+    `);
+    const row = (result.rows as unknown as AppointmentViewRow[])[0];
+    return row ? mapViewRow(row) : null;
+  }
+
+  async hasOverlap(
+    tx: Tx,
+    doctorId: string,
+    inicioProgramado: Date,
+    finProgramado: Date,
+    excludeAppointmentId?: string,
+  ): Promise<boolean> {
+    const result = await tx.execute(sql`
+      SELECT 1
+        FROM appointments
+       WHERE doctor_id = ${doctorId}
+         AND estatus NOT IN (${sql.join(ESTADOS_NO_BLOQUEANTES.map((e) => sql`${e}`), sql`, `)})
+         AND inicio_programado < ${finProgramado.toISOString()}
+         AND fin_programado > ${inicioProgramado.toISOString()}
+         ${excludeAppointmentId ? sql`AND id <> ${excludeAppointmentId}` : sql``}
+       LIMIT 1
+    `);
+    return result.rows.length > 0;
+  }
+
+  async listDoctors(tx: Tx): Promise<DoctorSummary[]> {
+    const result = await tx.execute(sql`
+      SELECT id, nombre, especialidad FROM users WHERE rol = 'medico' ORDER BY nombre ASC
+    `);
+    return result.rows as unknown as DoctorSummary[];
+  }
+}
+
+function mapViewRow(row: AppointmentViewRow): AppointmentView {
+  return {
+    id: row.id,
+    patientId: row.patient_id,
+    patientNombre: row.patient_nombre,
+    doctorId: row.doctor_id,
+    doctorNombre: row.doctor_nombre,
+    motivo: row.motivo,
+    inicioProgramado: new Date(row.inicio_programado).toISOString(),
+    finProgramado: new Date(row.fin_programado).toISOString(),
+    estatus: row.estatus,
+  };
 }
 
 function mapRow(row: WaitingRoomRow): WaitingRoomEntry {

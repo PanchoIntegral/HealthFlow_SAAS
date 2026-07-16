@@ -6,6 +6,10 @@ import { APPOINTMENT_REPOSITORY } from './domain/appointment.repository';
 import { WAITING_ROOM_NOTIFIER } from './application/waiting-room-notifier.port';
 import { CheckInUseCase } from './application/check-in.use-case';
 import { ListWaitingRoomUseCase } from './application/list-waiting-room.use-case';
+import { ScheduleAppointmentUseCase } from './application/schedule-appointment.use-case';
+import { ListAppointmentsUseCase } from './application/list-appointments.use-case';
+import { CancelAppointmentUseCase } from './application/cancel-appointment.use-case';
+import { ListDoctorsUseCase } from './application/list-doctors.use-case';
 import { DrizzleAppointmentRepository } from './infrastructure/appointment.drizzle-repo';
 import { AppointmentsController } from './infrastructure/appointments.controller';
 import { WaitingRoomGateway } from './infrastructure/waiting-room.gateway';
@@ -22,6 +26,10 @@ import { WaitingRoomGateway } from './infrastructure/waiting-room.gateway';
   providers: [
     CheckInUseCase,
     ListWaitingRoomUseCase,
+    ScheduleAppointmentUseCase,
+    ListAppointmentsUseCase,
+    CancelAppointmentUseCase,
+    ListDoctorsUseCase,
     CaslAbilityFactory,
     PoliciesGuard,
     WaitingRoomGateway,

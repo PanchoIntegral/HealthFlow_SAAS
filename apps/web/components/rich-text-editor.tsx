@@ -2,6 +2,7 @@
 
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect } from 'react';
 
 /**
@@ -20,7 +21,10 @@ export function RichTextEditor({
   placeholder?: string;
 }) {
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+      StarterKit,
+      Placeholder.configure({ placeholder: placeholder ?? '' }),
+    ],
     content: value,
     editable,
     immediatelyRender: false, // evita mismatch de hidratación en Next.js
@@ -64,9 +68,6 @@ export function RichTextEditor({
         </div>
       )}
       <EditorContent editor={editor} />
-      {placeholder && editor.isEmpty && (
-        <p className="pointer-events-none -mt-[110px] px-3 text-sm text-slate-400">{placeholder}</p>
-      )}
     </div>
   );
 }

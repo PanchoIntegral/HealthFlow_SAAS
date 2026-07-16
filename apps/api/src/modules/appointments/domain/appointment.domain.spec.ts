@@ -1,5 +1,5 @@
 import { Appointment, ALLOWED_TRANSITIONS } from './appointment.entity';
-import { InvalidAppointmentTransitionError } from './appointment.errors';
+import { InvalidAppointmentRangeError, InvalidAppointmentTransitionError } from './appointment.errors';
 import type { AppointmentProps } from './appointment.entity';
 import type { AppointmentStatus } from '@healthflow/shared-types';
 
@@ -81,6 +81,25 @@ describe('Appointment (máquina de estados de dominio)', () => {
         expect(e.from).toBe('finalizada');
         expect(e.to).toBe('en_espera');
       }
+    });
+  });
+
+  describe('validación de horario (agendar)', () => {
+    it('acepta un rango donde el fin es posterior al inicio', () => {
+      expect(() =>
+        Appointment.assertValidRange(new Date('2026-07-10T10:00:00Z'), new Date('2026-07-10T10:30:00Z')),
+      ).not.toThrow();
+    });
+
+    it('rechaza el rango si el fin es igual al inicio', () => {
+      const d = new Date('2026-07-10T10:00:00Z');
+      expect(() => Appointment.assertValidRange(d, d)).toThrow(InvalidAppointmentRangeError);
+    });
+
+    it('rechaza el rango si el fin es anterior al inicio', () => {
+      expect(() =>
+        Appointment.assertValidRange(new Date('2026-07-10T10:30:00Z'), new Date('2026-07-10T10:00:00Z')),
+      ).toThrow(InvalidAppointmentRangeError);
     });
   });
 });

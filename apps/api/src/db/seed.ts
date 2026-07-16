@@ -65,10 +65,19 @@ async function main() {
     );
   }
 
-  // Historial de la semana para que el dashboard muestre KPIs realistas:
-  // citas finalizadas (con duración real) y algunas no asistidas, repartidas
-  // en los últimos 6 días.
+  // Historial de la semana para que el dashboard y los reportes muestren datos
+  // realistas: citas finalizadas (con duración real y nota clínica cerrada
+  // con diagnóstico CIE-10) y algunas no asistidas, repartidas en los
+  // últimos 6 días.
   const motivosDemo = ['Control', 'Seguimiento DM2', 'Cefalea', 'Revisión', 'Dislipidemia'];
+  const diagnosticosDemo = [
+    { cie10: 'I10', descripcion: 'Hipertensión esencial (primaria)' },
+    { cie10: 'E11.9', descripcion: 'Diabetes mellitus tipo 2, sin complicaciones' },
+    { cie10: 'R51', descripcion: 'Cefalea' },
+    { cie10: 'E78.5', descripcion: 'Hiperlipidemia, no especificada' },
+    { cie10: 'E78.0', descripcion: 'Hipercolesterolemia pura' },
+  ];
+
   for (let dia = 6; dia >= 1; dia--) {
     const citasEseDia = 3 + (dia % 4); // 3–6 citas por día
     for (let k = 0; k < citasEseDia; k++) {
@@ -77,18 +86,50 @@ async function main() {
       const noShow = (dia + k) % 7 === 0; // ~1 de cada 7
       const durMin = 15 + ((dia * 7 + k * 3) % 20); // 15–34 min
       const inicioProg = `now()::date - interval '${dia} days' + interval '${hora} hours'`;
+      const motivo = motivosDemo[k % motivosDemo.length]!;
       if (noShow) {
         await c.query(
           `INSERT INTO appointments(tenant_id,patient_id,doctor_id,motivo,inicio_programado,fin_programado,estatus)
            VALUES ($1,$2,$3,$4, ${inicioProg}, ${inicioProg} + interval '20 min', 'no_asistio')`,
-          [tenantA, patientId, medicoA, motivosDemo[k % motivosDemo.length]],
+          [tenantA, patientId, medicoA, motivo],
         );
       } else {
+        const appointmentId = (
+          await c.query(
+            `INSERT INTO appointments(tenant_id,patient_id,doctor_id,motivo,inicio_programado,fin_programado,estatus,checkin_at,inicio_real,fin_real)
+             VALUES ($1,$2,$3,$4, ${inicioProg}, ${inicioProg} + interval '30 min', 'finalizada',
+                     ${inicioProg} - interval '10 min', ${inicioProg}, ${inicioProg} + interval '${durMin} min')
+             RETURNING id`,
+            [tenantA, patientId, medicoA, motivo],
+          )
+        ).rows[0].id as string;
+
+        const recordId = (
+          await c.query(
+            `INSERT INTO clinical_records(tenant_id, patient_id) VALUES ($1,$2)
+             ON CONFLICT (patient_id) DO UPDATE SET patient_id = EXCLUDED.patient_id
+             RETURNING id`,
+            [tenantA, patientId],
+          )
+        ).rows[0].id as string;
+
+        const diag = diagnosticosDemo[k % diagnosticosDemo.length];
+        const contenido = {
+          tipoNota: 'nota_evolucion',
+          padecimientoActual: `<p>Acude a consulta de seguimiento por ${motivo.toLowerCase()}. Refiere evolución favorable.</p>`,
+          exploracionFisica: {
+            signosVitales: { ta: '120/80', fc: '74', fr: '16', temp: '36.5', spo2: '98', peso: '70', talla: '1.70' },
+            hallazgos: '',
+          },
+          diagnosticos: [diag],
+          planTerapeutico: 'Continuar manejo actual. Cita de control en 3 meses.',
+          firma: { medicoNombre: 'Dra. Mariana Cervantes', cedula: '7841203', fecha: new Date().toISOString() },
+        };
+
         await c.query(
-          `INSERT INTO appointments(tenant_id,patient_id,doctor_id,motivo,inicio_programado,fin_programado,estatus,checkin_at,inicio_real,fin_real)
-           VALUES ($1,$2,$3,$4, ${inicioProg}, ${inicioProg} + interval '30 min', 'finalizada',
-                   ${inicioProg} - interval '10 min', ${inicioProg}, ${inicioProg} + interval '${durMin} min')`,
-          [tenantA, patientId, medicoA, motivosDemo[k % motivosDemo.length]],
+          `INSERT INTO clinical_notes(tenant_id, clinical_record_id, appointment_id, doctor_id, tipo_nota, contenido_nom004, estatus, cerrado_en)
+           VALUES ($1,$2,$3,$4,'nota_evolucion',$5::jsonb,'cerrada', ${inicioProg} + interval '${durMin} min')`,
+          [tenantA, recordId, appointmentId, medicoA, JSON.stringify(contenido)],
         );
       }
     }

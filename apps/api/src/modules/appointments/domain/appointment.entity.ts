@@ -1,5 +1,5 @@
 import type { AppointmentStatus } from '@healthflow/shared-types';
-import { InvalidAppointmentTransitionError } from './appointment.errors';
+import { InvalidAppointmentRangeError, InvalidAppointmentTransitionError } from './appointment.errors';
 
 /**
  * Mapa explícito de transiciones permitidas. Los estados terminales
@@ -87,6 +87,13 @@ export class Appointment {
 
   cancel(): void {
     this.transition('cancelada');
+  }
+
+  /** Valida que el horario propuesto sea coherente (fin posterior a inicio). */
+  static assertValidRange(inicioProgramado: Date, finProgramado: Date): void {
+    if (finProgramado.getTime() <= inicioProgramado.getTime()) {
+      throw new InvalidAppointmentRangeError();
+    }
   }
 
   markNoShow(): void {

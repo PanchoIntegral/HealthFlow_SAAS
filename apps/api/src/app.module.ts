@@ -10,6 +10,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { PatientsModule } from './modules/patients/patients.module';
 import { ClinicalRecordsModule } from './modules/clinical-records/clinical-records.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     PatientsModule,
     ClinicalRecordsModule,
     DashboardModule,
+    ReportsModule,
   ],
   providers: [
     // Global: tras autenticar, corre cada request dentro del AsyncLocalStorage

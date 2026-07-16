@@ -9,6 +9,20 @@ const STYLES: Record<AppointmentStatus, { label: string; className: string }> = 
   no_asistio: { label: 'No asistió', className: 'bg-slate-200 text-slate-500' },
 };
 
+/** Mismos colores que STYLES, en hex, para consumidores que no pueden usar clases Tailwind (p.ej. estilos inline de react-big-calendar). */
+export const STATUS_HEX: Record<AppointmentStatus, string> = {
+  agendada: '#64748b',
+  en_espera: '#d97706',
+  en_consulta: '#2563EB',
+  finalizada: '#059669',
+  cancelada: '#dc2626',
+  no_asistio: '#94a3b8',
+};
+
+export const STATUS_LABEL: Record<AppointmentStatus, string> = Object.fromEntries(
+  Object.entries(STYLES).map(([k, v]) => [k, v.label]),
+) as Record<AppointmentStatus, string>;
+
 export function StatusBadge({ status }: { status: AppointmentStatus }) {
   const s = STYLES[status];
   return (

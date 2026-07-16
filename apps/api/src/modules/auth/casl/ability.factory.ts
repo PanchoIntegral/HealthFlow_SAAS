@@ -2,13 +2,22 @@ import { Injectable } from '@nestjs/common';
 import { AbilityBuilder, createMongoAbility, type MongoAbility } from '@casl/ability';
 import type { AuthenticatedUser } from '../authenticated-user';
 
-export type Action = 'manage' | 'read' | 'create' | 'write' | 'checkin' | 'start' | 'finish';
+export type Action =
+  | 'manage'
+  | 'read'
+  | 'create'
+  | 'write'
+  | 'checkin'
+  | 'cancel'
+  | 'start'
+  | 'finish';
 export type Subject =
   | 'Appointment'
   | 'WaitingRoom'
   | 'Patient'
   | 'Consultation'
   | 'Dashboard'
+  | 'Reports'
   | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
@@ -26,21 +35,27 @@ export class CaslAbilityFactory {
     can('read', 'Appointment');
     can('read', 'Patient');
     can('read', 'Dashboard');
+    can('read', 'Reports');
 
     switch (user.rol) {
       case 'admin':
         can('manage', 'all');
         break;
       case 'asistente':
-        // El asistente gestiona llegadas (check-in) y da de alta pacientes,
-        // pero NO accede al contenido clínico (Consultation).
+        // El asistente agenda/cancela citas, gestiona llegadas (check-in) y da
+        // de alta pacientes, pero NO accede al contenido clínico (Consultation).
         can('checkin', 'Appointment');
+        can('create', 'Appointment');
+        can('cancel', 'Appointment');
         can('create', 'Patient');
         break;
       case 'medico':
-        // El médico marca llegada, da de alta pacientes y maneja la consulta
-        // clínica completa (iniciar, editar la nota, cerrar y leer expediente).
+        // El médico agenda/cancela citas, marca llegada, da de alta pacientes
+        // y maneja la consulta clínica completa (iniciar, editar la nota,
+        // cerrar y leer expediente).
         can('checkin', 'Appointment');
+        can('create', 'Appointment');
+        can('cancel', 'Appointment');
         can('create', 'Patient');
         can('start', 'Consultation');
         can('write', 'Consultation');

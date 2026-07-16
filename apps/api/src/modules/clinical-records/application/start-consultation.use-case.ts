@@ -20,6 +20,11 @@ import {
  * Inicio de consulta: en_espera → en_consulta. Efecto clave: crea el borrador
  * de nota clínica ligado a la cita y abre el expediente del paciente. Todo en
  * una transacción; el evento realtime se emite tras confirmarla.
+ *
+ * Idempotente ante reingreso: si el médico sale del editor y vuelve a entrar
+ * (la cita ya está en_consulta), NO se repite la transición de dominio — solo
+ * se reabre/reusa la nota existente. Cualquier otro estado de origen (p.ej.
+ * 'agendada' o 'finalizada') sigue siendo rechazado por la máquina de estados.
  */
 @Injectable()
 export class StartConsultationUseCase {
@@ -33,12 +38,17 @@ export class StartConsultationUseCase {
   ) {}
 
   async execute(appointmentId: string): Promise<StartConsultationResponse> {
-    const { entry, response } = await this.tenantDb.run(async (tx) => {
+    const { entry, response, previousStatus } = await this.tenantDb.run(async (tx) => {
       const appointment = await this.appointments.findById(tx, appointmentId);
       if (!appointment) throw new NotFoundException('Cita no encontrada');
 
-      appointment.startConsultation(); // regla de dominio: en_espera → en_consulta
-      await this.appointments.save(tx, appointment);
+      const previousStatus = appointment.estatus;
+      const isReentry = previousStatus === 'en_consulta';
+
+      if (!isReentry) {
+        appointment.startConsultation(); // regla de dominio: en_espera → en_consulta
+        await this.appointments.save(tx, appointment);
+      }
 
       const state = appointment.toState();
       const recordId = await this.records.ensureRecordForPatient(tx, state.patientId);
@@ -63,13 +73,14 @@ export class StartConsultationUseCase {
       const view = await this.appointments.findWaitingRoomEntry(tx, appointmentId);
       return {
         entry: view as WaitingRoomEntry,
+        previousStatus,
         response: { appointmentId, noteId, patientId: state.patientId },
       };
     });
 
     this.notifier.appointmentUpdated(this.ctx.get().tenantId, {
       entry,
-      previousStatus: 'en_espera',
+      previousStatus,
     });
     return response;
   }
