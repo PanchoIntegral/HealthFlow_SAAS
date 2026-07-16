@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { CaslAbilityFactory } from '../auth/casl/ability.factory';
 import { PoliciesGuard } from '../auth/casl/policies.guard';
 import { APPOINTMENT_REPOSITORY } from './domain/appointment.repository';
@@ -21,7 +22,7 @@ import { WaitingRoomGateway } from './infrastructure/waiting-room.gateway';
  * cambiar solo estas dos líneas de `useClass`.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, NotificationsModule],
   controllers: [AppointmentsController],
   providers: [
     CheckInUseCase,

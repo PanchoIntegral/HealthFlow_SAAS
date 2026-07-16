@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AppointmentsModule } from '../appointments/appointments.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { CaslAbilityFactory } from '../auth/casl/ability.factory';
 import { PoliciesGuard } from '../auth/casl/policies.guard';
 import { FACTURA_REPOSITORY } from './domain/factura.repository';
@@ -26,7 +27,7 @@ import { BillingController } from './infrastructure/billing.controller';
 const usarPacFake = process.env.NODE_ENV === 'test' || process.env.PAC_PROVIDER === 'fake';
 
 @Module({
-  imports: [AuthModule, AppointmentsModule],
+  imports: [AuthModule, AppointmentsModule, NotificationsModule],
   controllers: [BillingController],
   providers: [
     TimbrarFacturaUseCase,

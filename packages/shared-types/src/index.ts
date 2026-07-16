@@ -365,3 +365,31 @@ export interface FinanzasResumen {
   ingresosPorMes: IngresoMensual[]; // últimos 6 meses
   facturas: FacturaListItem[]; // más recientes primero
 }
+
+// ─── Notificaciones (campanita in-app) ───────────────────────────
+export const NOTIFICATION_TYPES = [
+  'cita_proxima',
+  'cita_cancelada',
+  'checkin',
+  'factura_error',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export interface NotificationView {
+  id: string;
+  tipo: NotificationType;
+  titulo: string;
+  mensaje: string;
+  appointmentId: string | null;
+  leidaAt: string | null; // ISO datetime, o null si no se ha leído
+  createdAt: string; // ISO datetime
+}
+
+export const NOTIFICATION_EVENTS = {
+  /** El servidor emite esto cuando se crea una notificación para ESE usuario. */
+  NEW: 'notification.new',
+} as const;
+
+export interface NotificationCreatedEvent {
+  notification: NotificationView;
+}

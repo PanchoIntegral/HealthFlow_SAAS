@@ -13,6 +13,7 @@ import { ClinicalRecordsModule } from './modules/clinical-records/clinical-recor
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { BillingModule } from './modules/billing/billing.module';
     TenantContextModule,
     AuditModule,
     AuthModule,
+    NotificationsModule,
     AppointmentsModule,
     PatientsModule,
     ClinicalRecordsModule,

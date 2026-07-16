@@ -159,6 +159,18 @@ export const conceptosFactura = pgTable('conceptos_factura', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const notifications = pgTable('notifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  appointmentId: uuid('appointment_id'),
+  tipo: text('tipo').notNull(), // 'cita_proxima' | 'cita_cancelada' | 'checkin' | 'factura_error'
+  titulo: text('titulo').notNull(),
+  mensaje: text('mensaje').notNull(),
+  leidaAt: timestamp('leida_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const schema = {
   tenants,
   users,
@@ -172,5 +184,6 @@ export const schema = {
   receptoresFiscales,
   facturas,
   conceptosFactura,
+  notifications,
 };
 export type DbSchema = typeof schema;

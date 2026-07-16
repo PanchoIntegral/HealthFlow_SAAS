@@ -10,6 +10,7 @@ import type {
 } from '@healthflow/shared-types';
 import { useAuth } from '../lib/auth';
 import { api, ApiError } from '../lib/api';
+import { IconAlertTriangle, IconCheckCircle, IconClock, IconReceipt, IconRefreshCw } from './icons';
 
 const RFC_PUBLICO_GENERAL = 'XAXX010101000';
 
@@ -99,8 +100,9 @@ export function FacturaPanel({ appointmentId }: { appointmentId: string }) {
       {(!factura || factura.estatus === 'CANCELADA' || factura.estatus === 'ERROR') && (
         <div className="flex flex-col gap-2">
           {factura?.estatus === 'ERROR' && (
-            <p className="text-xs font-medium text-red-600">
-              ⚠ El timbrado anterior falló — puedes reintentar
+            <p className="flex items-center gap-1.5 text-xs font-medium text-red-600">
+              <IconAlertTriangle size={14} />
+              El timbrado anterior falló — puedes reintentar
             </p>
           )}
           {factura?.estatus === 'CANCELADA' && (
@@ -110,9 +112,17 @@ export function FacturaPanel({ appointmentId }: { appointmentId: string }) {
           )}
           <button
             onClick={() => setModal('timbrar')}
-            className="rounded-lg border border-brand-blue py-2 text-sm font-semibold text-brand-blue transition hover:bg-brand-blue/5"
+            className="flex items-center justify-center gap-2 rounded-lg border border-brand-blue py-2 text-sm font-semibold text-brand-blue transition hover:bg-brand-blue/5"
           >
-            {factura?.estatus === 'ERROR' ? 'Reintentar timbrado' : 'Facturar'} 🧾
+            {factura?.estatus === 'ERROR' ? (
+              <>
+                <IconRefreshCw size={16} /> Reintentar timbrado
+              </>
+            ) : (
+              <>
+                <IconReceipt size={16} /> Facturar
+              </>
+            )}
           </button>
         </div>
       )}
@@ -121,7 +131,8 @@ export function FacturaPanel({ appointmentId }: { appointmentId: string }) {
         <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-              ● Facturada · {pesos(parseFloat(factura.total))}
+              <IconCheckCircle size={13} />
+              Facturada · {pesos(parseFloat(factura.total))}
             </span>
             {canCancel && (
               <button
@@ -139,7 +150,10 @@ export function FacturaPanel({ appointmentId }: { appointmentId: string }) {
       )}
 
       {factura?.estatus === 'PENDIENTE' && (
-        <p className="text-xs text-slate-500">Timbrado en curso…</p>
+        <p className="flex items-center gap-1.5 text-xs text-slate-500">
+          <IconClock size={14} />
+          Timbrado en curso…
+        </p>
       )}
 
       {modal === 'timbrar' && (

@@ -1,8 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
 import type { Tx } from '../../../db/drizzle';
 import type { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
+import type { RequestContextService } from '../../../common/tenant-context/request-context';
 import type { AuditService } from '../../../common/audit/audit.service';
 import type { AppointmentRepository } from '../../appointments/domain/appointment.repository';
+import type { NotificationRepository } from '../../notifications/domain/notification.repository';
+import type { NotificationsNotifier } from '../../notifications/application/notifications-notifier.port';
 import type { ConceptoCfdi } from '../domain/concepto-cfdi.entity';
 import { EmisorFiscal } from '../domain/emisor-fiscal.entity';
 import type { Factura } from '../domain/factura.entity';
@@ -20,6 +23,9 @@ import { TimbrarFacturaUseCase, type TimbrarFacturaInput } from './timbrar-factu
 /** TenantDb falso: ejecuta el callback con una Tx vacía (sin base de datos). */
 const fakeTenantDb = { run: <T>(fn: (tx: Tx) => Promise<T>) => fn({} as Tx) } as TenantDbService;
 const fakeAudit = { record: jest.fn() } as unknown as AuditService;
+const fakeCtx = { get: () => ({ tenantId: 'tenant-1', userId: 'user-1', rol: 'medico' }) } as RequestContextService;
+const fakeNotifications = { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) } as unknown as NotificationRepository;
+const fakeNotificationsNotifier = { notificationCreated: jest.fn() } as unknown as NotificationsNotifier;
 
 class InMemoryFacturaRepo implements FacturaRepository {
   facturas = new Map<string, Factura>();
@@ -114,7 +120,16 @@ describe('TimbrarFacturaUseCase', () => {
   beforeEach(() => {
     repo = new InMemoryFacturaRepo();
     pac = new FakePacAdapter();
-    useCase = new TimbrarFacturaUseCase(fakeTenantDb, fakeAudit, appointments, repo, pac);
+    useCase = new TimbrarFacturaUseCase(
+      fakeTenantDb,
+      fakeCtx,
+      fakeAudit,
+      appointments,
+      repo,
+      pac,
+      fakeNotifications,
+      fakeNotificationsNotifier,
+    );
     (appointments.findById as jest.Mock).mockResolvedValue({ id: 'appt-1' });
   });
 

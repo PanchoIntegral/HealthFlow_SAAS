@@ -14,6 +14,7 @@ import type {
   LoginRequest,
   LoginResponse,
   NotaEvolucionContent,
+  NotificationView,
   PatientSummary,
   ReportsStats,
   StartConsultationResponse,
@@ -47,7 +48,12 @@ async function request<T>(
     }
     throw new ApiError(res.status, body.message ?? res.statusText, body);
   }
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+  if (res.status === 204) return undefined as T;
+  // Algunos endpoints responden 200 con body vacío para representar `null`
+  // (p.ej. Express serializa un valor `null` de vuelta como respuesta sin
+  // contenido). res.json() falla ahí, así que primero leemos como texto.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
 }
 
 export class ApiError extends Error {
@@ -66,6 +72,14 @@ export const api = {
 
   waitingRoom: (token: string) =>
     request<WaitingRoomEntry[]>('/appointments/waiting-room', { token }),
+
+  notifications: (token: string) => request<NotificationView[]>('/notifications', { token }),
+
+  markNotificationRead: (token: string, id: string) =>
+    request<void>(`/notifications/${id}/leer`, { method: 'POST', token }),
+
+  markAllNotificationsRead: (token: string) =>
+    request<void>('/notifications/leer-todas', { method: 'POST', token }),
 
   checkIn: (token: string, appointmentId: string) =>
     request<WaitingRoomEntry>(`/appointments/${appointmentId}/check-in`, {

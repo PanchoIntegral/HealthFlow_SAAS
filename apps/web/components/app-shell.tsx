@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
+import { NotificationsBell } from './notifications-bell';
 import {
   IconCalendar,
   IconDashboard,
@@ -51,15 +52,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-slate-100">
       <aside className="fixed inset-y-0 left-0 flex w-60 flex-col border-r border-slate-200 bg-white">
-        <div className="flex items-center gap-2.5 px-6 py-5">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-blue to-brand-green text-white">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12h4l2 5 4-12 2 7h6" />
-            </svg>
+        <div className="flex items-center justify-between px-6 py-5">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand-blue to-brand-green text-white">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12h4l2 5 4-12 2 7h6" />
+              </svg>
+            </div>
+            <span className="text-lg font-bold">
+              Health<span className="text-brand-teal">Flow</span>
+            </span>
           </div>
-          <span className="text-lg font-bold">
-            Health<span className="text-brand-teal">Flow</span>
-          </span>
+          <NotificationsBell />
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-2">

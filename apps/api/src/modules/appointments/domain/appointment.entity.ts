@@ -49,6 +49,9 @@ export class Appointment {
   get patientId(): string {
     return this.props.patientId;
   }
+  get doctorId(): string {
+    return this.props.doctorId;
+  }
   get estatus(): AppointmentStatus {
     return this.props.estatus;
   }

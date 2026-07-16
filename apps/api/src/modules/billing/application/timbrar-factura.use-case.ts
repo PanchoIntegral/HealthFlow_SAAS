@@ -1,10 +1,19 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
+import { RequestContextService } from '../../../common/tenant-context/request-context';
 import { AuditService } from '../../../common/audit/audit.service';
 import {
   APPOINTMENT_REPOSITORY,
   type AppointmentRepository,
 } from '../../appointments/domain/appointment.repository';
+import {
+  NOTIFICATION_REPOSITORY,
+  type NotificationRepository,
+} from '../../notifications/domain/notification.repository';
+import {
+  NOTIFICATIONS_NOTIFIER,
+  type NotificationsNotifier,
+} from '../../notifications/application/notifications-notifier.port';
 import { ConceptoCfdi, type TratamientoIva } from '../domain/concepto-cfdi.entity';
 import { Factura } from '../domain/factura.entity';
 import {
@@ -62,10 +71,13 @@ export class TimbrarFacturaUseCase {
 
   constructor(
     private readonly tenantDb: TenantDbService,
+    private readonly ctx: RequestContextService,
     private readonly audit: AuditService,
     @Inject(APPOINTMENT_REPOSITORY) private readonly appointments: AppointmentRepository,
     @Inject(FACTURA_REPOSITORY) private readonly facturas: FacturaRepository,
     @Inject(FACTURACION_PAC) private readonly pac: FacturacionPacPort,
+    @Inject(NOTIFICATION_REPOSITORY) private readonly notifications: NotificationRepository,
+    @Inject(NOTIFICATIONS_NOTIFIER) private readonly notificationsNotifier: NotificationsNotifier,
   ) {}
 
   async execute(input: TimbrarFacturaInput): Promise<FacturaView> {
@@ -82,7 +94,7 @@ export class TimbrarFacturaUseCase {
     );
 
     // Fase 1: validar y persistir la factura PENDIENTE (atómico).
-    const { factura, emisor, receptor } = await this.tenantDb.run(async (tx) => {
+    const { factura, emisor, receptor, doctorId } = await this.tenantDb.run(async (tx) => {
       const appointment = await this.appointments.findById(tx, input.appointmentId);
       if (!appointment) throw new NotFoundException('Cita no encontrada');
 
@@ -113,7 +125,7 @@ export class TimbrarFacturaUseCase {
         detalle: { appointmentId: input.appointmentId },
       });
 
-      return { factura, emisor, receptor };
+      return { factura, emisor, receptor, doctorId: appointment.doctorId };
     });
 
     // Fase 2: timbrar con el PAC, sin transacción abierta. El try/catch es
@@ -156,7 +168,7 @@ export class TimbrarFacturaUseCase {
     }
 
     // Fase 3: persistir el resultado PASE LO QUE PASE.
-    await this.tenantDb.run(async (tx) => {
+    const notification = await this.tenantDb.run(async (tx) => {
       if (resultado) {
         factura.marcarTimbrada(resultado.uuidFiscal, resultado.pacRawId);
       } else {
@@ -169,7 +181,23 @@ export class TimbrarFacturaUseCase {
         accion: resultado ? 'timbrar' : 'timbrar_error',
         detalle: { estatus: factura.estatus },
       });
+
+      if (resultado) return null;
+      return this.notifications.create(tx, {
+        userId: doctorId,
+        appointmentId: input.appointmentId,
+        tipo: 'factura_error',
+        titulo: 'Falló el timbrado de una factura',
+        mensaje: 'Reintenta desde la sala de espera',
+      });
     });
+
+    // Efecto externo: solo tras confirmar la transacción.
+    if (notification) {
+      this.notificationsNotifier.notificationCreated(this.ctx.get().tenantId, doctorId, {
+        notification,
+      });
+    }
 
     if (!resultado) throw pacError instanceof PacTimbradoError ? pacError : new PacTimbradoError();
 

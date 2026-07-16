@@ -8,7 +8,7 @@ import { api, ApiError } from '../../lib/api';
 import { useWaitingRoom, WAITING_ROOM_QUERY_KEY } from '../../lib/use-waiting-room';
 import { AppShell } from '../../components/app-shell';
 import { StatusBadge } from '../../components/status-badge';
-import { IconBell, IconSearch } from '../../components/icons';
+import { IconSearch } from '../../components/icons';
 import { BarChart } from '../../components/bar-chart';
 
 export default function DashboardPage() {
@@ -70,9 +70,6 @@ function DashboardContent() {
               className="w-72 rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-blue focus:bg-white"
             />
           </div>
-          <button className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50">
-            <IconBell />
-          </button>
           <button
             onClick={() => router.push('/calendario')}
             className="rounded-xl bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95"
