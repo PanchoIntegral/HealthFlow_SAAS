@@ -67,13 +67,27 @@ export const env = {
   get apiPort(): number {
     return Number(process.env.API_PORT ?? 3001);
   },
-  get webOrigin(): string {
-    return process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+  /** Orígenes permitidos para CORS. Acepta lista separada por comas
+   *  (p.ej. "http://localhost:3000,http://192.168.1.173:3000" para probar
+   *  desde otro dispositivo de la red local). */
+  get webOrigins(): string[] {
+    return (process.env.WEB_ORIGIN ?? 'http://localhost:3000')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
   },
   get appDbUser(): string {
     return process.env.APP_DB_USER ?? 'healthflow_app';
   },
   get appDbPassword(): string {
     return process.env.APP_DB_PASSWORD ?? 'healthflow_app_pwd';
+  },
+  /**
+   * Secret key del PAC (Facturapi). Getter LAZY a propósito: solo se exige si
+   * el adaptador real llega a usarse (con PAC_PROVIDER=fake el arranque no la
+   * necesita). Usar keys SEPARADAS para sandbox y producción.
+   */
+  get facturapiSecretKey(): string {
+    return required('FACTURAPI_SECRET_KEY');
   },
 };

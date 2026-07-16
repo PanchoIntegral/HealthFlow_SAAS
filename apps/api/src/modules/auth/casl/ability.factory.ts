@@ -18,6 +18,7 @@ export type Subject =
   | 'Consultation'
   | 'Dashboard'
   | 'Reports'
+  | 'Factura'
   | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
@@ -48,6 +49,10 @@ export class CaslAbilityFactory {
         can('create', 'Appointment');
         can('cancel', 'Appointment');
         can('create', 'Patient');
+        // Facturar es trabajo de recepción: crea y consulta facturas, pero la
+        // cancelación (acto fiscal ante el SAT) queda en médico/admin.
+        can('create', 'Factura');
+        can('read', 'Factura');
         break;
       case 'medico':
         // El médico agenda/cancela citas, marca llegada, da de alta pacientes
@@ -61,6 +66,9 @@ export class CaslAbilityFactory {
         can('write', 'Consultation');
         can('finish', 'Consultation');
         can('read', 'Consultation');
+        can('create', 'Factura');
+        can('read', 'Factura');
+        can('cancel', 'Factura');
         break;
     }
 

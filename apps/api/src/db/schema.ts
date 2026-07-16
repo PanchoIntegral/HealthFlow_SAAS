@@ -5,6 +5,7 @@ import {
   timestamp,
   date,
   jsonb,
+  numeric,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -102,6 +103,62 @@ export const noteAmendments = pgTable('note_amendments', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const emisoresFiscales = pgTable('emisores_fiscales', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  rfc: text('rfc').notNull(),
+  razonSocial: text('razon_social').notNull(),
+  regimenFiscal: text('regimen_fiscal').notNull(),
+  codigoPostal: text('codigo_postal').notNull(),
+  facturapiOrgId: text('facturapi_org_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const receptoresFiscales = pgTable('receptores_fiscales', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  patientId: uuid('patient_id'),
+  rfc: text('rfc').notNull(),
+  razonSocial: text('razon_social').notNull(),
+  regimenFiscal: text('regimen_fiscal').notNull(),
+  codigoPostal: text('codigo_postal').notNull(),
+  usoCfdi: text('uso_cfdi').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const facturas = pgTable('facturas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  appointmentId: uuid('appointment_id').notNull(),
+  emisorId: uuid('emisor_id').notNull(),
+  receptorId: uuid('receptor_id').notNull(),
+  estatus: text('estatus').notNull().default('PENDIENTE'), // 'PENDIENTE' | 'TIMBRADA' | 'CANCELADA' | 'ERROR'
+  uuidFiscal: text('uuid_fiscal'),
+  subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
+  iva: numeric('iva', { precision: 12, scale: 2 }).notNull(),
+  total: numeric('total', { precision: 12, scale: 2 }).notNull(),
+  pacRawId: text('pac_raw_id'),
+  errorCode: text('error_code'),
+  motivoCancelacion: text('motivo_cancelacion'),
+  timbradaEn: timestamp('timbrada_en', { withTimezone: true }),
+  canceladaEn: timestamp('cancelada_en', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const conceptosFactura = pgTable('conceptos_factura', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  facturaId: uuid('factura_id').notNull(),
+  claveProdServ: text('clave_prod_serv').notNull(),
+  claveUnidad: text('clave_unidad').notNull(),
+  descripcion: text('descripcion').notNull(),
+  cantidad: numeric('cantidad', { precision: 12, scale: 2 }).notNull(),
+  valorUnitario: numeric('valor_unitario', { precision: 12, scale: 2 }).notNull(),
+  importe: numeric('importe', { precision: 12, scale: 2 }).notNull(),
+  tratamientoIva: text('tratamiento_iva').notNull().default('EXENTO'), // 'EXENTO' | 'TASA_16' | 'TASA_0'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const schema = {
   tenants,
   users,
@@ -111,5 +168,9 @@ export const schema = {
   clinicalRecords,
   clinicalNotes,
   noteAmendments,
+  emisoresFiscales,
+  receptoresFiscales,
+  facturas,
+  conceptosFactura,
 };
 export type DbSchema = typeof schema;

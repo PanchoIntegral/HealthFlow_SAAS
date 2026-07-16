@@ -1,5 +1,6 @@
 import type { WaitingRoomEntry } from '@healthflow/shared-types';
 import { StatusBadge } from './status-badge';
+import { FacturaPanel } from './factura-panel';
 
 function initials(nombre: string): string {
   return nombre
@@ -85,6 +86,9 @@ export function WaitingRoomCard({
           Continuar consulta →
         </button>
       )}
+
+      {/* Consulta terminada → estado de facturación y acciones (timbrar/cancelar) */}
+      {entry.estatus === 'finalizada' && <FacturaPanel appointmentId={entry.appointmentId} />}
     </div>
   );
 }

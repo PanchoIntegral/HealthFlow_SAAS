@@ -26,7 +26,7 @@ function tenantRoom(tenantId: string): string {
  */
 @WebSocketGateway({
   namespace: '/waiting-room',
-  cors: { origin: env.webOrigin, credentials: true },
+  cors: { origin: env.webOrigins, credentials: true },
 })
 export class WaitingRoomGateway implements OnGatewayConnection, WaitingRoomNotifier {
   private readonly logger = new Logger(WaitingRoomGateway.name);

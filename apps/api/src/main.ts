@@ -9,7 +9,7 @@ loadDotEnv();
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.enableCors({ origin: env.webOrigin, credentials: true });
+  app.enableCors({ origin: env.webOrigins, credentials: true });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),

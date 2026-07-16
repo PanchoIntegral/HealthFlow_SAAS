@@ -41,6 +41,14 @@ async function main() {
     [tenantA, hash],
   );
 
+  // Emisor fiscal (billing): sin él, timbrar responde EmisorNoConfigurado (422).
+  await c.query(
+    `INSERT INTO emisores_fiscales(tenant_id,rfc,razon_social,regimen_fiscal,codigo_postal)
+     VALUES ($1,'NOR010101AAA','Clínica Norte SA de CV','601','22000')
+     ON CONFLICT (tenant_id) DO NOTHING`,
+    [tenantA],
+  );
+
   const patientsA = [
     ['Roberto Fernández', '1972-03-15', 'Control de hipertensión'],
     ['Lucía Márquez', '1988-07-22', 'Cefalea recurrente'],

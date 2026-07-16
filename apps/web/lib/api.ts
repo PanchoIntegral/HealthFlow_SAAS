@@ -1,6 +1,8 @@
 import type {
   AppointmentView,
   CancelAppointmentRequest,
+  CancelarFacturaRequest,
+  FacturaView,
   ClinicalNoteView,
   ClinicalRecordView,
   CreateAppointmentRequest,
@@ -14,6 +16,7 @@ import type {
   PatientSummary,
   ReportsStats,
   StartConsultationResponse,
+  TimbrarFacturaRequest,
   WaitingRoomEntry,
 } from '@healthflow/shared-types';
 import { API_URL } from './config';
@@ -132,4 +135,22 @@ export const api = {
     }),
 
   reportsStats: (token: string) => request<ReportsStats>('/reports/stats', { token }),
+
+  // ── Facturación (CFDI) ──
+  getFacturaDeCita: (token: string, appointmentId: string) =>
+    request<FacturaView | null>(`/billing/citas/${appointmentId}/factura`, { token }),
+
+  timbrarFactura: (token: string, body: TimbrarFacturaRequest) =>
+    request<FacturaView>('/billing/facturas', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  cancelarFactura: (token: string, facturaId: string, body: CancelarFacturaRequest) =>
+    request<FacturaView>(`/billing/facturas/${facturaId}/cancelar`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
 };

@@ -280,3 +280,60 @@ export interface ReportsStats {
   productividadMedicos: ProductividadMedico[];
   tendenciaMensual: TendenciaMensual[]; // últimos 6 meses
 }
+
+// ─── Facturación (CFDI 4.0) ───────────────────────────────────────
+
+export type FacturaEstatus = 'PENDIENTE' | 'TIMBRADA' | 'CANCELADA' | 'ERROR';
+
+/** Consulta médica de médico titulado: EXENTO (art. 15 LIVA). */
+export type TratamientoIva = 'EXENTO' | 'TASA_16' | 'TASA_0';
+
+/** Motivos de cancelación del catálogo SAT. */
+export type MotivoCancelacionSat = '01' | '02' | '03' | '04';
+
+export interface ConceptoFacturaView {
+  claveProdServ: string;
+  claveUnidad: string;
+  descripcion: string;
+  cantidad: number;
+  valorUnitario: string; // pesos "1234.50"
+  importe: string;
+  tratamientoIva: TratamientoIva;
+}
+
+export interface FacturaView {
+  id: string;
+  appointmentId: string;
+  estatus: FacturaEstatus;
+  uuidFiscal: string | null;
+  subtotal: string; // pesos "1234.50" — SIEMPRE calculado server-side
+  iva: string;
+  total: string;
+  motivoCancelacion: string | null;
+  timbradaEn: string | null;
+  canceladaEn: string | null;
+  conceptos: ConceptoFacturaView[];
+}
+
+export interface TimbrarFacturaRequest {
+  appointmentId: string;
+  receptor: {
+    rfc: string;
+    razonSocial: string;
+    regimenFiscal: string;
+    codigoPostal: string;
+    usoCfdi: string;
+  };
+  conceptos: {
+    claveProdServ: string;
+    claveUnidad: string;
+    descripcion: string;
+    cantidad: number;
+    valorUnitario: number; // pesos
+    tratamientoIva?: TratamientoIva;
+  }[];
+}
+
+export interface CancelarFacturaRequest {
+  motivo: MotivoCancelacionSat;
+}
