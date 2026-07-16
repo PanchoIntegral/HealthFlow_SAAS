@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import type { FacturaListItem, IngresoMensual } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import { RequestContextService } from '../../../common/tenant-context/request-context';
 import { ConceptoCfdi, type TratamientoIva } from '../domain/concepto-cfdi.entity';
@@ -198,6 +199,101 @@ export class DrizzleFacturaRepository implements FacturaRepository {
       RETURNING id
     `);
     return (result.rows[0] as { id: string }).id;
+  }
+
+  async listFacturas(tx: Tx, limit: number): Promise<FacturaListItem[]> {
+    const result = await tx.execute(sql`
+      SELECT f.id,
+             p.nombre AS paciente_nombre,
+             COALESCE(f.timbrada_en, f.created_at) AS fecha,
+             f.estatus,
+             f.uuid_fiscal,
+             f.total,
+             f.motivo_cancelacion
+        FROM facturas f
+        JOIN appointments a ON a.id = f.appointment_id
+        JOIN patients p ON p.id = a.patient_id
+       WHERE f.tenant_id = ${this.tenantId}
+       ORDER BY COALESCE(f.timbrada_en, f.created_at) DESC
+       LIMIT ${limit}
+    `);
+    return (
+      result.rows as unknown as {
+        id: string;
+        paciente_nombre: string;
+        fecha: Date;
+        estatus: FacturaEstatus;
+        uuid_fiscal: string | null;
+        total: string;
+        motivo_cancelacion: string | null;
+      }[]
+    ).map((r) => ({
+      id: r.id,
+      pacienteNombre: r.paciente_nombre,
+      fecha: new Date(r.fecha).toISOString(),
+      estatus: r.estatus,
+      uuidFiscal: r.uuid_fiscal,
+      total: r.total,
+      motivoCancelacion: r.motivo_cancelacion,
+    }));
+  }
+
+  async totalesFinanzas(tx: Tx): Promise<{
+    facturadoMes: string;
+    facturadoAnio: string;
+    facturasMes: number;
+    canceladasMes: number;
+    ingresosPorMes: IngresoMensual[];
+  }> {
+    // Ingreso = facturas TIMBRADAS. Las canceladas se reportan aparte y no suman.
+    const kpis = await tx.execute(sql`
+      SELECT
+        COALESCE(SUM(total) FILTER (WHERE estatus = 'TIMBRADA'
+          AND date_trunc('month', timbrada_en) = date_trunc('month', now())), 0)::numeric(14,2) AS facturado_mes,
+        COALESCE(SUM(total) FILTER (WHERE estatus = 'TIMBRADA'
+          AND date_trunc('year', timbrada_en) = date_trunc('year', now())), 0)::numeric(14,2) AS facturado_anio,
+        COUNT(*) FILTER (WHERE estatus = 'TIMBRADA'
+          AND date_trunc('month', timbrada_en) = date_trunc('month', now()))::int AS facturas_mes,
+        COUNT(*) FILTER (WHERE estatus = 'CANCELADA'
+          AND date_trunc('month', cancelada_en) = date_trunc('month', now()))::int AS canceladas_mes
+        FROM facturas
+       WHERE tenant_id = ${this.tenantId}
+    `);
+    const k = kpis.rows[0] as {
+      facturado_mes: string;
+      facturado_anio: string;
+      facturas_mes: number;
+      canceladas_mes: number;
+    };
+
+    // Últimos 6 meses (incluye meses en cero para que la gráfica no salte).
+    const meses = await tx.execute(sql`
+      SELECT to_char(m.mes, 'YYYY-MM') AS mes,
+             COALESCE(SUM(f.total), 0)::float8 AS total
+        FROM generate_series(
+               date_trunc('month', now()) - interval '5 months',
+               date_trunc('month', now()),
+               interval '1 month') AS m(mes)
+        LEFT JOIN facturas f
+          ON f.tenant_id = ${this.tenantId}
+         AND f.estatus = 'TIMBRADA'
+         AND date_trunc('month', f.timbrada_en) = m.mes
+       GROUP BY m.mes
+       ORDER BY m.mes
+    `);
+    const LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const ingresosPorMes = (meses.rows as unknown as { mes: string; total: number }[]).map((r) => {
+      const [anio, mesNum] = r.mes.split('-');
+      return { mes: r.mes, label: `${LABELS[Number(mesNum) - 1]} ${anio!.slice(2)}`, total: r.total };
+    });
+
+    return {
+      facturadoMes: k.facturado_mes,
+      facturadoAnio: k.facturado_anio,
+      facturasMes: Number(k.facturas_mes),
+      canceladasMes: Number(k.canceladas_mes),
+      ingresosPorMes,
+    };
   }
 
   private toEntity(row: FacturaRow): Factura {

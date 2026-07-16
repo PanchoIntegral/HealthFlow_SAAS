@@ -9,6 +9,7 @@ import { TimbrarFacturaUseCase } from './application/timbrar-factura.use-case';
 import { CancelarFacturaUseCase } from './application/cancelar-factura.use-case';
 import { ConsultarFacturaUseCase } from './application/consultar-factura.use-case';
 import { ConsultarFacturaDeCitaUseCase } from './application/consultar-factura-de-cita.use-case';
+import { GetFinanzasUseCase } from './application/get-finanzas.use-case';
 import { DrizzleFacturaRepository } from './infrastructure/factura.drizzle-repo';
 import { FacturapiAdapter } from './infrastructure/pac/facturapi.adapter';
 import { FakePacAdapter } from './infrastructure/pac/fake-pac.adapter';
@@ -32,6 +33,7 @@ const usarPacFake = process.env.NODE_ENV === 'test' || process.env.PAC_PROVIDER 
     CancelarFacturaUseCase,
     ConsultarFacturaUseCase,
     ConsultarFacturaDeCitaUseCase,
+    GetFinanzasUseCase,
     CaslAbilityFactory,
     PoliciesGuard,
     { provide: FACTURA_REPOSITORY, useClass: DrizzleFacturaRepository },

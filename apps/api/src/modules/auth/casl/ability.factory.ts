@@ -19,6 +19,7 @@ export type Subject =
   | 'Dashboard'
   | 'Reports'
   | 'Factura'
+  | 'Finanzas'
   | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
@@ -69,6 +70,9 @@ export class CaslAbilityFactory {
         can('create', 'Factura');
         can('read', 'Factura');
         can('cancel', 'Factura');
+        // Finanzas (ingresos del consultorio): SOLO médico (y admin vía manage
+        // all). El asistente factura pero no ve las ganancias.
+        can('read', 'Finanzas');
         break;
     }
 

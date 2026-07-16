@@ -3,6 +3,7 @@ import type {
   CancelAppointmentRequest,
   CancelarFacturaRequest,
   FacturaView,
+  FinanzasResumen,
   ClinicalNoteView,
   ClinicalRecordView,
   CreateAppointmentRequest,
@@ -153,4 +154,6 @@ export const api = {
       token,
       body: JSON.stringify(body),
     }),
+
+  finanzas: (token: string) => request<FinanzasResumen>('/billing/finanzas', { token }),
 };

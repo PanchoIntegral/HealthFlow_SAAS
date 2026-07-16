@@ -6,6 +6,7 @@ import { TimbrarFacturaUseCase } from '../application/timbrar-factura.use-case';
 import { CancelarFacturaUseCase } from '../application/cancelar-factura.use-case';
 import { ConsultarFacturaUseCase } from '../application/consultar-factura.use-case';
 import { ConsultarFacturaDeCitaUseCase } from '../application/consultar-factura-de-cita.use-case';
+import { GetFinanzasUseCase } from '../application/get-finanzas.use-case';
 import type { FacturaView } from '../application/factura.views';
 import { TimbrarFacturaDto } from './dto/timbrar-factura.dto';
 import { CancelarFacturaDto } from './dto/cancelar-factura.dto';
@@ -24,7 +25,15 @@ export class BillingController {
     private readonly cancelarFactura: CancelarFacturaUseCase,
     private readonly consultarFactura: ConsultarFacturaUseCase,
     private readonly consultarFacturaDeCita: ConsultarFacturaDeCitaUseCase,
+    private readonly getFinanzas: GetFinanzasUseCase,
   ) {}
+
+  /** Resumen financiero (ingresos). Subject CASL propio: SOLO médico/admin. */
+  @Get('finanzas')
+  @RequirePolicy('read', 'Finanzas')
+  finanzas() {
+    return this.getFinanzas.execute();
+  }
 
   /** Estado de facturación de una cita (última factura o null si no hay). */
   @Get('citas/:appointmentId/factura')

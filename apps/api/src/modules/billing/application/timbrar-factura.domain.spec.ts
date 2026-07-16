@@ -67,6 +67,18 @@ class InMemoryFacturaRepo implements FacturaRepository {
   async saveReceptor(_tx: Tx, _receptor: ReceptorFiscal): Promise<string> {
     return 'receptor-1';
   }
+  async listFacturas(): Promise<never[]> {
+    return [];
+  }
+  async totalesFinanzas() {
+    return {
+      facturadoMes: '0.00',
+      facturadoAnio: '0.00',
+      facturasMes: 0,
+      canceladasMes: 0,
+      ingresosPorMes: [],
+    };
+  }
 }
 
 const appointments = {

@@ -1,3 +1,4 @@
+import type { FacturaListItem, IngresoMensual } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { ConceptoCfdi } from './concepto-cfdi.entity';
 import type { EmisorFiscal } from './emisor-fiscal.entity';
@@ -40,6 +41,20 @@ export interface FacturaRepository {
 
   /** Persiste el receptor y devuelve su id. */
   saveReceptor(tx: Tx, receptor: ReceptorFiscal): Promise<string>;
+
+  // ── Finanzas (reporting) ──
+
+  /** Facturas con nombre del paciente, más recientes primero. */
+  listFacturas(tx: Tx, limit: number): Promise<FacturaListItem[]>;
+
+  /** Agregados de ingreso: solo facturas TIMBRADAS cuentan como ganancia. */
+  totalesFinanzas(tx: Tx): Promise<{
+    facturadoMes: string;
+    facturadoAnio: string;
+    facturasMes: number;
+    canceladasMes: number;
+    ingresosPorMes: IngresoMensual[];
+  }>;
 }
 
 export const FACTURA_REPOSITORY = Symbol('FACTURA_REPOSITORY');

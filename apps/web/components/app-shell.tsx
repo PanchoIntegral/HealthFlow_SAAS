@@ -7,18 +7,21 @@ import { useAuth } from '../lib/auth';
 import {
   IconCalendar,
   IconDashboard,
+  IconFinance,
   IconRecords,
   IconReports,
   IconWaiting,
 } from './icons';
 
+/** `roles` limita el item a esos roles; sin `roles`, lo ven todos. */
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: IconDashboard },
   { href: '/calendario', label: 'Calendario', icon: IconCalendar },
   { href: '/sala-de-espera', label: 'Sala de espera', icon: IconWaiting },
   { href: '/pacientes', label: 'Expedientes', icon: IconRecords },
   { href: '/reportes', label: 'Reportes', icon: IconReports },
-];
+  { href: '/finanzas', label: 'Finanzas', icon: IconFinance, roles: ['medico', 'admin'] },
+] as { href: string; label: string; icon: () => React.JSX.Element; roles?: string[] }[];
 
 function initials(nombre: string): string {
   return nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
@@ -60,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-2">
-          {NAV.map(({ href, label, icon: Icon }) => {
+          {NAV.filter(({ roles }) => !roles || roles.includes(user.rol)).map(({ href, label, icon: Icon }) => {
             const active = pathname === href || (href === '/pacientes' && pathname.startsWith('/pacientes'));
             return (
               <Link

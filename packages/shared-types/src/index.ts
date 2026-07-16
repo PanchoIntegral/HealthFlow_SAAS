@@ -337,3 +337,31 @@ export interface TimbrarFacturaRequest {
 export interface CancelarFacturaRequest {
   motivo: MotivoCancelacionSat;
 }
+
+// ─── Finanzas (solo médico/admin) ────────────────────────────────
+
+export interface FacturaListItem {
+  id: string;
+  pacienteNombre: string;
+  fecha: string; // ISO (timbrada_en, o created_at si nunca timbró)
+  estatus: FacturaEstatus;
+  uuidFiscal: string | null;
+  total: string; // pesos "1234.50"
+  motivoCancelacion: string | null;
+}
+
+export interface IngresoMensual {
+  mes: string; // YYYY-MM
+  label: string; // "Ene 2026"
+  total: number; // pesos (número para graficar)
+}
+
+export interface FinanzasResumen {
+  /** Suma de facturas TIMBRADAS (las canceladas no cuentan como ingreso). */
+  facturadoMes: string;
+  facturadoAnio: string;
+  facturasMes: number;
+  canceladasMes: number;
+  ingresosPorMes: IngresoMensual[]; // últimos 6 meses
+  facturas: FacturaListItem[]; // más recientes primero
+}
