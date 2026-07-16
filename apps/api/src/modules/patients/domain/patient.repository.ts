@@ -15,6 +15,9 @@ export interface PatientRepository {
 
   /** Búsqueda por nombre o CURP (prefijo, case-insensitive). Limitada. */
   search(tx: Tx, query: string, limit: number): Promise<PatientSummary[]>;
+
+  /** Directorio completo del tenant, ordenado por nombre. Limitado. */
+  list(tx: Tx, limit: number): Promise<PatientSummary[]>;
 }
 
 export const PATIENT_REPOSITORY = Symbol('PATIENT_REPOSITORY');

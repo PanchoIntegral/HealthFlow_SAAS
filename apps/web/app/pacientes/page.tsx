@@ -26,15 +26,19 @@ export default function PacientesPage() {
     return () => clearTimeout(t);
   }, [query]);
 
+  // Sin búsqueda el API devuelve el directorio completo del consultorio.
   const results = useQuery({
     queryKey: ['patients', debounced],
     queryFn: () => api.searchPatients(token!, debounced),
-    enabled: !!token && debounced.trim().length >= 2,
+    enabled: !!token,
   });
 
   if (!ready || !token || !user) return null;
 
   const canCreate = ['asistente', 'medico', 'admin'].includes(user.rol);
+  // El contenido clínico es solo para médico/admin (RBAC): el asistente ve el
+  // directorio pero no puede abrir el expediente.
+  const canOpenRecord = ['medico', 'admin'].includes(user.rol);
 
   return (
     <AppShell>
@@ -70,28 +74,41 @@ export default function PacientesPage() {
           />
         </div>
 
-        {debounced.trim().length < 2 ? (
-          <p className="py-8 text-center text-sm text-slate-400">
-            Escribe al menos 2 caracteres para buscar.
-          </p>
-        ) : results.isLoading ? (
-          <p className="py-8 text-center text-sm text-slate-400">Buscando…</p>
+        {results.isLoading ? (
+          <p className="py-8 text-center text-sm text-slate-400">Cargando pacientes…</p>
         ) : results.data && results.data.length > 0 ? (
           <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
             {results.data.map((p) => (
-              <li key={p.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <p className="font-medium">{p.nombre}</p>
-                  <p className="text-xs text-slate-500">
-                    {p.edad} años{p.curp ? ` · ${p.curp}` : ''}
-                  </p>
-                </div>
-                {p.telefono && <span className="text-sm text-slate-500">{p.telefono}</span>}
+              <li key={p.id}>
+                <button
+                  onClick={() => canOpenRecord && router.push(`/pacientes/${p.id}`)}
+                  disabled={!canOpenRecord}
+                  className={`flex w-full items-center justify-between px-4 py-3 text-left transition ${
+                    canOpenRecord ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default'
+                  }`}
+                >
+                  <div>
+                    <p className="font-medium">{p.nombre}</p>
+                    <p className="text-xs text-slate-500">
+                      {p.edad} años{p.curp ? ` · ${p.curp}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {p.telefono && <span className="text-sm text-slate-500">{p.telefono}</span>}
+                    {canOpenRecord && (
+                      <span className="text-sm font-medium text-brand-blue">
+                        Ver expediente →
+                      </span>
+                    )}
+                  </div>
+                </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="py-8 text-center text-sm text-slate-400">Sin resultados.</p>
+          <p className="py-8 text-center text-sm text-slate-400">
+            {debounced.trim().length >= 2 ? 'Sin resultados.' : 'Aún no hay pacientes registrados.'}
+          </p>
         )}
       </main>
     </AppShell>

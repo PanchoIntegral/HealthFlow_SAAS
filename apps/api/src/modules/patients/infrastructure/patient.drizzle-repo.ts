@@ -60,4 +60,24 @@ export class DrizzlePatientRepository implements PatientRepository {
       telefono: r.telefono,
     }));
   }
+
+  async list(tx: Tx, limit: number): Promise<PatientSummary[]> {
+    const result = await tx.execute(sql`
+      SELECT id,
+             nombre,
+             date_part('year', age(fecha_nacimiento))::int AS edad,
+             curp,
+             telefono
+        FROM patients
+       ORDER BY nombre ASC
+       LIMIT ${limit}
+    `);
+    return (result.rows as unknown as PatientRow[]).map((r) => ({
+      id: r.id,
+      nombre: r.nombre,
+      edad: Number(r.edad),
+      curp: r.curp,
+      telefono: r.telefono,
+    }));
+  }
 }
