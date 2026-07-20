@@ -9,6 +9,7 @@ import type {
   CreateAppointmentRequest,
   CreatePatientRequest,
   DashboardStats,
+  DiagnosticoCie10,
   DoctorSummary,
   FinishConsultationResponse,
   LoginRequest,
@@ -80,6 +81,9 @@ export const api = {
 
   markAllNotificationsRead: (token: string) =>
     request<void>('/notifications/leer-todas', { method: 'POST', token }),
+
+  buscarCie10: (token: string, q: string) =>
+    request<DiagnosticoCie10[]>(`/catalogos/cie10?q=${encodeURIComponent(q)}`, { token }),
 
   checkIn: (token: string, appointmentId: string) =>
     request<WaitingRoomEntry>(`/appointments/${appointmentId}/check-in`, {

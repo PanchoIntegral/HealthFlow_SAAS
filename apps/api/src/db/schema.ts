@@ -171,6 +171,14 @@ export const notifications = pgTable('notifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+/** Catálogo CIE-10 (fuente: DGIS/Secretaría de Salud). Sin tenant_id: es
+ * referencia global compartida, no dato propiedad de una clínica. */
+export const cie10Diagnosticos = pgTable('cie10_diagnosticos', {
+  code: text('code').primaryKey(),
+  descripcion: text('descripcion').notNull(),
+  capitulo: text('capitulo').notNull(),
+});
+
 export const schema = {
   tenants,
   users,
@@ -185,5 +193,6 @@ export const schema = {
   facturas,
   conceptosFactura,
   notifications,
+  cie10Diagnosticos,
 };
 export type DbSchema = typeof schema;

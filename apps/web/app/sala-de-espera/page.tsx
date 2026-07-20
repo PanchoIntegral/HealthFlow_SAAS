@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AppointmentStatus, WaitingRoomEntry } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { useWaitingRoom, WAITING_ROOM_QUERY_KEY } from '../../lib/use-waiting-room';
-import { WaitingRoomCard } from '../../components/waiting-room-card';
+import { WaitingRoomCard, dragMimeType } from '../../components/waiting-room-card';
 import { AppShell } from '../../components/app-shell';
 
 const TERMINAL: AppointmentStatus[] = ['finalizada', 'cancelada', 'no_asistio'];
@@ -35,6 +35,7 @@ export default function SalaDeEsperaPage() {
   }, [ready, token, router]);
 
   const { data: entries, isLoading } = useWaitingRoom(token ?? '');
+  const [draggingStatus, setDraggingStatus] = useState<AppointmentStatus | null>(null);
 
   const checkIn = useMutation({
     mutationFn: (appointmentId: string) => api.checkIn(token!, appointmentId),
@@ -64,6 +65,27 @@ export default function SalaDeEsperaPage() {
   const canCheckIn = ['asistente', 'medico', 'admin'].includes(user.rol);
   const canConsult = ['medico', 'admin'].includes(user.rol);
 
+  // Drag-and-drop: mismos procesos que ya existen como botones (marcar
+  // llegada, iniciar consulta), solo que arrastrando la tarjeta a la columna
+  // siguiente. Cada columna solo acepta el estatus que legítimamente puede
+  // avanzar hacia ella (y solo si el rol del usuario puede hacer esa acción).
+  const acceptsFrom: Record<string, AppointmentStatus[]> = {
+    agendada: [],
+    en_espera: canCheckIn ? ['agendada'] : [],
+    en_consulta: canConsult ? ['en_espera'] : [],
+    finalizada: [],
+  };
+
+  function handleDropOnColumn(colKey: string, e: React.DragEvent) {
+    for (const fromStatus of acceptsFrom[colKey] ?? []) {
+      const appointmentId = e.dataTransfer.getData(dragMimeType(fromStatus));
+      if (!appointmentId) continue;
+      if (fromStatus === 'agendada' && colKey === 'en_espera') checkIn.mutate(appointmentId);
+      if (fromStatus === 'en_espera' && colKey === 'en_consulta') startConsultation.mutate(appointmentId);
+      return;
+    }
+  }
+
   const porStatus = (statuses: AppointmentStatus[]) => {
     const list = (entries ?? []).filter((e) => statuses.includes(e.estatus));
     if (statuses.length === 1 && statuses[0] === 'en_espera') {
@@ -79,11 +101,10 @@ export default function SalaDeEsperaPage() {
       <div>
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-8 py-4">
           <div>
-            <div className="flex items-center gap-2 text-sm text-emerald-600">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-              En vivo
-            </div>
             <h1 className="text-xl font-bold">Sala de espera</h1>
+            {(canCheckIn || canConsult) && (
+              <p className="text-sm text-slate-500">Arrastra una tarjeta a la siguiente columna para avanzarla.</p>
+            )}
           </div>
           {entries && entries.length > 0 && (
             <p className="text-sm text-slate-500">
@@ -107,7 +128,16 @@ export default function SalaDeEsperaPage() {
               {COLUMNS.map((col) => {
                 const list = porStatus(col.statuses);
                 return (
-                  <Column key={col.key} title={col.title} dot={col.dot} count={list.length} empty={col.empty}>
+                  <Column
+                    key={col.key}
+                    title={col.title}
+                    dot={col.dot}
+                    count={list.length}
+                    empty={col.empty}
+                    acceptsFrom={acceptsFrom[col.key] ?? []}
+                    draggingStatus={draggingStatus}
+                    onDropCard={(e) => handleDropOnColumn(col.key, e)}
+                  >
                     {list.map((entry) => (
                       <WaitingRoomCard
                         key={entry.appointmentId}
@@ -120,6 +150,11 @@ export default function SalaDeEsperaPage() {
                           (checkIn.isPending && checkIn.variables === entry.appointmentId) ||
                           (startConsultation.isPending && startConsultation.variables === entry.appointmentId)
                         }
+                        draggable={
+                          (entry.estatus === 'agendada' && canCheckIn) ||
+                          (entry.estatus === 'en_espera' && canConsult)
+                        }
+                        onDragStatusChange={setDraggingStatus}
                       />
                     ))}
                   </Column>
@@ -139,15 +174,45 @@ function Column({
   count,
   empty,
   children,
+  acceptsFrom,
+  draggingStatus,
+  onDropCard,
 }: {
   title: string;
   dot: string;
   count: number;
   empty: string;
   children: ReactNode;
+  acceptsFrom: AppointmentStatus[];
+  draggingStatus: AppointmentStatus | null;
+  onDropCard: (e: React.DragEvent) => void;
 }) {
+  const [over, setOver] = useState(false);
+  const isValidTarget = draggingStatus !== null && acceptsFrom.includes(draggingStatus);
+
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+    <div
+      onDragOver={(e) => {
+        if (!isValidTarget) return;
+        e.preventDefault();
+        if (!over) setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        if (isValidTarget) onDropCard(e);
+      }}
+      className={`flex flex-col rounded-2xl border p-4 transition ${
+        over
+          ? 'border-brand-blue bg-brand-blue/5 ring-2 ring-brand-blue/30'
+          : isValidTarget
+            ? 'border-dashed border-brand-blue/40 bg-slate-50/60'
+            : draggingStatus !== null
+              ? 'border-slate-200 bg-slate-50/60 opacity-50'
+              : 'border-slate-200 bg-slate-50/60'
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${dot}`} />
@@ -161,8 +226,12 @@ function Column({
         {count > 0 ? (
           children
         ) : (
-          <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-xs text-slate-400">
-            {empty}
+          <p
+            className={`rounded-xl border border-dashed py-6 text-center text-xs transition ${
+              isValidTarget ? 'border-brand-blue/40 text-brand-blue' : 'border-slate-200 text-slate-400'
+            }`}
+          >
+            {isValidTarget ? 'Suelta aquí' : empty}
           </p>
         )}
       </div>

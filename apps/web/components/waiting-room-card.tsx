@@ -1,8 +1,16 @@
-import type { WaitingRoomEntry } from '@healthflow/shared-types';
+import { useState } from 'react';
+import type { AppointmentStatus, WaitingRoomEntry } from '@healthflow/shared-types';
 import { StatusBadge } from './status-badge';
 import { FacturaPanel } from './factura-panel';
 
 const TERMINAL_STATUSES = new Set(['finalizada', 'cancelada', 'no_asistio']);
+
+/** Tipo MIME propio usado como "canal" del drag-and-drop: codifica el estatus
+ * de origen para que la columna destino sepa si aceptar el drop (ver
+ * sala-de-espera/page.tsx). */
+export function dragMimeType(status: AppointmentStatus): string {
+  return `application/x-hf-estatus-${status}`;
+}
 
 function initials(nombre: string): string {
   return nombre
@@ -29,6 +37,8 @@ export function WaitingRoomCard({
   onCheckIn,
   onStartConsultation,
   pending,
+  draggable = false,
+  onDragStatusChange,
 }: {
   entry: WaitingRoomEntry;
   canCheckIn: boolean;
@@ -36,15 +46,32 @@ export function WaitingRoomCard({
   onCheckIn: (id: string) => void;
   onStartConsultation: (id: string) => void;
   pending: boolean;
+  /** Si esta tarjeta se puede arrastrar a otra columna (ver reglas en sala-de-espera/page.tsx). */
+  draggable?: boolean;
+  /** Avisa a la página qué estatus se está arrastrando (o null al soltar), para resaltar columnas válidas. */
+  onDragStatusChange?: (status: AppointmentStatus | null) => void;
 }) {
   const wait = waitMinutes(entry.checkinAt);
   const urgent = wait !== null && wait >= 20;
+  const [isDragging, setIsDragging] = useState(false);
 
   return (
     <div
+      draggable={draggable}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(dragMimeType(entry.estatus), entry.appointmentId);
+        e.dataTransfer.setData('text/plain', entry.appointmentId);
+        e.dataTransfer.effectAllowed = 'move';
+        setIsDragging(true);
+        onDragStatusChange?.(entry.estatus);
+      }}
+      onDragEnd={() => {
+        setIsDragging(false);
+        onDragStatusChange?.(null);
+      }}
       className={`flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm transition hover:shadow-md ${
         urgent && entry.estatus === 'en_espera' ? 'border-red-200' : 'border-slate-200'
-      }`}
+      } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-40' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">

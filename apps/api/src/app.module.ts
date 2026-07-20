@@ -14,6 +14,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { CatalogosModule } from './modules/catalogos/catalogos.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     AuditModule,
     AuthModule,
     NotificationsModule,
+    CatalogosModule,
     AppointmentsModule,
     PatientsModule,
     ClinicalRecordsModule,

@@ -11,7 +11,6 @@ import {
 } from '@healthflow/shared-types';
 import { useAuth } from '../../../lib/auth';
 import { api, ApiError } from '../../../lib/api';
-import { buscarCie10 } from '../../../lib/cie10';
 import { RichTextEditor } from '../../../components/rich-text-editor';
 
 const VITALES: { key: keyof SignosVitales; label: string; required?: boolean }[] = [
@@ -187,6 +186,7 @@ export default function ConsultaPage({
 
           <Section title="Diagnósticos (CIE-10)" required missing={isMissing('diagnosticos')}>
             <DiagnosticoPicker
+              token={token}
               seleccionados={content.diagnosticos}
               onAdd={addDiagnostico}
               onRemove={removeDiagnostico}
@@ -275,18 +275,34 @@ function Section({
 }
 
 function DiagnosticoPicker({
+  token,
   seleccionados,
   onAdd,
   onRemove,
   readOnly,
 }: {
+  token: string;
   seleccionados: DiagnosticoCie10[];
   onAdd: (d: DiagnosticoCie10) => void;
   onRemove: (cie10: string) => void;
   readOnly?: boolean;
 }) {
   const [q, setQ] = useState('');
-  const resultados = buscarCie10(q);
+
+  // Debounce ligero para no disparar una búsqueda por cada tecla (mismo
+  // patrón que el buscador de pacientes).
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(q), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const busqueda = useQuery({
+    queryKey: ['cie10', debounced],
+    queryFn: () => api.buscarCie10(token, debounced),
+    enabled: debounced.trim().length >= 2,
+  });
+  const resultados = busqueda.data ?? [];
 
   return (
     <div>
@@ -309,22 +325,28 @@ function DiagnosticoPicker({
             placeholder="Buscar diagnóstico o código CIE-10…"
             className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue"
           />
-          {resultados.length > 0 && (
+          {debounced.trim().length >= 2 && (
             <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-              {resultados.map((d) => (
-                <li key={d.cie10}>
-                  <button
-                    onClick={() => {
-                      onAdd(d);
-                      setQ('');
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
-                  >
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold">{d.cie10}</span>
-                    {d.descripcion}
-                  </button>
-                </li>
-              ))}
+              {busqueda.isFetching ? (
+                <li className="px-3 py-2 text-sm text-slate-400">Buscando…</li>
+              ) : resultados.length > 0 ? (
+                resultados.map((d) => (
+                  <li key={d.cie10}>
+                    <button
+                      onClick={() => {
+                        onAdd(d);
+                        setQ('');
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    >
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold">{d.cie10}</span>
+                      {d.descripcion}
+                    </button>
+                  </li>
+                ))
+              ) : (
+                <li className="px-3 py-2 text-sm text-slate-400">Sin resultados.</li>
+              )}
             </ul>
           )}
         </div>
