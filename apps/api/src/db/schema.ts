@@ -23,6 +23,9 @@ export const tenants = pgTable('tenants', {
   nombreClinica: text('nombre_clinica').notNull(),
   rfc: text('rfc'),
   plan: text('plan').notNull().default('free'),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  subscriptionStatus: text('subscription_status').notNull().default('none'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -179,6 +182,24 @@ export const cie10Diagnosticos = pgTable('cie10_diagnosticos', {
   capitulo: text('capitulo').notNull(),
 });
 
+/** Idempotencia de webhooks de Stripe. Sin tenant_id: registro global. */
+export const stripeEvents = pgTable('stripe_events', {
+  id: text('id').primaryKey(),
+  type: text('type').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Token de un solo uso para el auto-login tras pagar (ver 0009_subscriptions.sql). */
+export const onboardingTickets = pgTable('onboarding_tickets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  stripeCheckoutSessionId: text('stripe_checkout_session_id').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const schema = {
   tenants,
   users,
@@ -194,5 +215,7 @@ export const schema = {
   conceptosFactura,
   notifications,
   cie10Diagnosticos,
+  stripeEvents,
+  onboardingTickets,
 };
 export type DbSchema = typeof schema;

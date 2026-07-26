@@ -7,7 +7,9 @@ import { AppModule } from './app.module';
 loadDotEnv();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: necesario para verificar la firma del webhook de Stripe, que
+  // debe validarse contra el Buffer crudo del body, no el JSON ya parseado.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.enableCors({ origin: env.webOrigins, credentials: true });
   app.setGlobalPrefix('api');

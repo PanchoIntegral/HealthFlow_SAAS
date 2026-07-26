@@ -65,7 +65,8 @@ export const env = {
     return process.env.JWT_EXPIRES_IN ?? '1d';
   },
   get apiPort(): number {
-    return Number(process.env.API_PORT ?? 3001);
+    // Railway/Render inyectan su propio PORT y esperan que el proceso lo use.
+    return Number(process.env.PORT ?? process.env.API_PORT ?? 3001);
   },
   /** Orígenes permitidos para CORS. Acepta lista separada por comas
    *  (p.ej. "http://localhost:3000,http://192.168.1.173:3000" para probar
@@ -89,5 +90,27 @@ export const env = {
    */
   get facturapiSecretKey(): string {
     return required('FACTURAPI_SECRET_KEY');
+  },
+
+  // ── Suscripciones (Stripe) ───────────────────────────────────────
+  get stripeSecretKey(): string {
+    return required('STRIPE_SECRET_KEY');
+  },
+  get stripeWebhookSecret(): string {
+    return required('STRIPE_WEBHOOK_SECRET');
+  },
+  get stripePriceIdIndividual(): string {
+    return required('STRIPE_PRICE_ID_INDIVIDUAL');
+  },
+  get stripePriceIdConsultorio(): string {
+    return required('STRIPE_PRICE_ID_CONSULTORIO');
+  },
+  /** Origen del SaaS (apps/web) — arma el success_url del Checkout. */
+  get appUrl(): string {
+    return process.env.APP_URL ?? 'http://localhost:3000';
+  },
+  /** Origen de la landing — arma el cancel_url del Checkout. */
+  get marketingUrl(): string {
+    return process.env.MARKETING_URL ?? 'http://localhost:3100';
   },
 };

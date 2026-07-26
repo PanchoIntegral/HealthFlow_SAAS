@@ -101,6 +101,37 @@ export interface LoginResponse {
   };
 }
 
+// ── Suscripciones (Stripe) / onboarding self-serve ────────────────
+export const SELF_SERVE_PLANS = ['individual', 'consultorio'] as const;
+export type SelfServePlan = (typeof SELF_SERVE_PLANS)[number];
+
+export interface CreateCheckoutSessionRequest {
+  nombreClinica: string;
+  ownerNombre: string;
+  email: string;
+  password: string;
+  plan: SelfServePlan;
+}
+
+export interface CreateCheckoutSessionResponse {
+  /** URL de Stripe Checkout hospedado — redirigir el browser aquí. */
+  url: string;
+}
+
+export interface ExchangeTicketRequest {
+  stripeSessionId: string;
+}
+
+/** 202 mientras el webhook de Stripe aún no provisiona la cuenta. */
+export interface ExchangeTicketPendingResponse {
+  status: 'pending';
+}
+
+/** 410 si el ticket ya se usó o expiró. */
+export interface ExchangeTicketExpiredResponse {
+  status: 'expired';
+}
+
 // ── Expediente clínico / NOM-004 ─────────────────────────────────
 
 export const CLINICAL_NOTE_TYPES = ['nota_evolucion', 'historia_clinica'] as const;

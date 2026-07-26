@@ -15,6 +15,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CatalogosModule } from './modules/catalogos/catalogos.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { CatalogosModule } from './modules/catalogos/catalogos.module';
     DashboardModule,
     ReportsModule,
     BillingModule,
+    SubscriptionsModule,
   ],
   providers: [
     // Global: tras autenticar, corre cada request dentro del AsyncLocalStorage
