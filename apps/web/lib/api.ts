@@ -71,6 +71,13 @@ export const api = {
   login: (body: LoginRequest) =>
     request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
 
+  /** 200 = LoginResponse; 202 = { status: 'pending' } (el webhook aún no termina). */
+  exchangeOnboardingTicket: (stripeSessionId: string) =>
+    request<LoginResponse | { status: 'pending' }>('/auth/exchange-ticket', {
+      method: 'POST',
+      body: JSON.stringify({ stripeSessionId }),
+    }),
+
   waitingRoom: (token: string) =>
     request<WaitingRoomEntry[]>('/appointments/waiting-room', { token }),
 

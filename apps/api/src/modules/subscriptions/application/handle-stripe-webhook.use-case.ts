@@ -95,11 +95,22 @@ export class HandleStripeWebhookUseCase {
     });
 
     // Tag-back: así los eventos futuros de esta suscripción traen el tenantId
-    // directo en su propia metadata, sin necesitar un lookup cross-tenant.
+    // directo en su propia metadata, sin necesitar un lookup cross-tenant. Se
+    // aísla en su propio try/catch: el tenant+usuario YA quedaron committeados
+    // arriba, así que una falla aquí no debe tumbar el webhook completo (eso
+    // solo lograría que Stripe reintente algo que la idempotencia de arriba ya
+    // va a ignorar, dejando el tag-back sin una segunda oportunidad real).
     if (subscriptionId) {
-      await this.stripe.client.subscriptions.update(subscriptionId, {
-        metadata: { tenantId },
-      });
+      try {
+        await this.stripe.client.subscriptions.update(subscriptionId, {
+          metadata: { tenantId },
+        });
+      } catch (err) {
+        this.logger.error(
+          `No se pudo etiquetar la subscription ${subscriptionId} con tenantId ${tenantId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
     }
   }
 
