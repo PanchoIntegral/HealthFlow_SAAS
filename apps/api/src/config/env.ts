@@ -105,6 +105,12 @@ export const env = {
   get stripePriceIdConsultorio(): string {
     return required('STRIPE_PRICE_ID_CONSULTORIO');
   },
+  get stripePriceIdIndividualAnual(): string {
+    return required('STRIPE_PRICE_ID_INDIVIDUAL_ANUAL');
+  },
+  get stripePriceIdConsultorioAnual(): string {
+    return required('STRIPE_PRICE_ID_CONSULTORIO_ANUAL');
+  },
   /** Origen del SaaS (apps/web) — arma el success_url del Checkout. */
   get appUrl(): string {
     return process.env.APP_URL ?? 'http://localhost:3000';

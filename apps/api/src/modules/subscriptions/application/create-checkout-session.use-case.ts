@@ -1,14 +1,23 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
-import type { CreateCheckoutSessionResponse, SelfServePlan } from '@healthflow/shared-types';
+import type {
+  BillingPeriod,
+  CreateCheckoutSessionResponse,
+  SelfServePlan,
+} from '@healthflow/shared-types';
 import { DB } from '../../../db/drizzle.module';
 import type { Database } from '../../../db/drizzle';
 import { env } from '../../../config/env';
 import { StripeService } from '../infrastructure/stripe.service';
 import type { CreateCheckoutSessionDto } from '../infrastructure/dto/create-checkout-session.dto';
 
-function priceIdForPlan(plan: SelfServePlan): string {
+function priceIdForPlan(plan: SelfServePlan, periodo: BillingPeriod): string {
+  if (periodo === 'anual') {
+    return plan === 'individual'
+      ? env.stripePriceIdIndividualAnual
+      : env.stripePriceIdConsultorioAnual;
+  }
   return plan === 'individual' ? env.stripePriceIdIndividual : env.stripePriceIdConsultorio;
 }
 
@@ -34,7 +43,7 @@ export class CreateCheckoutSessionUseCase {
 
     const session = await this.stripe.client.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price: priceIdForPlan(dto.plan), quantity: 1 }],
+      line_items: [{ price: priceIdForPlan(dto.plan, dto.periodo), quantity: 1 }],
       subscription_data: { trial_period_days: 14 },
       customer_email: dto.email,
       // El password viaja hasheado — nunca en texto plano fuera del browser.
@@ -44,6 +53,7 @@ export class CreateCheckoutSessionUseCase {
         ownerEmail: dto.email,
         passwordHash,
         plan: dto.plan,
+        periodo: dto.periodo,
       },
       success_url: `${env.appUrl}/bienvenida?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${env.marketingUrl}/#precios`,

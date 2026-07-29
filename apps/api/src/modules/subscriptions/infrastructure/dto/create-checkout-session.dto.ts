@@ -1,5 +1,10 @@
 import { IsEmail, IsIn, IsString, MaxLength, MinLength } from 'class-validator';
-import { SELF_SERVE_PLANS, type SelfServePlan } from '@healthflow/shared-types';
+import {
+  BILLING_PERIODS,
+  SELF_SERVE_PLANS,
+  type BillingPeriod,
+  type SelfServePlan,
+} from '@healthflow/shared-types';
 
 export class CreateCheckoutSessionDto {
   @IsString()
@@ -21,4 +26,7 @@ export class CreateCheckoutSessionDto {
 
   @IsIn(SELF_SERVE_PLANS)
   plan!: SelfServePlan;
+
+  @IsIn(BILLING_PERIODS)
+  periodo!: BillingPeriod;
 }

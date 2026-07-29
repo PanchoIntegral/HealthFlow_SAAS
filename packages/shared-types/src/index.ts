@@ -105,12 +105,17 @@ export interface LoginResponse {
 export const SELF_SERVE_PLANS = ['individual', 'consultorio'] as const;
 export type SelfServePlan = (typeof SELF_SERVE_PLANS)[number];
 
+/** Periodicidad de cobro. El plan anual lleva 20% de descuento. */
+export const BILLING_PERIODS = ['mensual', 'anual'] as const;
+export type BillingPeriod = (typeof BILLING_PERIODS)[number];
+
 export interface CreateCheckoutSessionRequest {
   nombreClinica: string;
   ownerNombre: string;
   email: string;
   password: string;
   plan: SelfServePlan;
+  periodo: BillingPeriod;
 }
 
 export interface CreateCheckoutSessionResponse {

@@ -5,17 +5,11 @@ import { useRouter } from 'next/navigation';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
-const DEMO = [
-  { label: 'Asistente · Clínica Norte', email: 'asistente@norte.mx' },
-  { label: 'Médica · Clínica Norte', email: 'dra.cervantes@norte.mx' },
-  { label: 'Médico · Clínica Sur', email: 'dr.lopez@sur.mx' },
-];
-
 export default function LoginPage() {
   const router = useRouter();
   const { setSession } = useAuth();
-  const [email, setEmail] = useState('asistente@norte.mx');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -81,24 +75,6 @@ export default function LoginPage() {
           >
             {loading ? 'Entrando…' : 'Entrar'}
           </button>
-
-          <div className="border-t border-slate-100 pt-3">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-              Cuentas de demo (contraseña: password123)
-            </p>
-            <div className="space-y-1">
-              {DEMO.map((d) => (
-                <button
-                  key={d.email}
-                  type="button"
-                  onClick={() => setEmail(d.email)}
-                  className="block w-full rounded-md px-2 py-1 text-left text-xs text-slate-600 hover:bg-slate-50"
-                >
-                  {d.label} — {d.email}
-                </button>
-              ))}
-            </div>
-          </div>
         </form>
       </div>
     </main>
