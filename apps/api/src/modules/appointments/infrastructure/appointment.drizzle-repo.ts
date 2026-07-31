@@ -173,7 +173,13 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
 
   async listDoctors(tx: Tx): Promise<DoctorSummary[]> {
     const result = await tx.execute(sql`
-      SELECT id, nombre, especialidad FROM users WHERE rol = 'medico' ORDER BY nombre ASC
+      -- es_medico cubre al dueño de la cuenta, que es 'admin' por permisos
+      -- pero atiende consultas; rol = 'medico' se mantiene para que dar de
+      -- alta un médico baste con asignarle el rol.
+      SELECT id, nombre, especialidad
+        FROM users
+       WHERE rol = 'medico' OR es_medico
+       ORDER BY nombre ASC
     `);
     return result.rows as unknown as DoctorSummary[];
   }

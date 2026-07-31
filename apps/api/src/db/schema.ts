@@ -6,6 +6,7 @@ import {
   date,
   jsonb,
   numeric,
+  boolean,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -26,6 +27,8 @@ export const tenants = pgTable('tenants', {
   stripeCustomerId: text('stripe_customer_id'),
   stripeSubscriptionId: text('stripe_subscription_id'),
   subscriptionStatus: text('subscription_status').notNull().default('none'),
+  /** 'mensual' | 'anual' — qué Price de Stripe se está cobrando. */
+  billingPeriod: text('billing_period').notNull().default('mensual'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -36,6 +39,12 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   nombre: text('nombre').notNull(),
   rol: text('rol').notNull(), // 'medico' | 'asistente' | 'admin'
+  /**
+   * Capacidad clínica, independiente del rol (permisos): el dueño de una
+   * cuenta self-serve es 'admin' y a la vez el médico que atiende, así que
+   * debe poder aparecer en la agenda sin degradar sus permisos.
+   */
+  esMedico: boolean('es_medico').notNull().default(false),
   cedulaProfesional: text('cedula_profesional'),
   especialidad: text('especialidad'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
