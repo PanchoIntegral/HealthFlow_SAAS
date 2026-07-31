@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
+import { APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { GlobalThrottlerGuard } from './common/security/global-throttler.guard';
 import { DrizzleModule } from './db/drizzle.module';
 import { TenantContextModule } from './common/tenant-context/tenant-context.module';
 import { RequestContextInterceptor } from './common/tenant-context/request-context.interceptor';
@@ -19,9 +20,23 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 
 @Module({
   imports: [
-    // Rate limiting: se aplica solo donde el controller monta ThrottlerGuard
-    // (p.ej. el timbrado, que consume cuota/costo del PAC).
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 30 }]),
+    /**
+     * Rate limiting por IP, aplicado a TODA la API vía APP_GUARD (abajo).
+     * Los dos niveles se evalúan a la vez y se necesita pasar ambos:
+     *
+     *  - 'burst' corta el pico instantáneo (un bot que dispara en paralelo);
+     *  - el nivel sin nombre ('default') acota el volumen sostenido por minuto,
+     *    y es el que los controllers afinan con @Throttle({ default: ... })
+     *    cuando la operación es cara (timbrado del PAC, Checkout de Stripe).
+     *
+     * Los límites están holgados para un uso humano normal de la app (una
+     * consulta abre varias peticiones a la vez) y muy por debajo de lo que
+     * cuesta hacer daño.
+     */
+    ThrottlerModule.forRoot([
+      { name: 'burst', ttl: 1_000, limit: 60 },
+      { ttl: 60_000, limit: 600 },
+    ]),
     DrizzleModule,
     TenantContextModule,
     AuditModule,
@@ -37,6 +52,8 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
     SubscriptionsModule,
   ],
   providers: [
+    // Global: primera línea de defensa, antes de tocar la base de datos.
+    { provide: APP_GUARD, useClass: GlobalThrottlerGuard },
     // Global: tras autenticar, corre cada request dentro del AsyncLocalStorage
     // con el tenant activo (para RLS) y el usuario (para auditoría).
     { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
