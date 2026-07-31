@@ -58,6 +58,10 @@ export class HandleStripeWebhookUseCase {
       return;
     }
 
+    // Sin esto el tenant anual quedaba indistinguible de uno mensual: el
+    // Price correcto sí se cobraba, pero el periodo se perdía en el webhook.
+    const billingPeriod = normalizeBillingPeriod(meta.periodo);
+
     const tenantId = randomUUID();
     const userId = randomUUID();
     const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
@@ -75,6 +79,7 @@ export class HandleStripeWebhookUseCase {
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscriptionId,
         subscriptionStatus: 'trialing',
+        billingPeriod,
       });
 
       await tx.insert(schema.users).values({
@@ -83,7 +88,11 @@ export class HandleStripeWebhookUseCase {
         email: ownerEmail,
         passwordHash,
         nombre: ownerNombre,
+        // 'admin' por los permisos (manage all) + esMedico para que aparezca
+        // en la lista de médicos al agendar: quien compra la cuenta es el
+        // médico que atiende, y hoy es el único usuario del tenant.
         rol: 'admin',
+        esMedico: true,
       });
 
       await tx.insert(schema.onboardingTickets).values({
@@ -123,11 +132,25 @@ export class HandleStripeWebhookUseCase {
       return;
     }
 
+    // Si el cliente cambia de mensual a anual (o al revés) desde el portal de
+    // Stripe, el intervalo del Price es la fuente de verdad — no la metadata
+    // del checkout original.
+    const interval = subscription.items.data[0]?.price.recurring?.interval;
+    const billingPeriod = interval === 'year' ? 'anual' : interval === 'month' ? 'mensual' : null;
+
     await runInTenant(this.db, tenantId, (tx) =>
       tx
         .update(schema.tenants)
-        .set({ subscriptionStatus: subscription.status })
+        .set({
+          subscriptionStatus: subscription.status,
+          ...(billingPeriod ? { billingPeriod } : {}),
+        })
         .where(eq(schema.tenants.id, tenantId)),
     );
   }
+}
+
+/** La metadata viene del cliente: se valida antes de tocar el CHECK de la BD. */
+function normalizeBillingPeriod(value: string | undefined): 'mensual' | 'anual' {
+  return value === 'anual' ? 'anual' : 'mensual';
 }
