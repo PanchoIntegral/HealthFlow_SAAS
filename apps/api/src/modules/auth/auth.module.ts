@@ -7,6 +7,8 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { CaslAbilityFactory } from './casl/ability.factory';
+import { LoginAttemptsService } from './application/login-attempts.service';
+import { PasswordHasherService } from './application/password-hasher.service';
 
 @Module({
   imports: [
@@ -19,7 +21,13 @@ import { CaslAbilityFactory } from './casl/ability.factory';
     SubscriptionsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, CaslAbilityFactory],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    CaslAbilityFactory,
+    LoginAttemptsService,
+    PasswordHasherService,
+  ],
   exports: [CaslAbilityFactory, JwtModule],
 })
 export class AuthModule {}

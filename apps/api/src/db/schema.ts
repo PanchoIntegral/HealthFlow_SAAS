@@ -7,6 +7,8 @@ import {
   jsonb,
   numeric,
   boolean,
+  integer,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -191,6 +193,23 @@ export const cie10Diagnosticos = pgTable('cie10_diagnosticos', {
   capitulo: text('capitulo').notNull(),
 });
 
+/**
+ * Contadores de login fallido para el bloqueo progresivo (ver
+ * 0011_login_security.sql). Sin tenant_id ni RLS: se consulta ANTES de saber
+ * quién es el usuario. Clave compuesta (scope, key).
+ */
+export const loginAttempts = pgTable(
+  'login_attempts',
+  {
+    scope: text('scope').notNull(), // 'email' | 'ip'
+    key: text('key').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    firstAttemptAt: timestamp('first_attempt_at', { withTimezone: true }).defaultNow().notNull(),
+    lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.scope, t.key] }) }),
+);
+
 /** Idempotencia de webhooks de Stripe. Sin tenant_id: registro global. */
 export const stripeEvents = pgTable('stripe_events', {
   id: text('id').primaryKey(),
@@ -226,5 +245,6 @@ export const schema = {
   cie10Diagnosticos,
   stripeEvents,
   onboardingTickets,
+  loginAttempts,
 };
 export type DbSchema = typeof schema;

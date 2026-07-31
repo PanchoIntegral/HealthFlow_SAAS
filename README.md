@@ -83,6 +83,27 @@ packages/
   config/        → tsconfig base
 ```
 
+## Seguridad del acceso y anti-abuso
+
+Defensa en capas sobre `/api/auth/login`, de la más barata a la más cara:
+
+| Capa | Dónde | Qué corta |
+|---|---|---|
+| Cabeceras (helmet) + límite de body 256 kb + timeouts de socket | `main.ts` | Payloads gigantes y slow-loris |
+| Rate limit por IP: 60 req/s y 600 req/min | `GlobalThrottlerGuard` (toda la API) | Inundación genérica |
+| Rate limit del login: 3 req/s y 10 req/min | `@Throttle` en `auth.controller.ts` | Ráfagas de fuerza bruta, antes de tocar la BD |
+| Bloqueo progresivo por email + IP | `login-policy.ts` + tabla `login_attempts` | Fuerza bruta lenta; sobrevive a reinicios |
+| Semáforo de bcrypt (4 en vuelo, cola de 50) | `password-hasher.service.ts` | Agotamiento de CPU vía hashing |
+| bcrypt de descarte si el email no existe | `auth.service.ts` | Enumeración de cuentas por temporización |
+
+El bloqueo por **email** es corto a propósito (máx. 15 min): un castigo largo
+convertiría el propio candado en un ataque de denegación de servicio contra un
+médico que no recuerda su contraseña. El bloqueo por **IP** sí escala hasta 2 h.
+
+`TRUST_PROXY_HOPS` debe coincidir con el número real de proxies delante del
+proceso (ver `.env.example`); si no, todos los límites por IP ven la IP del
+balanceador en vez de la del cliente.
+
 ## Fuera de alcance (siguientes iteraciones)
 
 Expediente clínico (`clinical_records`/`notes`/`amendments`), editor NOM-004 con TipTap,

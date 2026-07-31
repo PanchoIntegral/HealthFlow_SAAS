@@ -77,6 +77,36 @@ export const env = {
       .map((o) => o.trim())
       .filter(Boolean);
   },
+  get isProduction(): boolean {
+    return process.env.NODE_ENV === 'production';
+  },
+
+  // ── Endurecimiento HTTP / anti-abuso ─────────────────────────────
+  /**
+   * Saltos de proxy de confianza para resolver la IP real del cliente
+   * (X-Forwarded-For). El valor DEBE coincidir con la infraestructura:
+   *   0 → el proceso está expuesto directo (dev local)
+   *   1 → un solo proxy delante (Railway, Render, Fly)
+   *   2 → CDN + PaaS (p.ej. Cloudflare → Railway)
+   * Pasarse de largo permitiría a un atacante falsificar su IP inyectando
+   * X-Forwarded-For y esquivar todos los límites por IP; quedarse corto hace
+   * que todos los usuarios compartan la IP del proxy y se bloqueen entre sí.
+   */
+  get trustProxyHops(): number {
+    const raw = process.env.TRUST_PROXY_HOPS;
+    if (raw !== undefined && raw.trim() !== '') {
+      const parsed = Number(raw);
+      if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+      throw new Error('TRUST_PROXY_HOPS debe ser un entero >= 0');
+    }
+    // En producción siempre hay al menos un balanceador delante del proceso.
+    return this.isProduction ? 1 : 0;
+  },
+  /** Tamaño máximo del body JSON. Un límite bajo corta el DoS por payload gigante. */
+  get maxBodySize(): string {
+    return process.env.MAX_BODY_SIZE ?? '256kb';
+  },
+
   get appDbUser(): string {
     return process.env.APP_DB_USER ?? 'healthflow_app';
   },
