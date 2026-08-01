@@ -12,7 +12,8 @@
     "test:integration": "jest --selectProjects integration --runInBand",
     "db:setup": "tsx src/db/setup.ts",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "db:create-account": "tsx src/db/create-account.ts"
   },
   "dependencies": {
     "@casl/ability": "^6.7.2",
