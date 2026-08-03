@@ -12,6 +12,7 @@ import {
   IconFinance,
   IconRecords,
   IconReports,
+  IconSettings,
   IconWaiting,
 } from './icons';
 
@@ -26,6 +27,9 @@ const NAV = [
   { href: '/presupuestos', label: 'Presupuestos', icon: IconBudget },
   { href: '/reportes', label: 'Reportes', icon: IconReports },
   { href: '/finanzas', label: 'Finanzas', icon: IconFinance, roles: ['medico', 'admin'] },
+  // Autoservicio sobre el propio registro: cualquier rol puede ajustar su
+  // especialidad, sin restricción por `roles`.
+  { href: '/ajustes', label: 'Ajustes', icon: IconSettings },
 ] as { href: string; label: string; icon: () => React.JSX.Element; roles?: string[] }[];
 
 function initials(nombre: string): string {
