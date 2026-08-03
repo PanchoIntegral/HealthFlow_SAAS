@@ -29,6 +29,8 @@ import type {
   ReportsStats,
   StartConsultationResponse,
   TimbrarFacturaRequest,
+  UpdateEspecialidadRequest,
+  UserProfile,
   WaitingRoomEntry,
 } from '@healthflow/shared-types';
 import { API_URL } from './config';
@@ -199,6 +201,15 @@ export const api = {
       method: 'PATCH',
       token,
       body: JSON.stringify(historial),
+    }),
+
+  getMyProfile: (token: string) => request<UserProfile>('/users/me', { token }),
+
+  updateEspecialidad: (token: string, body: UpdateEspecialidadRequest) =>
+    request<UserProfile>('/users/me/especialidad', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
     }),
 
   dashboardStats: (token: string) =>

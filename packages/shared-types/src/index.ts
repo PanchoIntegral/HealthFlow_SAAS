@@ -361,6 +361,22 @@ export interface LoginResponse {
   };
 }
 
+/** Perfil propio del usuario autenticado (GET /users/me). */
+export interface UserProfile {
+  id: string;
+  nombre: string;
+  rol: UserRole;
+  /** Etiqueta libre mostrada en el selector de agenda (p.ej. "Cardiología intervencionista"). */
+  especialidad: string | null;
+  /** Clave del catálogo PERFILES: personaliza campos, etiquetas y signos vitales de la nota. */
+  especialidadKey: EspecialidadKey;
+}
+
+export interface UpdateEspecialidadRequest {
+  especialidadKey: EspecialidadKey;
+  especialidad?: string;
+}
+
 // ── Suscripciones (Stripe) / onboarding self-serve ────────────────
 export const SELF_SERVE_PLANS = ['individual', 'consultorio'] as const;
 export type SelfServePlan = (typeof SELF_SERVE_PLANS)[number];

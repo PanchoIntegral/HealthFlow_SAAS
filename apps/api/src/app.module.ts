@@ -18,6 +18,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { PresupuestosModule } from './modules/presupuestos/presupuestos.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { PresupuestosModule } from './modules/presupuestos/presupuestos.module';
     BillingModule,
     SubscriptionsModule,
     PresupuestosModule,
+    UsersModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.
