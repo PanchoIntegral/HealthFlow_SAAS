@@ -4,7 +4,7 @@ import type {
   FirmaMedica,
   NotaEvolucionContent,
 } from '@healthflow/shared-types';
-import { NOM004Validator } from './nom004-validator';
+import { EspecialidadValidator } from './especialidad-validator';
 import { IncompleteClinicalNoteError, NoteAlreadyClosedError } from './clinical-note.errors';
 
 export interface ClinicalNoteProps {
@@ -50,14 +50,15 @@ export class ClinicalNote {
   }
 
   /**
-   * Cierra la nota (inmutable). Valida NOM-004 sobre el contenido dado; si
-   * faltan campos, lanza IncompleteClinicalNoteError con la lista. Estampa la
-   * firma del médico y la fecha de cierre.
+   * Cierra la nota (inmutable). Valida NOM-004 MÁS los campos obligatorios de
+   * la especialidad con la que se abrió; si faltan campos, lanza
+   * IncompleteClinicalNoteError con la lista. Estampa la firma del médico y la
+   * fecha de cierre.
    */
   close(contenido: NotaEvolucionContent, firma: FirmaMedica, now: Date = new Date()): void {
     this.assertEditable();
 
-    const missing = NOM004Validator.validateNotaEvolucion(contenido);
+    const missing = EspecialidadValidator.validar(contenido);
     if (missing.length > 0) {
       throw new IncompleteClinicalNoteError(missing);
     }

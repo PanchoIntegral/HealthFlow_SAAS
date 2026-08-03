@@ -15,7 +15,13 @@
  *
  * Opcionales: --plan individual|consultorio  --periodo mensual|anual
  *             --cedula 1234567  --especialidad "Medicina Interna"  --rfc XAXX010101000
+ *             --especialidad-key odontologia   (personaliza la nota clínica)
  *             --con-datos-demo   (pacientes y citas de ejemplo, ver más abajo)
+ *
+ * OJO con las dos "especialidad": `--especialidad` es la etiqueta de texto libre
+ * que se muestra en el selector de agenda; `--especialidad-key` es la clave del
+ * catálogo que decide qué campos tiene su nota y qué diagnósticos se le
+ * priorizan. Suelen ir juntas, pero son cosas distintas.
  *
  * La contraseña sale de la variable de entorno DEMO_PASSWORD; si no está, se
  * genera una aleatoria fuerte y se imprime UNA sola vez. No se pasa por
@@ -28,6 +34,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import bcrypt from 'bcryptjs';
+import { ESPECIALIDADES, esEspecialidadValida, type EspecialidadKey } from '@healthflow/shared-types';
 import { loadDotEnv, env } from '../config/env';
 
 loadDotEnv();
@@ -43,6 +50,8 @@ interface Args {
   periodo: (typeof PERIODOS)[number];
   cedula?: string;
   especialidad?: string;
+  /** Clave del catálogo que personaliza la nota clínica (distinta del texto libre). */
+  especialidadKey: EspecialidadKey;
   rfc?: string;
   conDatosDemo: boolean;
 }
@@ -91,6 +100,11 @@ function parseArgs(argv: string[]): Args {
     throw new Error(`--periodo debe ser uno de: ${PERIODOS.join(', ')}`);
   }
 
+  const especialidadKey = flags.get('especialidad-key') ?? 'general';
+  if (!esEspecialidadValida(especialidadKey)) {
+    throw new Error(`--especialidad-key debe ser una de:\n  ${ESPECIALIDADES.join(', ')}`);
+  }
+
   return {
     email,
     nombre,
@@ -99,6 +113,7 @@ function parseArgs(argv: string[]): Args {
     periodo: periodo as Args['periodo'],
     cedula: flags.get('cedula')?.trim(),
     especialidad: flags.get('especialidad')?.trim(),
+    especialidadKey,
     rfc: flags.get('rfc')?.trim().toUpperCase(),
     conDatosDemo,
   };
@@ -166,8 +181,8 @@ async function main() {
     const userId = (
       await client.query<{ id: string }>(
         `INSERT INTO users (tenant_id, email, password_hash, nombre, rol, es_medico,
-                            cedula_profesional, especialidad)
-         VALUES ($1, $2, $3, $4, 'admin', true, $5, $6)
+                            cedula_profesional, especialidad, especialidad_key)
+         VALUES ($1, $2, $3, $4, 'admin', true, $5, $6, $7)
          RETURNING id`,
         [
           tenantId,
@@ -176,6 +191,7 @@ async function main() {
           args.nombre,
           args.cedula ?? null,
           args.especialidad ?? null,
+          args.especialidadKey,
         ],
       )
     ).rows[0]!.id;
@@ -189,6 +205,7 @@ async function main() {
     console.log('\n✓ Cuenta creada\n');
     console.log(`  Clínica     ${args.clinica}  (${args.plan} · ${args.periodo})`);
     console.log(`  Médico      ${args.nombre}`);
+    console.log(`  Especialid. ${args.especialidadKey}  (personaliza su nota clínica)`);
     console.log(`  Email       ${args.email}`);
     if (passwordDesdeEnv) {
       console.log('  Contraseña  (la que pasaste en DEMO_PASSWORD)');

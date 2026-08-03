@@ -1,12 +1,18 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import type { ClinicalNoteView, SignosVitales } from '@healthflow/shared-types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type {
+  ClinicalNoteView,
+  HistorialPaciente,
+  SignosVitales,
+} from '@healthflow/shared-types';
 import { useAuth } from '../../../lib/auth';
 import { api, ApiError } from '../../../lib/api';
 import { AppShell } from '../../../components/app-shell';
+import { AlertaAlergias } from '../../../components/alerta-alergias';
+import { EditorHistorial } from '../../../components/editor-historial';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -30,6 +36,19 @@ export default function ExpedientePage({
     queryFn: () => api.getClinicalRecord(token!, patientId),
     enabled: !!token,
     retry: false,
+  });
+
+  const queryClient = useQueryClient();
+  const [editando, setEditando] = useState(false);
+
+  const guardarHistorial = useMutation({
+    mutationFn: (h: HistorialPaciente) => api.updateHistorial(token!, patientId, h),
+    onSuccess: () => {
+      // Invalida en vez de escribir a mano: la alerta de la consulta lee de la
+      // misma query, así que ambas pantallas quedan al día con un solo refetch.
+      void queryClient.invalidateQueries({ queryKey: ['clinical-record', patientId] });
+      setEditando(false);
+    },
   });
 
   if (!ready || !token || !user) return null;
@@ -65,6 +84,28 @@ export default function ExpedientePage({
                 nota{record.data.notas.length === 1 ? '' : 's'}
               </p>
             </div>
+
+            {editando ? (
+              <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5">
+                <h2 className="mb-4 font-semibold">Alergias y antecedentes</h2>
+                <EditorHistorial
+                  inicial={record.data.historial}
+                  guardando={guardarHistorial.isPending}
+                  onGuardar={(h) => guardarHistorial.mutate(h)}
+                  onCancelar={() => setEditando(false)}
+                />
+                {guardarHistorial.isError && (
+                  <p className="mt-3 text-sm text-red-600">
+                    No se pudo guardar. Revisa tu conexión e intenta de nuevo.
+                  </p>
+                )}
+              </section>
+            ) : (
+              <AlertaAlergias
+                historial={record.data.historial}
+                onCapturar={() => setEditando(true)}
+              />
+            )}
 
             {record.data.notas.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">

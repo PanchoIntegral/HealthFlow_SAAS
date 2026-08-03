@@ -50,6 +50,11 @@ export class CaslAbilityFactory {
         can('create', 'Appointment');
         can('cancel', 'Appointment');
         can('create', 'Patient');
+        // Alergias y antecedentes: sí, aunque el asistente no toque el
+        // contenido clínico. Es el dato que se captura en recepción al llenar
+        // la ficha, y que llegue completo importa más que quién lo teclea —
+        // una alergia sin registrar es un riesgo, no un tema de permisos.
+        can('write', 'Patient');
         // Facturar es trabajo de recepción: crea y consulta facturas, pero la
         // cancelación (acto fiscal ante el SAT) queda en médico/admin.
         can('create', 'Factura');
@@ -63,6 +68,7 @@ export class CaslAbilityFactory {
         can('create', 'Appointment');
         can('cancel', 'Appointment');
         can('create', 'Patient');
+        can('write', 'Patient');
         can('start', 'Consultation');
         can('write', 'Consultation');
         can('finish', 'Consultation');

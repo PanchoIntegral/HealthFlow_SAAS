@@ -1,0 +1,60 @@
+import { perfilDe, type NotaEvolucionContent, type PerfilEspecialidad } from '@healthflow/shared-types';
+import { NOM004Validator } from './nom004-validator';
+
+/**
+ * Validador de cierre de nota, en dos capas:
+ *
+ *   1. NOM-004 — la base legal, común a toda especialidad.
+ *   2. Los campos que el perfil de la especialidad marque como obligatorios.
+ *      Para odontología esto materializa la NOM-013-SSA2-2015, que exige
+ *      registrar el tratamiento de cada sesión y las piezas intervenidas.
+ *
+ * La única dispensa posible sobre la base es la tensión arterial, y no es un
+ * "campo opcional": obliga al médico a DECLARAR la omisión, que queda escrita
+ * en la nota. Un expediente con un hueco sin explicación no defiende a nadie.
+ *
+ * Devuelve la lista de campos faltantes; vacía = la nota puede cerrarse.
+ */
+export class EspecialidadValidator {
+  static validar(content: NotaEvolucionContent): string[] {
+    /**
+     * Degradado seguro: `perfilDe` nunca lanza y cae a 'general' ante una
+     * clave desconocida. Es deliberado — si una especialidad se retira del
+     * catálogo, o la nota es anterior a esta función, el médico debe poder
+     * firmar cumpliendo la base NOM-004. Un cambio de configuración jamás
+     * puede dejar una nota clínica atrapada sin poder cerrarse.
+     */
+    const perfil: PerfilEspecialidad = perfilDe(content.especialidad);
+    const extension = content.extension ?? {};
+
+    /**
+     * Omisión declarada de signos vitales. Libera ÚNICAMENTE la tensión
+     * arterial, y solo si la especialidad lo permite y el médico lo marcó
+     * explícitamente en la nota: una nota vieja o una especialidad sin el
+     * permiso siguen exigiéndola, aunque venga la bandera puesta.
+     */
+    const omiteVitales =
+      perfil.permiteOmitirSignosVitales === true && content.signosVitalesOmitidos === true;
+
+    const base = NOM004Validator.validateNotaEvolucion(content).filter(
+      (campo) => !(omiteVitales && campo === 'signosVitales.ta'),
+    );
+
+    const faltantesEspecialidad = perfil.camposExtra
+      .filter((campo) => campo.obligatorio && !tieneValor(extension[campo.key]))
+      // Se prefija con `extension.` para que el frontend pueda resaltar el
+      // campo exacto sin que choque con los nombres de los campos base.
+      .map((campo) => `extension.${campo.key}`);
+
+    return [...base, ...faltantesEspecialidad];
+  }
+}
+
+/** True si el valor capturado cuenta como llenado. */
+function tieneValor(value: string | number | null | undefined): boolean {
+  if (value === null || value === undefined) return false;
+  // 0 es una respuesta válida: un índice CPOD de 0 cariados es un dato real.
+  if (typeof value === 'number') return Number.isFinite(value);
+  // Los campos de texto rico llegan como HTML de TipTap: `<p></p>` está vacío.
+  return value.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().length > 0;
+}

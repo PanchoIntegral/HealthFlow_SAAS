@@ -13,7 +13,8 @@
     "db:setup": "tsx src/db/setup.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:create-account": "tsx src/db/create-account.ts"
+    "db:create-account": "tsx src/db/create-account.ts",
+    "load-test": "tsx test/load/load-test.ts"
   },
   "dependencies": {
     "@casl/ability": "^6.7.2",

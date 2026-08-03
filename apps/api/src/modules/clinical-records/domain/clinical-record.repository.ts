@@ -1,4 +1,4 @@
-import type { ClinicalRecordView } from '@healthflow/shared-types';
+import type { ClinicalRecordView, EspecialidadKey, Odontograma } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { ClinicalNote } from './clinical-note.entity';
 
@@ -6,6 +6,14 @@ export interface CreateDraftNoteInput {
   clinicalRecordId: string;
   appointmentId: string;
   doctorId: string;
+  /**
+   * Se estampa en el contenido de la nota al crearla y ya no cambia. Si el
+   * médico cambia de especialidad más adelante, sus notas anteriores deben
+   * seguir mostrándose y validándose con la que tenían al firmarse.
+   */
+  especialidad: EspecialidadKey;
+  /** Estado dental heredado de la última nota cerrada; ausente en la primera visita. */
+  odontograma?: Odontograma;
 }
 
 /**
@@ -25,6 +33,15 @@ export interface ClinicalRecordRepository {
 
   /** Datos de firma del médico (para estampar al cerrar la nota). */
   getDoctorSignature(tx: Tx, doctorId: string): Promise<{ nombre: string; cedula: string | null }>;
+
+  /** Especialidad configurada del médico, para estampar la nota al abrirla. */
+  getDoctorEspecialidad(tx: Tx, doctorId: string): Promise<EspecialidadKey>;
+
+  /**
+   * Odontograma de la última nota CERRADA del expediente, para arrastrar el
+   * estado dental a la consulta nueva. null si no hay ninguna.
+   */
+  getUltimoOdontograma(tx: Tx, clinicalRecordId: string): Promise<Odontograma | null>;
 
   /** Expediente completo (record + notas) de un paciente para la vista del médico. */
   getRecordView(tx: Tx, patientId: string): Promise<ClinicalRecordView | null>;

@@ -5,23 +5,62 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   EMPTY_NOTA_EVOLUCION,
+  ODONTOGRAMA_VACIO,
+  perfilDe,
+  type CampoBaseKey,
+  type Odontograma as OdontogramaData,
   type DiagnosticoCie10,
   type NotaEvolucionContent,
+  type PerfilEspecialidad,
   type SignosVitales,
 } from '@healthflow/shared-types';
 import { useAuth } from '../../../lib/auth';
 import { api, ApiError } from '../../../lib/api';
 import { RichTextEditor } from '../../../components/rich-text-editor';
+import { CamposEspecialidad } from '../../../components/campos-especialidad';
+import { AlertaAlergias } from '../../../components/alerta-alergias';
+import { Odontograma } from '../../../components/odontograma';
 
-const VITALES: { key: keyof SignosVitales; label: string; required?: boolean }[] = [
-  { key: 'ta', label: 'T/A (mmHg)', required: true },
-  { key: 'fc', label: 'FC (lpm)' },
-  { key: 'fr', label: 'FR (rpm)' },
-  { key: 'temp', label: 'Temp (°C)' },
-  { key: 'spo2', label: 'SpO₂ (%)' },
-  { key: 'peso', label: 'Peso (kg)' },
-  { key: 'talla', label: 'Talla (m)' },
-];
+/** Etiqueta de cada signo vital. Qué subconjunto se muestra lo decide el perfil. */
+const ETIQUETA_VITAL: Record<keyof SignosVitales, string> = {
+  ta: 'T/A (mmHg)',
+  fc: 'FC (lpm)',
+  fr: 'FR (rpm)',
+  temp: 'Temp (°C)',
+  spo2: 'SpO₂ (%)',
+  peso: 'Peso (kg)',
+  talla: 'Talla (m)',
+};
+
+/** Texto por defecto de los campos base, cuando la especialidad no lo reescribe. */
+const ETIQUETA_BASE: Record<CampoBaseKey, { label: string; placeholder?: string }> = {
+  padecimientoActual: {
+    label: 'Padecimiento actual',
+    placeholder: 'Describir inicio, evolución y síntomas asociados…',
+  },
+  hallazgos: { label: 'Hallazgos', placeholder: '' },
+  diagnosticos: { label: 'Diagnósticos (CIE-10)' },
+  planTerapeutico: {
+    label: 'Plan terapéutico',
+    placeholder: 'Medicamentos, indicaciones, próxima cita…',
+  },
+};
+
+/** Etiqueta efectiva de un campo base: la de la especialidad si la define. */
+function textoDe(perfil: PerfilEspecialidad, campo: CampoBaseKey) {
+  return { ...ETIQUETA_BASE[campo], ...(perfil.etiquetas?.[campo] ?? {}) };
+}
+
+/**
+ * Norma que rige la nota. NOM-004 es la base de todo expediente clínico, pero
+ * el odontológico se rige además por la NOM-013-SSA2-2015 — y decirle NOM-004
+ * a secas a un dentista es información incorrecta en pantalla.
+ */
+function normaDe(perfil: PerfilEspecialidad): string {
+  return perfil.key === 'odontologia'
+    ? 'NOM-004-SSA3-2012 · NOM-013-SSA2-2015'
+    : 'NOM-004-SSA3-2012';
+}
 
 export default function ConsultaPage({
   params,
@@ -90,7 +129,15 @@ export default function ConsultaPage({
     },
   });
 
-  const progress = useMemo(() => computeProgress(content), [content]);
+  /**
+   * El perfil sale de la NOTA, no del médico conectado: una nota firmada hace
+   * seis meses debe seguir mostrando los campos con los que se firmó, aunque
+   * su autor haya cambiado de especialidad desde entonces.
+   */
+  const perfil = useMemo(() => perfilDe(content.especialidad), [content.especialidad]);
+  const progress = useMemo(() => computeProgress(content, perfil), [content, perfil]);
+  /** La bandera sola no basta: la especialidad tiene que permitirlo. */
+  const omitidos = perfil.permiteOmitirSignosVitales === true && content.signosVitalesOmitidos === true;
 
   if (!ready || !token || !user) return null;
 
@@ -113,6 +160,21 @@ export default function ConsultaPage({
   const removeDiagnostico = (cie10: string) =>
     setContent((c) => ({ ...c, diagnosticos: c.diagnosticos.filter((d) => d.cie10 !== cie10) }));
 
+  const setCampoExtra = (key: string, valor: string | number | null) =>
+    setContent((c) => ({ ...c, extension: { ...(c.extension ?? {}), [key]: valor } }));
+
+  /** Actualización funcional: no pierde marcas si llegan varios clics seguidos. */
+  const setOdontograma = (actualizar: (previo: OdontogramaData) => OdontogramaData) =>
+    setContent((c) => ({ ...c, odontograma: actualizar(c.odontograma ?? ODONTOGRAMA_VACIO) }));
+
+  /** Al desmarcar se limpia el motivo: no debe quedar huérfano en la nota. */
+  const setOmision = (activo: boolean) =>
+    setContent((c) => ({
+      ...c,
+      signosVitalesOmitidos: activo,
+      motivoOmisionSignosVitales: activo ? c.motivoOmisionSignosVitales : undefined,
+    }));
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Encabezado */}
@@ -124,7 +186,7 @@ export default function ConsultaPage({
           <div>
             <p className="font-semibold">{record.data?.patientNombre ?? 'Consulta'}</p>
             <p className="text-xs text-slate-500">
-              Nota de evolución · NOM-004-SSA3-2012 {readOnly && '· cerrada'}
+              Nota de evolución · {normaDe(perfil)} {readOnly && '· cerrada'}
             </p>
           </div>
         </div>
@@ -149,6 +211,15 @@ export default function ConsultaPage({
       <div className="mx-auto grid max-w-5xl gap-6 px-6 py-6 lg:grid-cols-[1fr_280px]">
         {/* Columna del editor */}
         <div className="space-y-5">
+          {/* Lo primero que se ve, antes que cualquier campo: si el paciente es
+              alérgico a algo hay que saberlo ANTES de infiltrar, no después. */}
+          {record.data && (
+            <AlertaAlergias
+              historial={record.data.historial}
+              onCapturar={patientId ? () => router.push(`/pacientes/${patientId}`) : undefined}
+            />
+          )}
+
           {missing.length > 0 && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
               Faltan {missing.length} campo(s) obligatorio(s) para poder firmar.
@@ -160,31 +231,139 @@ export default function ConsultaPage({
               value={content.padecimientoActual}
               onChange={(html) => setContent((c) => ({ ...c, padecimientoActual: html }))}
               editable={!readOnly}
-              placeholder="Describir inicio, evolución y síntomas asociados…"
+              placeholder={textoDe(perfil, 'padecimientoActual').placeholder}
             />
           </Section>
 
-          <Section title="Exploración física · Signos vitales" required missing={isMissing('signosVitales.ta')}>
+          <Section
+            title="Exploración física · Signos vitales"
+            required={!omitidos}
+            missing={isMissing('signosVitales.ta')}
+          >
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {VITALES.map((v) => (
-                <label key={v.key} className="text-sm">
+              {/* El perfil decide CUÁLES y en qué orden; 'ta' va siempre porque
+                  NOM-004 la exige para cerrar en cualquier especialidad. */}
+              {perfil.signosVitales.map((key) => (
+                <label key={key} className="text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-500">
-                    {v.label} {v.required && <span className="text-red-500">*</span>}
+                    {ETIQUETA_VITAL[key]}{' '}
+                    {key === 'ta' && !omitidos && <span className="text-red-500">*</span>}
                   </span>
                   <input
-                    value={content.exploracionFisica.signosVitales[v.key] ?? ''}
-                    onChange={(e) => setVital(v.key, e.target.value)}
-                    disabled={readOnly}
-                    className={`w-full rounded-lg border px-3 py-2 outline-none focus:border-brand-blue disabled:bg-slate-50 ${
-                      v.required && isMissing('signosVitales.ta') ? 'border-red-300' : 'border-slate-300'
+                    value={content.exploracionFisica.signosVitales[key] ?? ''}
+                    onChange={(e) => setVital(key, e.target.value)}
+                    disabled={readOnly || omitidos}
+                    className={`w-full rounded-lg border px-3 py-2 outline-none focus:border-brand-blue disabled:bg-slate-50 disabled:text-slate-400 ${
+                      key === 'ta' && isMissing('signosVitales.ta') ? 'border-red-300' : 'border-slate-300'
                     }`}
                   />
                 </label>
               ))}
             </div>
+
+            {/* Escape declarado, solo donde el perfil lo permite. No vuelve el
+                campo opcional: cambia "no lo llené" por "decidí no tomarlos",
+                que es lo que queda escrito en el expediente. */}
+            {perfil.permiteOmitirSignosVitales && (
+              <div className="mt-4 rounded-lg bg-slate-50 p-3">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={omitidos}
+                    disabled={readOnly}
+                    onChange={(e) => setOmision(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    No se tomaron signos vitales en esta consulta
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      Queda asentado en la nota. Recuerda que la NOM-013 los pide al inicio de cada
+                      cita, y la T/A es la revisión previa a cualquier anestesia con vasoconstrictor.
+                    </span>
+                  </span>
+                </label>
+
+                {omitidos && (
+                  <input
+                    value={content.motivoOmisionSignosVitales ?? ''}
+                    onChange={(e) =>
+                      setContent((c) => ({ ...c, motivoOmisionSignosVitales: e.target.value }))
+                    }
+                    disabled={readOnly}
+                    placeholder="Motivo (opcional): revisión sin procedimiento, paciente no coopera…"
+                    className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-blue disabled:bg-slate-50"
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Hallazgos de la exploración. Cada especialidad lo reetiqueta a
+                lo suyo: "Exploración bucal", "Examen mental", etc. */}
+            <div className="mt-4">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                {textoDe(perfil, 'hallazgos').label}
+              </span>
+              <textarea
+                value={content.exploracionFisica.hallazgos ?? ''}
+                onChange={(e) =>
+                  setContent((c) => ({
+                    ...c,
+                    exploracionFisica: { ...c.exploracionFisica, hallazgos: e.target.value },
+                  }))
+                }
+                disabled={readOnly}
+                rows={3}
+                placeholder={textoDe(perfil, 'hallazgos').placeholder}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue disabled:bg-slate-50"
+              />
+            </div>
           </Section>
 
-          <Section title="Diagnósticos (CIE-10)" required missing={isMissing('diagnosticos')}>
+          {/* Solo donde tiene sentido: el odontograma lo dibuja el catálogo de
+              la especialidad, no un `if` suelto en la página. */}
+          {perfil.key === 'odontologia' && (
+            <Section title="Odontograma">
+              <div className="mb-3 flex items-center gap-2 text-xs">
+                <label className="text-slate-500">Dentición</label>
+                <select
+                  value={content.odontograma?.denticion ?? 'permanente'}
+                  onChange={(e) =>
+                    setOdontograma((previo) => ({
+                      ...previo,
+                      denticion: e.target.value as 'permanente' | 'temporal' | 'mixta',
+                    }))
+                  }
+                  disabled={readOnly}
+                  className="rounded-lg border border-slate-300 px-2 py-1 outline-none focus:border-brand-blue disabled:bg-slate-50"
+                >
+                  <option value="permanente">Permanente</option>
+                  <option value="temporal">Temporal (infantil)</option>
+                </select>
+              </div>
+              <Odontograma
+                valor={content.odontograma ?? ODONTOGRAMA_VACIO}
+                onChange={setOdontograma}
+                readOnly={readOnly}
+              />
+            </Section>
+          )}
+
+          {perfil.camposExtra.length > 0 && (
+            <Section
+              title={perfil.nombre}
+              missing={missing.some((m) => m.startsWith('extension.'))}
+            >
+              <CamposEspecialidad
+                campos={perfil.camposExtra}
+                valores={content.extension ?? {}}
+                onChange={setCampoExtra}
+                readOnly={readOnly}
+                faltantes={missing}
+              />
+            </Section>
+          )}
+
+          <Section title={textoDe(perfil, 'diagnosticos').label} required missing={isMissing('diagnosticos')}>
             <DiagnosticoPicker
               token={token}
               seleccionados={content.diagnosticos}
@@ -194,13 +373,13 @@ export default function ConsultaPage({
             />
           </Section>
 
-          <Section title="Plan terapéutico" required missing={isMissing('planTerapeutico')}>
+          <Section title={textoDe(perfil, 'planTerapeutico').label} required missing={isMissing('planTerapeutico')}>
             <textarea
               value={content.planTerapeutico}
               onChange={(e) => setContent((c) => ({ ...c, planTerapeutico: e.target.value }))}
               disabled={readOnly}
               rows={4}
-              placeholder="Medicamentos, indicaciones, próxima cita…"
+              placeholder={textoDe(perfil, 'planTerapeutico').placeholder}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue disabled:bg-slate-50"
             />
           </Section>
@@ -359,14 +538,37 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 }
 
-function computeProgress(c: NotaEvolucionContent): { done: number; total: number } {
+/**
+ * Progreso hacia poder cerrar la nota. Cuenta la base NOM-004 MÁS los campos
+ * que la especialidad marque como obligatorios, para que la barra refleje lo
+ * que de verdad va a exigir el backend al firmar.
+ */
+function computeProgress(
+  c: NotaEvolucionContent,
+  perfil: PerfilEspecialidad,
+): { done: number; total: number } {
+  const extension = c.extension ?? {};
+  // Misma regla que EspecialidadValidator: declarar la omisión cuenta como
+  // resuelto, para que la barra no se quede clavada en un requisito que el
+  // backend ya no va a exigir.
+  const omitidos = perfil.permiteOmitirSignosVitales === true && c.signosVitalesOmitidos === true;
   const checks = [
     stripHtml(c.padecimientoActual).length > 0,
-    !!c.exploracionFisica.signosVitales.ta?.trim(),
+    omitidos || !!c.exploracionFisica.signosVitales.ta?.trim(),
     c.diagnosticos.some((d) => d.cie10?.trim()),
     c.planTerapeutico.trim().length > 0,
+    ...perfil.camposExtra
+      .filter((campo) => campo.obligatorio)
+      .map((campo) => tieneValor(extension[campo.key])),
   ];
   return { done: checks.filter(Boolean).length, total: checks.length };
+}
+
+/** Misma regla que el backend (ver especialidad-validator.ts): 0 cuenta como lleno. */
+function tieneValor(v: string | number | null | undefined): boolean {
+  if (v === null || v === undefined) return false;
+  if (typeof v === 'number') return Number.isFinite(v);
+  return stripHtml(v).length > 0;
 }
 
 function hace(date: Date): string {

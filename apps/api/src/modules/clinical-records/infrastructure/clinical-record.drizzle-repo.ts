@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
+  ANTECEDENTES_VACIOS,
   EMPTY_NOTA_EVOLUCION,
+  esEspecialidadValida,
+  type Alergia,
+  type AntecedentesPaciente,
   type ClinicalNoteType,
   type ClinicalNoteStatus,
   type ClinicalRecordView,
+  type EspecialidadKey,
   type NotaEvolucionContent,
+  type Odontograma,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import { ClinicalNote } from '../domain/clinical-note.entity';
@@ -44,7 +50,17 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
   }
 
   async createDraftNote(tx: Tx, input: CreateDraftNoteInput): Promise<string> {
-    const contenido = JSON.stringify(EMPTY_NOTA_EVOLUCION);
+    // La especialidad queda grabada dentro del propio contenido: la nota es
+    // autodescriptiva y no depende de cómo esté configurado el médico el día
+    // que alguien la vuelva a abrir.
+    const contenido = JSON.stringify({
+      ...EMPTY_NOTA_EVOLUCION,
+      especialidad: input.especialidad,
+      extension: {},
+      // Arrastra el estado dental de la visita anterior: el dentista marca lo
+      // que CAMBIÓ, no vuelve a dibujar la boca entera cada vez.
+      ...(input.odontograma ? { odontograma: input.odontograma } : {}),
+    } satisfies NotaEvolucionContent);
     const result = await tx.execute(sql`
       INSERT INTO clinical_notes (clinical_record_id, appointment_id, doctor_id, tipo_nota, contenido_nom004, estatus)
       VALUES (${input.clinicalRecordId}, ${input.appointmentId}, ${input.doctorId}, 'nota_evolucion', ${contenido}::jsonb, 'borrador')
@@ -97,9 +113,35 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     return row ?? { nombre: 'Médico', cedula: null };
   }
 
+  async getDoctorEspecialidad(tx: Tx, doctorId: string): Promise<EspecialidadKey> {
+    const result = await tx.execute(sql`
+      SELECT especialidad_key FROM users WHERE id = ${doctorId} LIMIT 1
+    `);
+    const key = (result.rows as unknown as { especialidad_key: string }[])[0]?.especialidad_key;
+    // Una clave que ya no exista en el catálogo degrada a 'general' en vez de
+    // romper el inicio de consulta.
+    return esEspecialidadValida(key) ? key : 'general';
+  }
+
+  async getUltimoOdontograma(tx: Tx, clinicalRecordId: string): Promise<Odontograma | null> {
+    // Solo notas CERRADAS: un borrador a medias no es un estado dental
+    // confiable del que partir.
+    const result = await tx.execute(sql`
+      SELECT contenido_nom004->'odontograma' AS odontograma
+        FROM clinical_notes
+       WHERE clinical_record_id = ${clinicalRecordId}
+         AND estatus = 'cerrada'
+         AND contenido_nom004 ? 'odontograma'
+       ORDER BY cerrado_en DESC
+       LIMIT 1
+    `);
+    return (result.rows as unknown as { odontograma: Odontograma | null }[])[0]?.odontograma ?? null;
+  }
+
   async getRecordView(tx: Tx, patientId: string): Promise<ClinicalRecordView | null> {
     const recordRes = await tx.execute(sql`
-      SELECT cr.id AS record_id, cr.patient_id, cr.abierto_en, p.nombre AS patient_nombre
+      SELECT cr.id AS record_id, cr.patient_id, cr.abierto_en, p.nombre AS patient_nombre,
+             p.sin_alergias_conocidas, p.alergias, p.antecedentes
         FROM clinical_records cr
         JOIN patients p ON p.id = cr.patient_id
        WHERE cr.patient_id = ${patientId}
@@ -111,6 +153,9 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         patient_id: string;
         abierto_en: Date;
         patient_nombre: string;
+        sin_alergias_conocidas: boolean;
+        alergias: Alergia[] | null;
+        antecedentes: AntecedentesPaciente | null;
       }[]
     )[0];
     if (!record) return null;
@@ -138,6 +183,13 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         cerradoEn: row.cerrado_en ? new Date(row.cerrado_en).toISOString() : null,
         createdAt: new Date(row.created_at).toISOString(),
       })),
+      historial: {
+        sinAlergiasConocidas: record.sin_alergias_conocidas,
+        // Los `?? []` cubren pacientes creados antes de la migración 0013 y
+        // cualquier fila con el jsonb en NULL: la alerta nunca debe reventar.
+        alergias: record.alergias ?? [],
+        antecedentes: record.antecedentes ?? ANTECEDENTES_VACIOS,
+      },
     };
   }
 }
