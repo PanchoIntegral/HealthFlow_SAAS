@@ -84,6 +84,16 @@ export function IconFinance() {
   );
 }
 
+export function IconBudget() {
+  return (
+    <svg {...base}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
+      <path d="M7.5 13.5h4M7.5 16.5h7" />
+    </svg>
+  );
+}
+
 export function IconReceipt({ size = 16 }: { size?: number }) {
   return (
     <svg {...base} width={size} height={size}>

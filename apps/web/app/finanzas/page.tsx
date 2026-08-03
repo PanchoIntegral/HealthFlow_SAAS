@@ -58,6 +58,17 @@ export default function FinanzasPage() {
     enabled: !!token && canView,
   });
 
+  /**
+   * Saldos vivos de presupuestos aceptados. NO depende del mes elegido, a
+   * propósito: lo que un paciente debe no caduca al cambiar de mes. Es dinero
+   * comprometido, no facturado — por eso va aparte de los ingresos.
+   */
+  const saldos = useQuery({
+    queryKey: ['saldos'],
+    queryFn: () => api.saldosPorCobrar(token!),
+    enabled: !!token && canView,
+  });
+
   if (!ready || !token || !user || !canView) return null;
 
   return (
@@ -101,6 +112,31 @@ export default function FinanzasPage() {
             </label>
           </div>
         </div>
+
+        {/* Saldos por cobrar: dinero COMPROMETIDO, no facturado. Va antes de
+            los KPIs de ingreso porque es sobre lo que se actúa (hay que
+            cobrarlo), mientras que lo facturado ya ocurrió. */}
+        {saldos.data && saldos.data.presupuestos.length > 0 && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-semibold text-amber-900">Saldos por cobrar</h2>
+              <span className="text-xl font-bold tabular-nums text-amber-900">
+                {pesos(saldos.data.totalCentavos / 100)}
+              </span>
+            </div>
+            <ul className="space-y-1">
+              {saldos.data.presupuestos.map((p) => (
+                <li key={p.id} className="flex justify-between gap-3 text-sm text-amber-900">
+                  <span>
+                    {p.patientNombre}
+                    <span className="ml-1.5 text-amber-700">· {p.titulo}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums">{pesos(p.saldoCentavos / 100)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {isLoading && <p className="text-slate-400">Cargando finanzas…</p>}
 

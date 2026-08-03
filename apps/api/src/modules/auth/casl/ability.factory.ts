@@ -10,7 +10,9 @@ export type Action =
   | 'checkin'
   | 'cancel'
   | 'start'
-  | 'finish';
+  | 'finish'
+  /** Registrar un abono: es cobrar, no cotizar — por eso es su propia acción. */
+  | 'abonar';
 export type Subject =
   | 'Appointment'
   | 'WaitingRoom'
@@ -20,6 +22,7 @@ export type Subject =
   | 'Reports'
   | 'Factura'
   | 'Finanzas'
+  | 'Presupuesto'
   | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
@@ -59,6 +62,11 @@ export class CaslAbilityFactory {
         // cancelación (acto fiscal ante el SAT) queda en médico/admin.
         can('create', 'Factura');
         can('read', 'Factura');
+        // Cobranza: el asistente recibe el dinero en recepción, así que puede
+        // consultar el presupuesto y registrar abonos. NO puede cotizar ni
+        // cambiar precios — eso es una decisión clínica y comercial del médico.
+        can('read', 'Presupuesto');
+        can('abonar', 'Presupuesto');
         break;
       case 'medico':
         // El médico agenda/cancela citas, marca llegada, da de alta pacientes
@@ -76,6 +84,11 @@ export class CaslAbilityFactory {
         can('create', 'Factura');
         can('read', 'Factura');
         can('cancel', 'Factura');
+        // El médico cotiza el tratamiento y también puede cobrarlo.
+        can('read', 'Presupuesto');
+        can('create', 'Presupuesto');
+        can('write', 'Presupuesto');
+        can('abonar', 'Presupuesto');
         // Finanzas (ingresos del consultorio): SOLO médico (y admin vía manage
         // all). El asistente factura pero no ve las ganancias.
         can('read', 'Finanzas');

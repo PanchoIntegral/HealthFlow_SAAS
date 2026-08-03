@@ -162,6 +162,13 @@ export interface EstadoDental {
   color: string;
   /** true = se aplica al diente completo, no a una cara suelta. */
   piezaCompleta?: boolean;
+  /**
+   * true = es un hallazgo que PIDE tratamiento, así que puede convertirse en
+   * partida de presupuesto. Distingue lo que hay que hacer (caries, fractura)
+   * de lo que ya está hecho (obturación, corona, implante): presupuestar una
+   * obturación existente sería cobrar dos veces por el mismo trabajo.
+   */
+  requiereTratamiento?: boolean;
 }
 
 /**
@@ -169,11 +176,17 @@ export interface EstadoDental {
  * de registro, y guardarlo explícitamente llenaría el jsonb de ruido.
  */
 export const ESTADOS_DENTALES: readonly EstadoDental[] = [
-  { key: 'caries', label: 'Caries', color: '#dc2626' },
+  { key: 'caries', label: 'Caries', color: '#dc2626', requiereTratamiento: true },
   { key: 'obturado', label: 'Obturado', color: '#2563eb' },
-  { key: 'fracturado', label: 'Fracturado', color: '#f59e0b' },
+  { key: 'fracturado', label: 'Fracturado', color: '#f59e0b', requiereTratamiento: true },
   { key: 'ausente', label: 'Ausente', color: '#94a3b8', piezaCompleta: true },
-  { key: 'extraccion_indicada', label: 'Extracción indicada', color: '#b91c1c', piezaCompleta: true },
+  {
+    key: 'extraccion_indicada',
+    label: 'Extracción indicada',
+    color: '#b91c1c',
+    piezaCompleta: true,
+    requiereTratamiento: true,
+  },
   { key: 'corona', label: 'Corona', color: '#7c3aed', piezaCompleta: true },
   { key: 'endodoncia', label: 'Endodoncia', color: '#db2777', piezaCompleta: true },
   { key: 'implante', label: 'Implante', color: '#0f766e', piezaCompleta: true },
@@ -209,6 +222,47 @@ export interface Odontograma {
 }
 
 export const ODONTOGRAMA_VACIO: Odontograma = { denticion: 'permanente', marcas: [] };
+
+/**
+ * Convierte los hallazgos del odontograma en partidas de presupuesto.
+ *
+ * Es el puente entre lo clínico y lo comercial: el dentista marca caries en el
+ * 16 y de ahí sale la partida a cotizar, sin recapturar nada.
+ *
+ * Agrupa por (estado, pieza) y no por cara: dos caries en dos caras del mismo
+ * diente son UN tratamiento, no dos. Y solo considera los estados que piden
+ * tratamiento — presupuestar una obturación que ya existe sería cobrar dos
+ * veces por el mismo trabajo.
+ *
+ * El precio queda en cero a propósito: lo pone el dentista, no el software.
+ */
+export function partidasDesdeOdontograma(odontograma: Odontograma): NuevaPartida[] {
+  const tratables = new Set(
+    ESTADOS_DENTALES.filter((e) => e.requiereTratamiento).map((e) => e.key),
+  );
+
+  const vistos = new Set<string>();
+  const partidas: NuevaPartida[] = [];
+
+  for (const marca of odontograma.marcas) {
+    if (!tratables.has(marca.estado)) continue;
+    const clave = `${marca.estado}|${marca.pieza}`;
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+
+    partidas.push({
+      descripcion: estadoDentalPorKey(marca.estado)?.label ?? marca.estado,
+      piezas: [marca.pieza],
+      fase: 1,
+      cantidad: 1,
+      valorUnitarioCentavos: 0,
+    });
+  }
+
+  // Orden natural por número de pieza, para que la cotización se lea como se
+  // recorre la boca y no en el orden en que se fue marcando.
+  return partidas.sort((a, b) => (a.piezas?.[0] ?? '').localeCompare(b.piezas?.[0] ?? ''));
+}
 
 /** Piezas de un cuadrante, de la línea media hacia atrás. */
 export function piezasDeCuadrante(cuadrante: number): string[] {
@@ -343,6 +397,121 @@ export interface ExchangeTicketPendingResponse {
 /** 410 si el ticket ya se usó o expiró. */
 export interface ExchangeTicketExpiredResponse {
   status: 'expired';
+}
+
+// ── Presupuestos y cobranza ──────────────────────────────────────
+//
+// El plan de tratamiento cotizado. Vive en el PACIENTE y no en la cita: un
+// tratamiento dental abarca varias sesiones a lo largo de meses, mientras que
+// una factura pertenece a UNA cita (ver 0006_billing.sql).
+//
+// Todos los montos van en CENTAVOS enteros, igual que el dominio de
+// facturación (ver ConceptoCfdi): mezclar decimales entre módulos que se
+// alimentan entre sí es la receta para descuadres de un peso.
+
+export const ESTATUS_PRESUPUESTO = [
+  'borrador',
+  'presentado',
+  'aceptado',
+  'rechazado',
+  'terminado',
+  'cancelado',
+] as const;
+export type EstatusPresupuesto = (typeof ESTATUS_PRESUPUESTO)[number];
+
+export const ESTATUS_PARTIDA = ['pendiente', 'en_proceso', 'terminado', 'cancelada'] as const;
+export type EstatusPartida = (typeof ESTATUS_PARTIDA)[number];
+
+export const METODOS_PAGO = ['efectivo', 'tarjeta', 'transferencia', 'otro'] as const;
+export type MetodoPago = (typeof METODOS_PAGO)[number];
+
+export interface PresupuestoPartida {
+  id: string;
+  descripcion: string;
+  /** Piezas FDI a las que aplica ('16', '26'). Vacío = no aplica a una pieza. */
+  piezas: string[];
+  /** Agrupa el trabajo en etapas del tratamiento. */
+  fase: number;
+  cantidad: number;
+  valorUnitarioCentavos: number;
+  estatus: EstatusPartida;
+  /** Cita donde se ejecutó; null mientras no se realiza. */
+  appointmentId: string | null;
+  /** Importe = cantidad × valor unitario, derivado por el backend. */
+  importeCentavos: number;
+}
+
+export interface Abono {
+  id: string;
+  montoCentavos: number;
+  metodo: MetodoPago;
+  /** ISO date (YYYY-MM-DD). */
+  fecha: string;
+  referencia: string | null;
+}
+
+/**
+ * Presupuesto con sus totales YA calculados por el backend.
+ *
+ * `totalCentavos`, `abonadoCentavos` y `saldoCentavos` NO se guardan en la
+ * base: se derivan de partidas y abonos en cada consulta. Un saldo almacenado
+ * habría que mantenerlo sincronizado en cada alta, baja y edición, y un saldo
+ * desfasado en cobranza es una discusión con el paciente frente al mostrador.
+ */
+export interface PresupuestoView {
+  id: string;
+  patientId: string;
+  patientNombre: string;
+  doctorId: string;
+  titulo: string;
+  estatus: EstatusPresupuesto;
+  notas: string | null;
+  vigenciaHasta: string | null;
+  aceptadoEn: string | null;
+  createdAt: string;
+  partidas: PresupuestoPartida[];
+  abonos: Abono[];
+  /** Suma de las partidas NO canceladas. */
+  totalCentavos: number;
+  abonadoCentavos: number;
+  /** total − abonado. Puede ser 0, nunca negativo (se valida al abonar). */
+  saldoCentavos: number;
+}
+
+export interface CrearPresupuestoRequest {
+  patientId: string;
+  titulo: string;
+  notas?: string;
+  vigenciaHasta?: string;
+  partidas: NuevaPartida[];
+}
+
+export interface NuevaPartida {
+  descripcion: string;
+  piezas?: string[];
+  fase?: number;
+  cantidad: number;
+  valorUnitarioCentavos: number;
+}
+
+export interface RegistrarAbonoRequest {
+  montoCentavos: number;
+  metodo: MetodoPago;
+  fecha?: string;
+  referencia?: string;
+}
+
+/** Resumen de cobranza para el tablero de finanzas. */
+export interface SaldosPorCobrar {
+  /** Suma de saldos de presupuestos aceptados aún no terminados. */
+  totalCentavos: number;
+  presupuestos: {
+    id: string;
+    patientId: string;
+    patientNombre: string;
+    titulo: string;
+    saldoCentavos: number;
+  }[];
 }
 
 // ── Expediente clínico / NOM-004 ─────────────────────────────────

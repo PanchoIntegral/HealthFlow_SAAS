@@ -6,6 +6,7 @@ import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { NotificationsBell } from './notifications-bell';
 import {
+  IconBudget,
   IconCalendar,
   IconDashboard,
   IconFinance,
@@ -20,6 +21,9 @@ const NAV = [
   { href: '/calendario', label: 'Calendario', icon: IconCalendar },
   { href: '/sala-de-espera', label: 'Sala de espera', icon: IconWaiting },
   { href: '/pacientes', label: 'Expedientes', icon: IconRecords },
+  // Todos los roles pueden leer presupuestos (el asistente cobra, el médico
+  // cotiza): sin `roles`, igual que Dashboard/Calendario.
+  { href: '/presupuestos', label: 'Presupuestos', icon: IconBudget },
   { href: '/reportes', label: 'Reportes', icon: IconReports },
   { href: '/finanzas', label: 'Finanzas', icon: IconFinance, roles: ['medico', 'admin'] },
 ] as { href: string; label: string; icon: () => React.JSX.Element; roles?: string[] }[];
