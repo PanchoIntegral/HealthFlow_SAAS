@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
+import { esEspecialidadValida } from '@healthflow/shared-types';
 import type Stripe from 'stripe';
 import { DB } from '../../../db/drizzle.module';
 import { runInTenant, type Database } from '../../../db/drizzle';
@@ -93,6 +94,9 @@ export class HandleStripeWebhookUseCase {
         // médico que atiende, y hoy es el único usuario del tenant.
         rol: 'admin',
         esMedico: true,
+        // Personaliza su nota clínica desde la primera consulta. Las sesiones
+        // creadas antes de existir esta función no traen el dato ⇒ 'general'.
+        especialidadKey: esEspecialidadValida(meta.especialidad) ? meta.especialidad : 'general',
       });
 
       await tx.insert(schema.onboardingTickets).values({

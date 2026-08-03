@@ -48,13 +48,26 @@ export const users = pgTable('users', {
    */
   esMedico: boolean('es_medico').notNull().default(false),
   cedulaProfesional: text('cedula_profesional'),
+  /** Etiqueta editable que se muestra en el selector de agenda. */
   especialidad: text('especialidad'),
+  /**
+   * Clave controlada del catálogo (ver PERFILES en shared-types): dirige qué
+   * campos tiene su nota y qué diagnósticos se le priorizan. Distinta de
+   * `especialidad`, que es texto libre para mostrar (ver 0012_especialidad.sql).
+   */
+  especialidadKey: text('especialidad_key').notNull().default('general'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const patients = pgTable('patients', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
+  /** Declaración explícita; distinta de "lista vacía" (ver 0013). */
+  sinAlergiasConocidas: boolean('sin_alergias_conocidas').notNull().default(false),
+  /** Alergia[] — ver shared-types. */
+  alergias: jsonb('alergias').notNull().default([]),
+  /** AntecedentesPaciente — banderas clínicas + texto libre. */
+  antecedentes: jsonb('antecedentes').notNull().default({ banderas: [] }),
   nombre: text('nombre').notNull(),
   fechaNacimiento: date('fecha_nacimiento').notNull(),
   curp: text('curp'),

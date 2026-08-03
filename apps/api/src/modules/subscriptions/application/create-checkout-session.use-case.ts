@@ -54,6 +54,7 @@ export class CreateCheckoutSessionUseCase {
         passwordHash,
         plan: dto.plan,
         periodo: dto.periodo,
+        especialidad: dto.especialidad ?? 'general',
       },
       success_url: `${env.appUrl}/bienvenida?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${env.marketingUrl}/#precios`,

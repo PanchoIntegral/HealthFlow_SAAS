@@ -5,6 +5,7 @@ import { PoliciesGuard } from '../auth/casl/policies.guard';
 import { PATIENT_REPOSITORY } from './domain/patient.repository';
 import { RegisterPatientUseCase } from './application/register-patient.use-case';
 import { SearchPatientsUseCase } from './application/search-patients.use-case';
+import { UpdateHistorialUseCase } from './application/update-historial.use-case';
 import { DrizzlePatientRepository } from './infrastructure/patient.drizzle-repo';
 import { PatientsController } from './infrastructure/patients.controller';
 
@@ -14,6 +15,7 @@ import { PatientsController } from './infrastructure/patients.controller';
   providers: [
     RegisterPatientUseCase,
     SearchPatientsUseCase,
+    UpdateHistorialUseCase,
     CaslAbilityFactory,
     PoliciesGuard,
     { provide: PATIENT_REPOSITORY, useClass: DrizzlePatientRepository },

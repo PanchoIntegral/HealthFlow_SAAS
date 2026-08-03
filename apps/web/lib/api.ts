@@ -12,6 +12,8 @@ import type {
   DiagnosticoCie10,
   DoctorSummary,
   FinishConsultationResponse,
+  HistorialPaciente,
+  UpdateHistorialRequest,
   LoginRequest,
   LoginResponse,
   NotaEvolucionContent,
@@ -133,6 +135,14 @@ export const api = {
 
   getClinicalRecord: (token: string, patientId: string) =>
     request<ClinicalRecordView>(`/patients/${patientId}/clinical-record`, { token }),
+
+  /** Reemplazo completo de alergias y antecedentes del paciente. */
+  updateHistorial: (token: string, patientId: string, historial: UpdateHistorialRequest) =>
+    request<HistorialPaciente>(`/patients/${patientId}/historial`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(historial),
+    }),
 
   dashboardStats: (token: string) =>
     request<DashboardStats>('/dashboard/stats', { token }),

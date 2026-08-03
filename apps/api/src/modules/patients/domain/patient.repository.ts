@@ -1,4 +1,8 @@
-import type { PatientSummary } from '@healthflow/shared-types';
+import type {
+  HistorialPaciente,
+  PatientSummary,
+  UpdateHistorialRequest,
+} from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { Patient } from './patient.entity';
 
@@ -18,6 +22,16 @@ export interface PatientRepository {
 
   /** Directorio completo del tenant, ordenado por nombre. Limitado. */
   list(tx: Tx, limit: number): Promise<PatientSummary[]>;
+
+  /**
+   * Reemplaza alergias y antecedentes. Devuelve el historial guardado, o null
+   * si el paciente no existe en el tenant activo.
+   */
+  updateHistorial(
+    tx: Tx,
+    patientId: string,
+    input: UpdateHistorialRequest,
+  ): Promise<HistorialPaciente | null>;
 }
 
 export const PATIENT_REPOSITORY = Symbol('PATIENT_REPOSITORY');

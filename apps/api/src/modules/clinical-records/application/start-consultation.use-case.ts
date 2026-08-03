@@ -53,7 +53,8 @@ export class StartConsultationUseCase {
       const state = appointment.toState();
       const recordId = await this.records.ensureRecordForPatient(tx, state.patientId);
 
-      // Reusa la nota si ya existía (reingreso al editor); si no, crea el borrador.
+      // Reusa la nota si ya existía (reingreso al editor); si no, crea el
+      // borrador estampado con la especialidad del médico que atiende.
       const existing = await this.records.findNoteByAppointment(tx, appointmentId);
       const noteId =
         existing?.id ??
@@ -61,6 +62,8 @@ export class StartConsultationUseCase {
           clinicalRecordId: recordId,
           appointmentId,
           doctorId: state.doctorId,
+          especialidad: await this.records.getDoctorEspecialidad(tx, state.doctorId),
+          odontograma: (await this.records.getUltimoOdontograma(tx, recordId)) ?? undefined,
         }));
 
       await this.audit.record(tx, {

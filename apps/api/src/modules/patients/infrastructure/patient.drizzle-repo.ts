@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import type { PatientSummary } from '@healthflow/shared-types';
+import {
+  ANTECEDENTES_VACIOS,
+  type Alergia,
+  type AntecedentesPaciente,
+  type HistorialPaciente,
+  type PatientSummary,
+  type UpdateHistorialRequest,
+} from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import { Patient } from '../domain/patient.entity';
 import type { PatientRepository } from '../domain/patient.repository';
@@ -79,5 +86,37 @@ export class DrizzlePatientRepository implements PatientRepository {
       curp: r.curp,
       telefono: r.telefono,
     }));
+  }
+
+  async updateHistorial(
+    tx: Tx,
+    patientId: string,
+    input: UpdateHistorialRequest,
+  ): Promise<HistorialPaciente | null> {
+    // Reemplazo completo, no merge: la pantalla envía siempre el historial
+    // entero, y un merge parcial haría imposible BORRAR una alergia que se
+    // capturó por error — justo la operación que más importa que funcione.
+    const result = await tx.execute(sql`
+      UPDATE patients
+         SET sin_alergias_conocidas = ${input.sinAlergiasConocidas},
+             alergias      = ${JSON.stringify(input.alergias)}::jsonb,
+             antecedentes  = ${JSON.stringify(input.antecedentes)}::jsonb
+       WHERE id = ${patientId}
+      RETURNING sin_alergias_conocidas, alergias, antecedentes
+    `);
+    const row = (
+      result.rows as unknown as {
+        sin_alergias_conocidas: boolean;
+        alergias: Alergia[] | null;
+        antecedentes: AntecedentesPaciente | null;
+      }[]
+    )[0];
+    if (!row) return null;
+
+    return {
+      sinAlergiasConocidas: row.sin_alergias_conocidas,
+      alergias: row.alergias ?? [],
+      antecedentes: row.antecedentes ?? ANTECEDENTES_VACIOS,
+    };
   }
 }
