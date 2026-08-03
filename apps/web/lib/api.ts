@@ -14,6 +14,13 @@ import type {
   FinishConsultationResponse,
   HistorialPaciente,
   UpdateHistorialRequest,
+  CrearPresupuestoRequest,
+  EstatusPartida,
+  EstatusPresupuesto,
+  NuevaPartida,
+  PresupuestoView,
+  RegistrarAbonoRequest,
+  SaldosPorCobrar,
   LoginRequest,
   LoginResponse,
   NotaEvolucionContent,
@@ -135,6 +142,56 @@ export const api = {
 
   getClinicalRecord: (token: string, patientId: string) =>
     request<ClinicalRecordView>(`/patients/${patientId}/clinical-record`, { token }),
+
+  // ── Presupuestos ───────────────────────────────────────────────
+  listarPresupuestos: (token: string, patientId: string) =>
+    request<PresupuestoView[]>(`/presupuestos?patientId=${patientId}`, { token }),
+
+  /** Todos los presupuestos del consultorio (tablero), opcionalmente filtrados por estatus. */
+  listarTodosPresupuestos: (token: string, estatus?: EstatusPresupuesto[]) =>
+    request<PresupuestoView[]>(
+      `/presupuestos${estatus && estatus.length > 0 ? `?estatus=${estatus.join(',')}` : ''}`,
+      { token },
+    ),
+
+  crearPresupuesto: (token: string, body: CrearPresupuestoRequest) =>
+    request<PresupuestoView>('/presupuestos', { method: 'POST', token, body: JSON.stringify(body) }),
+
+  reemplazarPartidas: (token: string, id: string, partidas: NuevaPartida[]) =>
+    request<PresupuestoView>(`/presupuestos/${id}/partidas`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ partidas }),
+    }),
+
+  cambiarEstatusPresupuesto: (token: string, id: string, estatus: EstatusPresupuesto) =>
+    request<PresupuestoView>(`/presupuestos/${id}/estatus`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ estatus }),
+    }),
+
+  cambiarEstatusPartida: (
+    token: string,
+    id: string,
+    partidaId: string,
+    estatus: EstatusPartida,
+    appointmentId?: string,
+  ) =>
+    request<PresupuestoView>(`/presupuestos/${id}/partidas/${partidaId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ estatus, appointmentId }),
+    }),
+
+  registrarAbono: (token: string, id: string, body: RegistrarAbonoRequest) =>
+    request<PresupuestoView>(`/presupuestos/${id}/abonos`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  saldosPorCobrar: (token: string) => request<SaldosPorCobrar>('/presupuestos/saldos', { token }),
 
   /** Reemplazo completo de alergias y antecedentes del paciente. */
   updateHistorial: (token: string, patientId: string, historial: UpdateHistorialRequest) =>

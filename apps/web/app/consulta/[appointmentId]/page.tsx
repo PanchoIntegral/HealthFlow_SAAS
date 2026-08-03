@@ -6,12 +6,14 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   EMPTY_NOTA_EVOLUCION,
   ODONTOGRAMA_VACIO,
+  partidasDesdeOdontograma,
   perfilDe,
   type CampoBaseKey,
   type Odontograma as OdontogramaData,
   type DiagnosticoCie10,
   type NotaEvolucionContent,
   type PerfilEspecialidad,
+  type PresupuestoView,
   type SignosVitales,
 } from '@healthflow/shared-types';
 import { useAuth } from '../../../lib/auth';
@@ -20,6 +22,8 @@ import { RichTextEditor } from '../../../components/rich-text-editor';
 import { CamposEspecialidad } from '../../../components/campos-especialidad';
 import { AlertaAlergias } from '../../../components/alerta-alergias';
 import { Odontograma } from '../../../components/odontograma';
+import { NuevoPresupuestoModal } from '../../../components/nuevo-presupuesto-modal';
+import { pesos } from '../../../components/presupuesto-panel';
 
 /** Etiqueta de cada signo vital. Qué subconjunto se muestra lo decide el perfil. */
 const ETIQUETA_VITAL: Record<keyof SignosVitales, string> = {
@@ -77,6 +81,10 @@ export default function ConsultaPage({
   const [missing, setMissing] = useState<string[]>([]);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const hydrated = useRef(false);
+
+  // Presupuesto creado desde la consulta, sin salir a registrar alergias primero.
+  const [modalPresupuesto, setModalPresupuesto] = useState(false);
+  const [presupuestoCreado, setPresupuestoCreado] = useState<PresupuestoView | null>(null);
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -140,6 +148,8 @@ export default function ConsultaPage({
   const omitidos = perfil.permiteOmitirSignosVitales === true && content.signosVitalesOmitidos === true;
 
   if (!ready || !token || !user) return null;
+
+  const puedeCotizar = (user.rol === 'medico' || user.rol === 'admin') && !!patientId;
 
   const isMissing = (field: string) => missing.includes(field);
   const setVital = (key: keyof SignosVitales, value: string) =>
@@ -345,6 +355,13 @@ export default function ConsultaPage({
                 onChange={setOdontograma}
                 readOnly={readOnly}
               />
+              {!readOnly && patientId && (
+                <PresupuestarHallazgos
+                  token={token}
+                  patientId={patientId}
+                  odontograma={content.odontograma ?? ODONTOGRAMA_VACIO}
+                />
+              )}
             </Section>
           )}
 
@@ -426,8 +443,110 @@ export default function ConsultaPage({
               <p className="text-xs text-slate-400">Primera consulta registrada.</p>
             )}
           </div>
+
+          {/* Cotizar sin salir de la consulta: antes había que ir al
+              expediente (y de paso a la alerta de alergias) solo para armar
+              un presupuesto. Aquí queda a un clic. */}
+          {puedeCotizar && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Presupuesto
+              </p>
+              {presupuestoCreado ? (
+                <div className="rounded-lg bg-emerald-50 p-3 text-emerald-800">
+                  <p className="font-medium">{presupuestoCreado.titulo} creado</p>
+                  <p className="text-xs">Total {pesos(presupuestoCreado.totalCentavos)}</p>
+                  <a
+                    href={`/pacientes/${patientId}`}
+                    className="mt-1 inline-block text-xs font-medium underline hover:text-emerald-900"
+                  >
+                    Ver en el expediente →
+                  </a>
+                </div>
+              ) : (
+                <>
+                  <p className="mb-3 text-xs text-slate-400">
+                    Cotiza el tratamiento sin salir de la nota.
+                  </p>
+                  <button
+                    onClick={() => setModalPresupuesto(true)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:border-brand-blue hover:text-brand-blue"
+                  >
+                    + Nuevo presupuesto
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </aside>
       </div>
+
+      {modalPresupuesto && patientId && (
+        <NuevoPresupuestoModal
+          token={token}
+          paciente={{ id: patientId, nombre: record.data?.patientNombre ?? 'Paciente' }}
+          onClose={() => setModalPresupuesto(false)}
+          onCreado={(p) => setPresupuestoCreado(p)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Convierte los hallazgos marcados en un presupuesto borrador.
+ *
+ * Está aquí, dentro de la consulta, porque es el momento en que el dentista
+ * tiene la boca del paciente enfrente y sabe qué hay que hacer. Obligarlo a ir
+ * al expediente y recapturar pieza por pieza es donde se pierde la venta.
+ */
+function PresupuestarHallazgos({
+  token,
+  patientId,
+  odontograma,
+}: {
+  token: string;
+  patientId: string;
+  odontograma: OdontogramaData;
+}) {
+  const router = useRouter();
+  const sugeridas = useMemo(() => partidasDesdeOdontograma(odontograma), [odontograma]);
+
+  const crear = useMutation({
+    mutationFn: () =>
+      api.crearPresupuesto(token, {
+        patientId,
+        titulo: 'Plan de tratamiento',
+        partidas: sugeridas,
+      }),
+    // Se manda al expediente porque ahí es donde se ponen los precios y se
+    // presenta al paciente; el presupuesto nace en borrador y sin importes.
+    onSuccess: () => router.push(`/pacientes/${patientId}`),
+  });
+
+  if (sugeridas.length === 0) return null;
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-3">
+      <div className="text-sm">
+        <p className="font-medium">
+          {sugeridas.length} hallazgo{sugeridas.length === 1 ? '' : 's'} por tratar
+        </p>
+        <p className="text-xs text-slate-500">
+          {sugeridas.map((p) => `${p.descripcion} ${p.piezas?.[0]}`).join(' · ')}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => crear.mutate()}
+        disabled={crear.isPending}
+        className="ml-auto rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+      >
+        {crear.isPending ? 'Creando…' : 'Presupuestar'}
+      </button>
+      {crear.isError && (
+        <p className="w-full text-sm text-red-600">No se pudo crear el presupuesto.</p>
+      )}
     </div>
   );
 }

@@ -8,8 +8,21 @@ import {
   numeric,
   boolean,
   integer,
+  bigint,
   primaryKey,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+
+/**
+ * `tenant_id` con el mismo DEFAULT que tiene la columna en Postgres. Declararlo
+ * aquí es lo que permite insertar con el constructor tipado sin pasar el tenant
+ * a mano: lo pone la base a partir del tenant fijado en la transacción, que es
+ * justo lo que hace imposible escribir en la clínica equivocada.
+ */
+const tenantIdConDefault = () =>
+  uuid('tenant_id')
+    .notNull()
+    .default(sql`current_tenant_id()`);
 
 /**
  * Subconjunto del modelo de datos necesario para el slice de sala de espera.
@@ -207,6 +220,50 @@ export const cie10Diagnosticos = pgTable('cie10_diagnosticos', {
 });
 
 /**
+ * Presupuestos (ver 0014_presupuestos.sql). Cuelgan del PACIENTE, no de la
+ * cita. Sin columnas de total ni saldo: se derivan de partidas y abonos.
+ */
+export const presupuestos = pgTable('presupuestos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  patientId: uuid('patient_id').notNull(),
+  doctorId: uuid('doctor_id').notNull(),
+  titulo: text('titulo').notNull(),
+  estatus: text('estatus').notNull().default('borrador'),
+  notas: text('notas'),
+  vigenciaHasta: date('vigencia_hasta'),
+  aceptadoEn: timestamp('aceptado_en', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const presupuestoPartidas = pgTable('presupuesto_partidas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  presupuestoId: uuid('presupuesto_id').notNull(),
+  descripcion: text('descripcion').notNull(),
+  /** Notación FDI; conecta la partida con el odontograma. */
+  piezas: text('piezas').array().notNull(),
+  fase: integer('fase').notNull().default(1),
+  cantidad: numeric('cantidad').notNull(),
+  /** Centavos enteros, igual que el dominio de facturación. */
+  valorUnitarioCentavos: bigint('valor_unitario_centavos', { mode: 'number' }).notNull(),
+  estatus: text('estatus').notNull().default('pendiente'),
+  appointmentId: uuid('appointment_id'),
+  orden: integer('orden').notNull().default(0),
+});
+
+export const presupuestoAbonos = pgTable('presupuesto_abonos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  presupuestoId: uuid('presupuesto_id').notNull(),
+  montoCentavos: bigint('monto_centavos', { mode: 'number' }).notNull(),
+  metodo: text('metodo').notNull(),
+  fecha: date('fecha').notNull(),
+  referencia: text('referencia'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
  * Contadores de login fallido para el bloqueo progresivo (ver
  * 0011_login_security.sql). Sin tenant_id ni RLS: se consulta ANTES de saber
  * quién es el usuario. Clave compuesta (scope, key).
@@ -259,5 +316,8 @@ export const schema = {
   stripeEvents,
   onboardingTickets,
   loginAttempts,
+  presupuestos,
+  presupuestoPartidas,
+  presupuestoAbonos,
 };
 export type DbSchema = typeof schema;

@@ -13,6 +13,7 @@ import { api, ApiError } from '../../../lib/api';
 import { AppShell } from '../../../components/app-shell';
 import { AlertaAlergias } from '../../../components/alerta-alergias';
 import { EditorHistorial } from '../../../components/editor-historial';
+import { PresupuestoPanel } from '../../../components/presupuesto-panel';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -106,6 +107,13 @@ export default function ExpedientePage({
                 onCapturar={() => setEditando(true)}
               />
             )}
+
+            {/* Cotización y cobranza. Va antes de las notas porque es lo que
+                se consulta a diario: cuánto debe el paciente. */}
+            <section className="mb-6">
+              <h2 className="mb-3 font-semibold">Presupuestos</h2>
+              <PresupuestoPanel token={token} patientId={patientId} />
+            </section>
 
             {record.data.notas.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
