@@ -36,6 +36,7 @@ function draft(): ClinicalNote {
     estatus: 'borrador',
     contenido: EMPTY_NOTA_EVOLUCION,
     cerradoEn: null,
+    createdAt: new Date('2026-07-06T09:00:00Z'),
   });
 }
 

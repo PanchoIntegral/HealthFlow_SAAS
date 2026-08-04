@@ -16,6 +16,7 @@ export interface ClinicalNoteProps {
   estatus: ClinicalNoteStatus;
   contenido: NotaEvolucionContent;
   cerradoEn: Date | null;
+  createdAt: Date;
 }
 
 /**
