@@ -6,9 +6,11 @@ import { USER_PROFILE_REPOSITORY, type UserProfileRepository } from '../domain/u
 
 /**
  * Cambia la especialidad del propio usuario autenticado. Es seguro de hacer
- * en caliente: la nota clínica resuelve el perfil (PERFILES en shared-types)
- * leyendo `users.especialidad_key` en cada consulta, no lo congela al crearla
- * — así que esto solo afecta notas futuras, nunca reinterpreta una ya cerrada.
+ * en caliente: GetConsultationNoteUseCase relee `users.especialidad_key` cada
+ * vez que la nota sigue en borrador (ver get-consultation-note.use-case.ts),
+ * así que este cambio se refleja de inmediato en cualquier consulta abierta.
+ * Una nota ya CERRADA nunca se reinterpreta — queda congelada con la
+ * especialidad que tenía al firmarse (NOM-004).
  */
 @Injectable()
 export class UpdateEspecialidadUseCase {
