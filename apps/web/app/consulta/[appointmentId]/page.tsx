@@ -196,7 +196,8 @@ export default function ConsultaPage({
           <div>
             <p className="font-semibold">{record.data?.patientNombre ?? 'Consulta'}</p>
             <p className="text-xs text-slate-500">
-              Nota de evolución · {normaDe(perfil)} {readOnly && '· cerrada'}
+              {content.tipoNota === 'historia_clinica' ? 'Historia clínica' : 'Nota de evolución'} ·{' '}
+              {normaDe(perfil)} {readOnly && '· cerrada'}
             </p>
           </div>
         </div>
@@ -234,6 +235,43 @@ export default function ConsultaPage({
             <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
               Faltan {missing.length} campo(s) obligatorio(s) para poder firmar.
             </div>
+          )}
+
+          {content.tipoNota === 'historia_clinica' && (
+            <Section
+              title="Antecedentes"
+              required
+              missing={
+                isMissing('antecedentesHeredofamiliares') ||
+                isMissing('antecedentesPersonalesPatologicos') ||
+                isMissing('antecedentesPersonalesNoPatologicos')
+              }
+            >
+              <div className="space-y-3">
+                <CampoAntecedente
+                  label="Heredofamiliares"
+                  value={content.antecedentesHeredofamiliares ?? ''}
+                  onChange={(v) => setContent((c) => ({ ...c, antecedentesHeredofamiliares: v }))}
+                  readOnly={readOnly}
+                  missing={isMissing('antecedentesHeredofamiliares')}
+                />
+                <CampoAntecedente
+                  label="Personales patológicos"
+                  value={content.antecedentesPersonalesPatologicos ?? ''}
+                  onChange={(v) => setContent((c) => ({ ...c, antecedentesPersonalesPatologicos: v }))}
+                  readOnly={readOnly}
+                  missing={isMissing('antecedentesPersonalesPatologicos')}
+                />
+                <CampoAntecedente
+                  label="Personales no patológicos"
+                  placeholder="Hábitos, higiene, vacunación…"
+                  value={content.antecedentesPersonalesNoPatologicos ?? ''}
+                  onChange={(v) => setContent((c) => ({ ...c, antecedentesPersonalesNoPatologicos: v }))}
+                  readOnly={readOnly}
+                  missing={isMissing('antecedentesPersonalesNoPatologicos')}
+                />
+              </div>
+            </Section>
           )}
 
           <Section title="Padecimiento actual" required missing={isMissing('padecimientoActual')}>
@@ -572,6 +610,40 @@ function Section({
   );
 }
 
+function CampoAntecedente({
+  label,
+  placeholder,
+  value,
+  onChange,
+  readOnly,
+  missing,
+}: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (v: string) => void;
+  readOnly?: boolean;
+  missing?: boolean;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block text-xs font-medium text-slate-500">
+        {label} <span className="text-red-500">*</span>
+      </span>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={readOnly}
+        rows={2}
+        placeholder={placeholder}
+        className={`w-full rounded-lg border px-3 py-2 outline-none focus:border-brand-blue disabled:bg-slate-50 ${
+          missing ? 'border-red-300' : 'border-slate-300'
+        }`}
+      />
+    </label>
+  );
+}
+
 function DiagnosticoPicker({
   token,
   seleccionados,
@@ -679,6 +751,13 @@ function computeProgress(
     ...perfil.camposExtra
       .filter((campo) => campo.obligatorio)
       .map((campo) => tieneValor(extension[campo.key])),
+    ...(c.tipoNota === 'historia_clinica'
+      ? [
+          tieneValor(c.antecedentesHeredofamiliares),
+          tieneValor(c.antecedentesPersonalesPatologicos),
+          tieneValor(c.antecedentesPersonalesNoPatologicos),
+        ]
+      : []),
   ];
   return { done: checks.filter(Boolean).length, total: checks.length };
 }

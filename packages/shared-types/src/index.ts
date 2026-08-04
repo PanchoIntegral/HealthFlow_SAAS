@@ -517,6 +517,65 @@ export interface RegistrarAbonoRequest {
   referencia?: string;
 }
 
+/**
+ * Consentimiento informado. Insert-only: no hay estatus ni transición — se
+ * crea ya completo, y ni la API ni los permisos de base de datos exponen
+ * forma alguna de editarlo o borrarlo (ver 0015_consentimientos.sql).
+ */
+export interface ConsentimientoView {
+  id: string;
+  patientId: string;
+  presupuestoId: string | null;
+  doctorId: string;
+  doctorNombre: string;
+  procedimiento: string;
+  contenido: string;
+  createdAt: string;
+}
+
+export interface CrearConsentimientoRequest {
+  patientId: string;
+  presupuestoId?: string;
+  procedimiento: string;
+  contenido: string;
+}
+
+/** Tipos de imagen aceptados. Sin SVG a propósito: es un vector de XSS. */
+export const MIME_TYPES_RADIOGRAFIA = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export type MimeTypeRadiografia = (typeof MIME_TYPES_RADIOGRAFIA)[number];
+
+/**
+ * Radiografía (imagen clínica). El archivo vive en storage S3-compatible, no
+ * en Postgres — `url` es una URL prefirmada de vida corta que se regenera en
+ * cada listado, nunca un enlace público permanente.
+ */
+export interface RadiografiaView {
+  id: string;
+  patientId: string;
+  url: string;
+  mimeType: string;
+  subidoPorNombre: string;
+  createdAt: string;
+}
+
+export interface RequestUploadUrlRequest {
+  patientId: string;
+  mimeType: MimeTypeRadiografia;
+}
+
+/** Campos de un formulario `multipart/form-data` de subida directa a S3/R2 (presigned POST). */
+export interface RequestUploadUrlResponse {
+  uploadUrl: string;
+  fields: Record<string, string>;
+  storageKey: string;
+}
+
+export interface ConfirmRadiografiaRequest {
+  patientId: string;
+  storageKey: string;
+  mimeType: MimeTypeRadiografia;
+}
+
 /** Resumen de cobranza para el tablero de finanzas. */
 export interface SaldosPorCobrar {
   /** Suma de saldos de presupuestos aceptados aún no terminados. */
@@ -567,7 +626,7 @@ export interface FirmaMedica {
  * estadísticas (diagnósticos, signos vitales).
  */
 export interface NotaEvolucionContent {
-  tipoNota: 'nota_evolucion';
+  tipoNota: ClinicalNoteType;
   padecimientoActual: string; // HTML (TipTap)
   exploracionFisica: {
     signosVitales: SignosVitales;
@@ -610,6 +669,16 @@ export interface NotaEvolucionContent {
    * de modo que el dentista solo marca lo que cambió.
    */
   odontograma?: Odontograma;
+  /**
+   * Antecedentes de la HISTORIA CLÍNICA inicial (NOM-004), presentes solo
+   * cuando `tipoNota === 'historia_clinica'`. Viven como campos planos en la
+   * misma interfaz, no en un tipo aparte: igual que `extension` arriba, una
+   * nota cerrada debe poder leerse para siempre sin depender de una unión
+   * discriminada que un cambio de código pueda romper.
+   */
+  antecedentesHeredofamiliares?: string;
+  antecedentesPersonalesPatologicos?: string;
+  antecedentesPersonalesNoPatologicos?: string;
 }
 
 /** Contenido vacío inicial de un borrador de nota de evolución. */
@@ -622,6 +691,15 @@ export const EMPTY_NOTA_EVOLUCION: NotaEvolucionContent = {
   },
   diagnosticos: [],
   planTerapeutico: '',
+};
+
+/** Contenido vacío inicial de la historia clínica de la primera visita. */
+export const EMPTY_HISTORIA_CLINICA: NotaEvolucionContent = {
+  ...EMPTY_NOTA_EVOLUCION,
+  tipoNota: 'historia_clinica',
+  antecedentesHeredofamiliares: '',
+  antecedentesPersonalesPatologicos: '',
+  antecedentesPersonalesNoPatologicos: '',
 };
 
 export interface ClinicalNoteView {

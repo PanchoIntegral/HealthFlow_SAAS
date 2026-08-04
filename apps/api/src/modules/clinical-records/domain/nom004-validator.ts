@@ -34,7 +34,7 @@ export class NOM004Validator {
 }
 
 /** True si el string tiene contenido real (ignora HTML vacío de TipTap). */
-function hasText(value: string | undefined): boolean {
+export function hasText(value: string | undefined): boolean {
   if (!value) return false;
   const stripped = value.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
   return stripped.length > 0;

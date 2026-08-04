@@ -19,6 +19,8 @@ import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { PresupuestosModule } from './modules/presupuestos/presupuestos.module';
 import { UsersModule } from './modules/users/users.module';
+import { ConsentimientosModule } from './modules/consentimientos/consentimientos.module';
+import { RadiografiasModule } from './modules/radiografias/radiografias.module';
 
 @Module({
   imports: [
@@ -54,6 +56,8 @@ import { UsersModule } from './modules/users/users.module';
     SubscriptionsModule,
     PresupuestosModule,
     UsersModule,
+    ConsentimientosModule,
+    RadiografiasModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.

@@ -12,7 +12,8 @@ export type Action =
   | 'start'
   | 'finish'
   /** Registrar un abono: es cobrar, no cotizar — por eso es su propia acción. */
-  | 'abonar';
+  | 'abonar'
+  | 'delete';
 export type Subject =
   | 'Appointment'
   | 'WaitingRoom'
@@ -23,6 +24,8 @@ export type Subject =
   | 'Factura'
   | 'Finanzas'
   | 'Presupuesto'
+  | 'Consentimiento'
+  | 'Radiografia'
   | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
@@ -67,6 +70,14 @@ export class CaslAbilityFactory {
         // cambiar precios — eso es una decisión clínica y comercial del médico.
         can('read', 'Presupuesto');
         can('abonar', 'Presupuesto');
+        // Documentar riesgos/alternativas es juicio clínico del médico; el
+        // asistente puede consultarlos, no crearlos (mismo criterio que Presupuesto).
+        can('read', 'Consentimiento');
+        // Tomar una radiografía es operar el equipo, no un juicio clínico —
+        // tarea típica del asistente dental. Borrar sí se reserva a
+        // médico/admin: ahí el riesgo es accidental/malicioso, no de criterio.
+        can('read', 'Radiografia');
+        can('create', 'Radiografia');
         break;
       case 'medico':
         // El médico agenda/cancela citas, marca llegada, da de alta pacientes
@@ -89,6 +100,11 @@ export class CaslAbilityFactory {
         can('create', 'Presupuesto');
         can('write', 'Presupuesto');
         can('abonar', 'Presupuesto');
+        can('read', 'Consentimiento');
+        can('create', 'Consentimiento');
+        can('read', 'Radiografia');
+        can('create', 'Radiografia');
+        can('delete', 'Radiografia');
         // Finanzas (ingresos del consultorio): SOLO médico (y admin vía manage
         // all). El asistente factura pero no ve las ganancias.
         can('read', 'Finanzas');
