@@ -97,6 +97,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       estatus: row.estatus,
       contenido: row.contenido_nom004,
       cerradoEn: row.cerrado_en ? new Date(row.cerrado_en) : null,
+      createdAt: new Date(row.created_at),
     });
   }
 

@@ -37,7 +37,7 @@ export class GetConsultationNoteUseCase {
         estatus: s.estatus,
         contenido: { ...s.contenido, especialidad },
         cerradoEn: s.cerradoEn ? s.cerradoEn.toISOString() : null,
-        createdAt: new Date().toISOString(),
+        createdAt: s.createdAt.toISOString(),
       };
     });
   }

@@ -379,6 +379,21 @@ function Diente({
           className="absolute left-[30%] top-[30%] h-[40%] w-[40%] hover:bg-slate-900/10"
           style={{ backgroundColor: colorCara('oclusal') }}
         />
+
+        {/* Surcos de la cara oclusal. Solo en posteriores, porque solo ellos
+            los tienen: es el rasgo por el que un dentista reconoce un molar
+            sin leer el número. `pointer-events-none` para que sigan siendo
+            decoración y no roben el clic a la cara de abajo. */}
+        {(tipo === 'molar' || tipo === 'premolar') && (
+          <span className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <span className="absolute left-[24%] right-[24%] top-1/2 h-px -translate-y-1/2 bg-slate-400/60" />
+            {/* El surco transversal es exclusivo del molar; el premolar tiene
+                un único surco entre sus dos cúspides. */}
+            {tipo === 'molar' && (
+              <span className="absolute bottom-[26%] left-1/2 top-[26%] w-px -translate-x-1/2 bg-slate-400/60" />
+            )}
+          </span>
+        )}
       </div>
 
       {/* El número queda FUERA del diente girado y sin rotar: un "36" de
