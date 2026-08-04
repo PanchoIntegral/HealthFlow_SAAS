@@ -149,4 +149,23 @@ export const env = {
   get marketingUrl(): string {
     return process.env.MARKETING_URL ?? 'http://localhost:3100';
   },
+
+  // ── Almacenamiento de archivos (R2/S3-compatible) ─────────────────
+  /**
+   * Getters LAZY a propósito, mismo criterio que `facturapiSecretKey`: solo
+   * se exigen si el adaptador real llega a instanciarse. Con
+   * STORAGE_PROVIDER=fake el arranque no las necesita.
+   */
+  get r2Endpoint(): string {
+    return required('R2_ENDPOINT');
+  },
+  get r2AccessKeyId(): string {
+    return required('R2_ACCESS_KEY_ID');
+  },
+  get r2SecretAccessKey(): string {
+    return required('R2_SECRET_ACCESS_KEY');
+  },
+  get r2BucketName(): string {
+    return required('R2_BUCKET_NAME');
+  },
 };

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
   ANTECEDENTES_VACIOS,
+  EMPTY_HISTORIA_CLINICA,
   EMPTY_NOTA_EVOLUCION,
   esEspecialidadValida,
   type Alergia,
@@ -50,11 +51,12 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
   }
 
   async createDraftNote(tx: Tx, input: CreateDraftNoteInput): Promise<string> {
+    const base = input.tipoNota === 'historia_clinica' ? EMPTY_HISTORIA_CLINICA : EMPTY_NOTA_EVOLUCION;
     // La especialidad queda grabada dentro del propio contenido: la nota es
     // autodescriptiva y no depende de cómo esté configurado el médico el día
     // que alguien la vuelva a abrir.
     const contenido = JSON.stringify({
-      ...EMPTY_NOTA_EVOLUCION,
+      ...base,
       especialidad: input.especialidad,
       extension: {},
       // Arrastra el estado dental de la visita anterior: el dentista marca lo
@@ -63,10 +65,17 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     } satisfies NotaEvolucionContent);
     const result = await tx.execute(sql`
       INSERT INTO clinical_notes (clinical_record_id, appointment_id, doctor_id, tipo_nota, contenido_nom004, estatus)
-      VALUES (${input.clinicalRecordId}, ${input.appointmentId}, ${input.doctorId}, 'nota_evolucion', ${contenido}::jsonb, 'borrador')
+      VALUES (${input.clinicalRecordId}, ${input.appointmentId}, ${input.doctorId}, ${input.tipoNota}, ${contenido}::jsonb, 'borrador')
       RETURNING id
     `);
     return (result.rows[0] as { id: string }).id;
+  }
+
+  async hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean> {
+    const result = await tx.execute(sql`
+      SELECT 1 FROM clinical_notes WHERE clinical_record_id = ${clinicalRecordId} LIMIT 1
+    `);
+    return result.rows.length > 0;
   }
 
   async findNoteByAppointment(tx: Tx, appointmentId: string): Promise<ClinicalNote | null> {

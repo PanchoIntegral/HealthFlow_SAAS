@@ -264,6 +264,34 @@ export const presupuestoAbonos = pgTable('presupuesto_abonos', {
 });
 
 /**
+ * Consentimiento informado (ver 0015_consentimientos.sql). Insert-only: sin
+ * estatus ni columnas de edición, porque no las hay — el GRANT de la
+ * migración ni siquiera permite UPDATE/DELETE al rol de la app.
+ */
+export const consentimientos = pgTable('consentimientos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  patientId: uuid('patient_id').notNull(),
+  presupuestoId: uuid('presupuesto_id'),
+  doctorId: uuid('doctor_id').notNull(),
+  procedimiento: text('procedimiento').notNull(),
+  contenido: text('contenido').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Metadata de imágenes clínicas (ver 0016_radiografias.sql). El archivo vive en storage S3-compatible, no aquí. */
+export const radiografias = pgTable('radiografias', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  patientId: uuid('patient_id').notNull(),
+  appointmentId: uuid('appointment_id'),
+  storageKey: text('storage_key').notNull(),
+  mimeType: text('mime_type').notNull(),
+  subidoPor: uuid('subido_por').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
  * Contadores de login fallido para el bloqueo progresivo (ver
  * 0011_login_security.sql). Sin tenant_id ni RLS: se consulta ANTES de saber
  * quién es el usuario. Clave compuesta (scope, key).
@@ -319,5 +347,7 @@ export const schema = {
   presupuestos,
   presupuestoPartidas,
   presupuestoAbonos,
+  consentimientos,
+  radiografias,
 };
 export type DbSchema = typeof schema;

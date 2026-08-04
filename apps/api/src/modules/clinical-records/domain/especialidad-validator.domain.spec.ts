@@ -140,6 +140,33 @@ describe('EspecialidadValidator', () => {
     });
   });
 
+  describe('historia clínica inicial', () => {
+    it('exige los 3 antecedentes además de la base NOM-004', () => {
+      const nota = notaBaseCompleta({ tipoNota: 'historia_clinica', especialidad: 'general' });
+      expect(EspecialidadValidator.validar(nota)).toEqual([
+        'antecedentesHeredofamiliares',
+        'antecedentesPersonalesPatologicos',
+        'antecedentesPersonalesNoPatologicos',
+      ]);
+    });
+
+    it('cierra cuando los 3 antecedentes están llenos', () => {
+      const nota = notaBaseCompleta({
+        tipoNota: 'historia_clinica',
+        especialidad: 'general',
+        antecedentesHeredofamiliares: 'Madre con DM2',
+        antecedentesPersonalesPatologicos: 'Sin antecedentes de relevancia',
+        antecedentesPersonalesNoPatologicos: 'Niega tabaquismo. Esquema de vacunación completo.',
+      });
+      expect(EspecialidadValidator.validar(nota)).toEqual([]);
+    });
+
+    it('NO exige antecedentes en una nota de evolución normal', () => {
+      const nota = notaBaseCompleta({ tipoNota: 'nota_evolucion', especialidad: 'general' });
+      expect(EspecialidadValidator.validar(nota)).toEqual([]);
+    });
+  });
+
   describe('degradado seguro', () => {
     // Estas son las que importan de verdad: ninguna configuración puede dejar
     // a un médico sin poder firmar una nota que ya empezó.

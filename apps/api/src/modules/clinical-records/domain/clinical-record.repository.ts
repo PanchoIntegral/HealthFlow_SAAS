@@ -1,4 +1,9 @@
-import type { ClinicalRecordView, EspecialidadKey, Odontograma } from '@healthflow/shared-types';
+import type {
+  ClinicalNoteType,
+  ClinicalRecordView,
+  EspecialidadKey,
+  Odontograma,
+} from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { ClinicalNote } from './clinical-note.entity';
 
@@ -6,6 +11,8 @@ export interface CreateDraftNoteInput {
   clinicalRecordId: string;
   appointmentId: string;
   doctorId: string;
+  /** 'historia_clinica' si es la primera nota del expediente, si no 'nota_evolucion'. */
+  tipoNota: ClinicalNoteType;
   /**
    * Se estampa en el contenido de la nota al crearla y ya no cambia. Si el
    * médico cambia de especialidad más adelante, sus notas anteriores deben
@@ -27,6 +34,9 @@ export interface ClinicalRecordRepository {
 
   /** Crea la nota borrador ligada a la cita y devuelve su id. */
   createDraftNote(tx: Tx, input: CreateDraftNoteInput): Promise<string>;
+
+  /** True si el expediente ya tiene alguna nota (de cualquier tipo/estatus). */
+  hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean>;
 
   findNoteByAppointment(tx: Tx, appointmentId: string): Promise<ClinicalNote | null>;
   saveNote(tx: Tx, note: ClinicalNote): Promise<void>;

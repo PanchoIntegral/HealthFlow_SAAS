@@ -1,5 +1,12 @@
 import { perfilDe, type NotaEvolucionContent, type PerfilEspecialidad } from '@healthflow/shared-types';
-import { NOM004Validator } from './nom004-validator';
+import { NOM004Validator, hasText } from './nom004-validator';
+
+/** Campos de antecedentes obligatorios SOLO en la historia clínica inicial. */
+const CAMPOS_HISTORIA_CLINICA = [
+  'antecedentesHeredofamiliares',
+  'antecedentesPersonalesPatologicos',
+  'antecedentesPersonalesNoPatologicos',
+] as const;
 
 /**
  * Validador de cierre de nota, en dos capas:
@@ -46,7 +53,14 @@ export class EspecialidadValidator {
       // campo exacto sin que choque con los nombres de los campos base.
       .map((campo) => `extension.${campo.key}`);
 
-    return [...base, ...faltantesEspecialidad];
+    // NOM-004 exige antecedentes completos en la primera visita. Son claves
+    // planas (sin prefijo), igual que padecimientoActual/planTerapeutico.
+    const faltantesHistoria =
+      content.tipoNota === 'historia_clinica'
+        ? CAMPOS_HISTORIA_CLINICA.filter((campo) => !hasText(content[campo]))
+        : [];
+
+    return [...base, ...faltantesEspecialidad, ...faltantesHistoria];
   }
 }
 

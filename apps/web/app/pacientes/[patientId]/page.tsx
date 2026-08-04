@@ -14,6 +14,8 @@ import { AppShell } from '../../../components/app-shell';
 import { AlertaAlergias } from '../../../components/alerta-alergias';
 import { EditorHistorial } from '../../../components/editor-historial';
 import { PresupuestoPanel } from '../../../components/presupuesto-panel';
+import { ConsentimientoPanel } from '../../../components/consentimiento-panel';
+import { RadiografiaPanel } from '../../../components/radiografia-panel';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -115,6 +117,20 @@ export default function ExpedientePage({
               <PresupuestoPanel token={token} patientId={patientId} />
             </section>
 
+            <section className="mb-6">
+              <h2 className="mb-3 font-semibold">Consentimientos</h2>
+              <ConsentimientoPanel token={token} patientId={patientId} />
+            </section>
+
+            <section className="mb-6">
+              <h2 className="mb-3 font-semibold">Radiografías</h2>
+              <RadiografiaPanel
+                token={token}
+                patientId={patientId}
+                puedeEliminar={user.rol === 'medico' || user.rol === 'admin'}
+              />
+            </section>
+
             {record.data.notas.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
                 Sin notas todavía.
@@ -141,7 +157,9 @@ function NotaCard({ nota }: { nota: ClinicalNoteView }) {
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <header className="mb-3 flex items-center justify-between">
         <div>
-          <p className="font-semibold">Nota de evolución</p>
+          <p className="font-semibold">
+            {nota.tipoNota === 'historia_clinica' ? 'Historia clínica' : 'Nota de evolución'}
+          </p>
           <p className="text-xs text-slate-500">{fecha(nota.cerradoEn ?? nota.createdAt)}</p>
         </div>
         <span
@@ -165,6 +183,22 @@ function NotaCard({ nota }: { nota: ClinicalNoteView }) {
             </span>
           ))}
         </div>
+      )}
+
+      {nota.tipoNota === 'historia_clinica' && (
+        <Section title="Antecedentes">
+          <div className="space-y-2 text-sm text-slate-700">
+            {c.antecedentesHeredofamiliares && (
+              <p><span className="font-medium text-slate-500">Heredofamiliares: </span>{c.antecedentesHeredofamiliares}</p>
+            )}
+            {c.antecedentesPersonalesPatologicos && (
+              <p><span className="font-medium text-slate-500">Patológicos: </span>{c.antecedentesPersonalesPatologicos}</p>
+            )}
+            {c.antecedentesPersonalesNoPatologicos && (
+              <p><span className="font-medium text-slate-500">No patológicos: </span>{c.antecedentesPersonalesNoPatologicos}</p>
+            )}
+          </div>
+        </Section>
       )}
 
       {c.padecimientoActual && (

@@ -62,6 +62,11 @@ export class StartConsultationUseCase {
           clinicalRecordId: recordId,
           appointmentId,
           doctorId: state.doctorId,
+          // Primera nota del expediente ⇒ historia clínica (NOM-004); las
+          // siguientes son notas de evolución normales.
+          tipoNota: (await this.records.hasAnyNoteForRecord(tx, recordId))
+            ? 'nota_evolucion'
+            : 'historia_clinica',
           especialidad: await this.records.getDoctorEspecialidad(tx, state.doctorId),
           odontograma: (await this.records.getUltimoOdontograma(tx, recordId)) ?? undefined,
         }));

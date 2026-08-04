@@ -14,12 +14,18 @@ import type {
   FinishConsultationResponse,
   HistorialPaciente,
   UpdateHistorialRequest,
+  ConfirmRadiografiaRequest,
+  ConsentimientoView,
+  CrearConsentimientoRequest,
   CrearPresupuestoRequest,
   EstatusPartida,
   EstatusPresupuesto,
   NuevaPartida,
   PresupuestoView,
+  RadiografiaView,
   RegistrarAbonoRequest,
+  RequestUploadUrlRequest,
+  RequestUploadUrlResponse,
   SaldosPorCobrar,
   LoginRequest,
   LoginResponse,
@@ -194,6 +200,30 @@ export const api = {
     }),
 
   saldosPorCobrar: (token: string) => request<SaldosPorCobrar>('/presupuestos/saldos', { token }),
+
+  // ── Consentimiento informado ─────────────────────────────────────
+  listarConsentimientos: (token: string, patientId: string) =>
+    request<ConsentimientoView[]>(`/consentimientos?patientId=${patientId}`, { token }),
+
+  crearConsentimiento: (token: string, body: CrearConsentimientoRequest) =>
+    request<ConsentimientoView>('/consentimientos', { method: 'POST', token, body: JSON.stringify(body) }),
+
+  // ── Radiografías ──────────────────────────────────────────────────
+  listarRadiografias: (token: string, patientId: string) =>
+    request<RadiografiaView[]>(`/radiografias?patientId=${patientId}`, { token }),
+
+  requestUploadUrl: (token: string, body: RequestUploadUrlRequest) =>
+    request<RequestUploadUrlResponse>('/radiografias/upload-url', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  confirmRadiografia: (token: string, body: ConfirmRadiografiaRequest) =>
+    request<RadiografiaView>('/radiografias', { method: 'POST', token, body: JSON.stringify(body) }),
+
+  eliminarRadiografia: (token: string, id: string) =>
+    request<void>(`/radiografias/${id}`, { method: 'DELETE', token }),
 
   /** Reemplazo completo de alergias y antecedentes del paciente. */
   updateHistorial: (token: string, patientId: string, historial: UpdateHistorialRequest) =>
