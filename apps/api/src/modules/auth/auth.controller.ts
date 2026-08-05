@@ -5,6 +5,8 @@ import { ClientIp } from '../../common/security/client-ip';
 import { AuthService, type ExchangeTicketResult } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ExchangeTicketDto } from './dto/exchange-ticket.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import type { AuthenticatedUser } from './authenticated-user';
 
@@ -56,6 +58,24 @@ export class AuthController {
     }
     res.status(HttpStatus.OK);
     return result;
+  }
+
+  /**
+   * Pide un enlace de restablecimiento por correo. Dispara un envío real
+   * (costo + reputación de dominio) y es un blanco de enumeración de cuentas
+   * por email — se limita igual de estricto que el login.
+   */
+  @Post('forgot-password')
+  @Throttle({ burst: { limit: 3, ttl: 1_000 }, default: { limit: 5, ttl: 60_000 } })
+  forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ ok: true }> {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  /** Canjea el token del correo por una contraseña nueva. Deja al usuario logueado. */
+  @Post('reset-password')
+  @Throttle({ burst: { limit: 3, ttl: 1_000 }, default: { limit: 10, ttl: 60_000 } })
+  resetPassword(@Body() dto: ResetPasswordDto): Promise<LoginResponse> {
+    return this.auth.resetPassword(dto.token, dto.newPassword);
   }
 
   /** Devuelve el usuario del token (útil para hidratar la sesión en el front). */

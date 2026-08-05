@@ -4,7 +4,9 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../auth/authenticated-user';
 import { GetUserProfileUseCase } from '../application/get-user-profile.use-case';
 import { UpdateEspecialidadUseCase } from '../application/update-especialidad.use-case';
+import { ChangePasswordUseCase } from '../application/change-password.use-case';
 import { UpdateEspecialidadDto } from './dto/update-especialidad.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 /**
  * Perfil del propio usuario autenticado. Autoservicio, no CASL: no es un dato
@@ -17,6 +19,7 @@ export class UsersController {
   constructor(
     private readonly getProfile: GetUserProfileUseCase,
     private readonly updateEspecialidad: UpdateEspecialidadUseCase,
+    private readonly changePassword: ChangePasswordUseCase,
   ) {}
 
   @Get('me')
@@ -30,5 +33,13 @@ export class UsersController {
     @Body() dto: UpdateEspecialidadDto,
   ): Promise<UserProfile> {
     return this.updateEspecialidad.execute(req.user.userId, dto);
+  }
+
+  @Patch('me/password')
+  updateMyPassword(
+    @Req() req: { user: AuthenticatedUser },
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ ok: true }> {
+    return this.changePassword.execute(req.user.userId, dto);
   }
 }

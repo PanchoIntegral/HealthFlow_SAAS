@@ -117,7 +117,102 @@ export default function AjustesPage() {
             {saving ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </form>
+
+        <CambiarPasswordCard token={token} />
       </div>
     </AppShell>
+  );
+}
+
+function CambiarPasswordCard({ token }: { token: string }) {
+  const [actual, setActual] = useState('');
+  const [nueva, setNueva] = useState('');
+  const [confirmar, setConfirmar] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [guardado, setGuardado] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setGuardado(false);
+
+    if (nueva.length < 8) {
+      setError('La contraseña nueva debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (nueva !== confirmar) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.changePassword(token, { currentPassword: actual, newPassword: nueva });
+      setGuardado(true);
+      setActual('');
+      setNueva('');
+      setConfirmar('');
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? 'La contraseña actual no es correcta.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Error de conexión',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="mt-6 max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+    >
+      <h2 className="text-lg font-semibold">Contraseña</h2>
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-slate-600">Contraseña actual</span>
+        <input
+          type="password"
+          value={actual}
+          onChange={(e) => setActual(e.target.value)}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20"
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-slate-600">Contraseña nueva</span>
+        <input
+          type="password"
+          value={nueva}
+          onChange={(e) => setNueva(e.target.value)}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20"
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-slate-600">Confirmar contraseña nueva</span>
+        <input
+          type="password"
+          value={confirmar}
+          onChange={(e) => setConfirmar(e.target.value)}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20"
+        />
+      </label>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {guardado && <p className="text-sm text-emerald-600">Contraseña actualizada.</p>}
+
+      <button
+        type="submit"
+        disabled={saving}
+        className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2.5 font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
+      >
+        {saving ? 'Guardando…' : 'Cambiar contraseña'}
+      </button>
+    </form>
   );
 }

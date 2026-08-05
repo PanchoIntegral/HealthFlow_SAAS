@@ -9,6 +9,16 @@ import { JwtStrategy } from './jwt.strategy';
 import { CaslAbilityFactory } from './casl/ability.factory';
 import { LoginAttemptsService } from './application/login-attempts.service';
 import { PasswordHasherService } from './application/password-hasher.service';
+import { EMAIL_PORT } from './domain/email.port';
+import { ResendAdapter } from './infrastructure/email/resend.adapter';
+import { FakeEmailAdapter } from './infrastructure/email/fake-email.adapter';
+
+/**
+ * El correo se selecciona por entorno vía useClass — mismo patrón que el PAC
+ * de facturación (billing.module.ts) y el storage de radiografías: NUNCA con
+ * un `if` dentro del adaptador real. Dev local sin Resend: EMAIL_PROVIDER=fake.
+ */
+const usarEmailFake = process.env.NODE_ENV === 'test' || process.env.EMAIL_PROVIDER === 'fake';
 
 @Module({
   imports: [
@@ -27,7 +37,10 @@ import { PasswordHasherService } from './application/password-hasher.service';
     CaslAbilityFactory,
     LoginAttemptsService,
     PasswordHasherService,
+    { provide: EMAIL_PORT, useClass: usarEmailFake ? FakeEmailAdapter : ResendAdapter },
   ],
-  exports: [CaslAbilityFactory, JwtModule],
+  // PasswordHasherService se exporta para que el módulo `users` la reuse en
+  // "cambiar contraseña" — un solo semáforo de bcrypt para todo el proceso.
+  exports: [CaslAbilityFactory, JwtModule, PasswordHasherService],
 })
 export class AuthModule {}

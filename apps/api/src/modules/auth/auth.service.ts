@@ -1,4 +1,14 @@
-import { HttpException, HttpStatus, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { randomBytes, createHash } from 'node:crypto';
+import {
+  BadRequestException,
+  GoneException,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { sql } from 'drizzle-orm';
 import type { LoginResponse, UserRole } from '@healthflow/shared-types';
@@ -8,6 +18,7 @@ import { env } from '../../config/env';
 import type { JwtPayload } from './authenticated-user';
 import { LoginAttemptsService } from './application/login-attempts.service';
 import { PasswordHasherService } from './application/password-hasher.service';
+import { EMAIL_PORT, type EmailPort } from './domain/email.port';
 import {
   OnboardingTicketsService,
   type RedeemResult,
@@ -55,6 +66,7 @@ export class AuthService {
     private readonly onboardingTickets: OnboardingTicketsService,
     private readonly attempts: LoginAttemptsService,
     private readonly hasher: PasswordHasherService,
+    @Inject(EMAIL_PORT) private readonly email: EmailPort,
   ) {}
 
   /**
@@ -114,6 +126,85 @@ export class AuthService {
       tenantId: result.tenantId,
       nombre: result.nombre,
       rol: result.rol,
+    });
+  }
+
+  /**
+   * Pide un enlace de restablecimiento. SIEMPRE resuelve éxito genérico, sin
+   * importar si el correo existe — mismo principio anti-enumeración que el
+   * `compareAgainstDummy` del login. El email es único POR TENANT, no global
+   * (ver 0000_init.sql), así que puede haber varias cuentas con el mismo
+   * correo: se crea un token y se manda un correo POR CADA UNA.
+   */
+  async forgotPassword(email: string): Promise<{ ok: true }> {
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+
+    const result = await this.db.execute(
+      sql`SELECT user_id, tenant_id, nombre, nombre_clinica FROM find_password_reset_candidates(${email})`,
+    );
+    const candidatos = result.rows as unknown as {
+      user_id: string;
+      tenant_id: string;
+      nombre: string;
+      nombre_clinica: string;
+    }[];
+
+    // Un token DISTINTO por cuenta candidata: token_hash es UNIQUE, así que
+    // no se puede insertar el mismo hash para dos cuentas que compartan
+    // email (ver comentario en 0017_password_reset.sql).
+    for (const row of candidatos) {
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      await this.db.execute(
+        sql`SELECT create_password_reset_token(${row.user_id}, ${row.tenant_id}, ${tokenHash}, ${expiresAt.toISOString()})`,
+      );
+
+      const link = `${env.appUrl}/restablecer-password?token=${rawToken}`;
+      await this.email.enviar({
+        to: email,
+        subject: `Restablece tu contraseña de HealthFlow — ${row.nombre_clinica}`,
+        html: `<p>Hola ${row.nombre},</p>
+<p>Pediste restablecer tu contraseña en HealthFlow para <strong>${row.nombre_clinica}</strong>.</p>
+<p><a href="${link}">Elige una contraseña nueva</a> (válido 30 minutos).</p>
+<p>Si no fuiste tú, ignora este correo — tu contraseña actual sigue funcionando.</p>`,
+      });
+    }
+
+    // Nunca revela si `candidatos` vino vacío: la respuesta es idéntica exista o no la cuenta.
+    return { ok: true };
+  }
+
+  /** Canjea el token de restablecimiento y deja al usuario logueado (mismo UX que exchangeTicket). */
+  async resetPassword(token: string, newPassword: string): Promise<LoginResponse> {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const newHash = await this.hasher.hash(newPassword);
+
+    const result = await this.db.execute(
+      sql`SELECT status, user_id, tenant_id, nombre, rol
+            FROM redeem_password_reset_token(${tokenHash}, ${newHash})`,
+    );
+    const row = (
+      result.rows as unknown as {
+        status: 'ok' | 'invalido' | 'expirado';
+        user_id: string | null;
+        tenant_id: string | null;
+        nombre: string | null;
+        rol: UserRole | null;
+      }[]
+    )[0];
+
+    if (!row || row.status === 'invalido') {
+      throw new BadRequestException('El enlace de restablecimiento no es válido.');
+    }
+    if (row.status === 'expirado') {
+      throw new GoneException('El enlace de restablecimiento expiró. Pide uno nuevo.');
+    }
+
+    return this.mintSession({
+      userId: row.user_id!,
+      tenantId: row.tenant_id!,
+      nombre: row.nombre!,
+      rol: row.rol!,
     });
   }
 

@@ -326,6 +326,17 @@ export const onboardingTickets = pgTable('onboarding_tickets', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+/** Token de un solo uso para "olvidé mi contraseña" (ver 0017_password_reset.sql). */
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const schema = {
   tenants,
   users,
@@ -343,6 +354,7 @@ export const schema = {
   cie10Diagnosticos,
   stripeEvents,
   onboardingTickets,
+  passwordResetTokens,
   loginAttempts,
   presupuestos,
   presupuestoPartidas,

@@ -16,6 +16,12 @@ export interface UserProfileRepository {
 
   /** Devuelve el perfil actualizado, o null si el usuario no existe en el tenant activo. */
   updateEspecialidad(tx: Tx, userId: string, input: UpdateEspecialidadInput): Promise<UserProfile | null>;
+
+  /** Hash actual de la contraseña, o null si el usuario no existe en el tenant activo. */
+  getPasswordHash(tx: Tx, userId: string): Promise<string | null>;
+
+  /** true si actualizó una fila (existía en el tenant activo). */
+  updatePasswordHash(tx: Tx, userId: string, newHash: string): Promise<boolean>;
 }
 
 export const USER_PROFILE_REPOSITORY = Symbol('USER_PROFILE_REPOSITORY');

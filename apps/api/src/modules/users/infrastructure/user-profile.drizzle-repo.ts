@@ -55,4 +55,19 @@ export class DrizzleUserProfileRepository implements UserProfileRepository {
     const row = (result.rows as unknown as UserProfileRow[])[0];
     return row ? toProfile(row) : null;
   }
+
+  async getPasswordHash(tx: Tx, userId: string): Promise<string | null> {
+    const result = await tx.execute(sql`
+      SELECT password_hash FROM users WHERE id = ${userId} LIMIT 1
+    `);
+    const row = (result.rows as unknown as { password_hash: string }[])[0];
+    return row?.password_hash ?? null;
+  }
+
+  async updatePasswordHash(tx: Tx, userId: string, newHash: string): Promise<boolean> {
+    const result = await tx.execute(sql`
+      UPDATE users SET password_hash = ${newHash} WHERE id = ${userId} RETURNING id
+    `);
+    return result.rows.length > 0;
+  }
 }

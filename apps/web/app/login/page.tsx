@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -57,7 +58,12 @@ export default function LoginPage() {
           </label>
 
           <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-600">Contraseña</span>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="font-medium text-slate-600">Contraseña</span>
+              <Link href="/olvide-password" className="text-xs font-medium text-brand-blue hover:underline">
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
             <input
               type="password"
               value={password}

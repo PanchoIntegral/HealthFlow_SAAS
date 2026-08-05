@@ -36,6 +36,15 @@ export class PasswordHasherService {
   }
 
   /**
+   * Genera el hash de una contraseña nueva (cambiar/restablecer contraseña),
+   * respetando el mismo límite de concurrencia que `compare`. Mismo costo
+   * (10) que ya usan create-account.ts y create-checkout-session.use-case.ts.
+   */
+  async hash(password: string): Promise<string> {
+    return this.withSlot(() => bcrypt.hash(password, 10));
+  }
+
+  /**
    * Consume el mismo tiempo de CPU que una comparación real, y devuelve
    * siempre false. Para el camino "el usuario no existe".
    */

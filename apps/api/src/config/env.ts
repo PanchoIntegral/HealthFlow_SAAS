@@ -168,4 +168,14 @@ export const env = {
   get r2BucketName(): string {
     return required('R2_BUCKET_NAME');
   },
+
+  // ── Correo transaccional (Resend) ──────────────────────────────────
+  /** Lazy: solo se exige si el adaptador real llega a instanciarse (EMAIL_PROVIDER=fake no la necesita). */
+  get resendApiKey(): string {
+    return required('RESEND_API_KEY');
+  },
+  /** Remitente. Por defecto el de pruebas de Resend, que funciona sin dominio verificado. */
+  get emailFrom(): string {
+    return process.env.EMAIL_FROM ?? 'HealthFlow <onboarding@resend.dev>';
+  },
 };

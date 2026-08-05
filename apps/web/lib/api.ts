@@ -14,6 +14,7 @@ import type {
   FinishConsultationResponse,
   HistorialPaciente,
   UpdateHistorialRequest,
+  ChangePasswordRequest,
   ConfirmRadiografiaRequest,
   ConsentimientoView,
   CrearConsentimientoRequest,
@@ -87,6 +88,18 @@ export class ApiError extends Error {
 export const api = {
   login: (body: LoginRequest) =>
     request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
+
+  forgotPassword: (email: string) =>
+    request<{ ok: true }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+
+  resetPassword: (token: string, newPassword: string) =>
+    request<LoginResponse>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
+    }),
+
+  changePassword: (token: string, body: ChangePasswordRequest) =>
+    request<{ ok: true }>('/users/me/password', { method: 'PATCH', token, body: JSON.stringify(body) }),
 
   /** 200 = LoginResponse; 202 = { status: 'pending' } (el webhook aún no termina). */
   exchangeOnboardingTicket: (stripeSessionId: string) =>
