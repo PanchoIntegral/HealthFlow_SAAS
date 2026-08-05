@@ -49,7 +49,9 @@ export const tenants = pgTable('tenants', {
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
-  tenantId: uuid('tenant_id').notNull(),
+  // Con DEFAULT desde 0018: dar de alta a un compañero corre con el tenant ya
+  // fijado, así que el insert no necesita nombrar la clínica.
+  tenantId: tenantIdConDefault(),
   email: text('email').notNull(),
   passwordHash: text('password_hash').notNull(),
   nombre: text('nombre').notNull(),
@@ -69,6 +71,16 @@ export const users = pgTable('users', {
    * `especialidad`, que es texto libre para mostrar (ver 0012_especialidad.sql).
    */
   especialidadKey: text('especialidad_key').notNull().default('general'),
+  /**
+   * Baja lógica (ver 0018_cuentas_equipo.sql): una cuenta inactiva no puede
+   * iniciar sesión y libera su cupo del plan, pero conserva su historial —
+   * notas firmadas, citas y facturas siguen apuntando a un usuario real.
+   */
+  activo: boolean('activo').notNull().default(true),
+  /** Titular que dio de alta esta cuenta (null para el dueño original). */
+  creadoPor: uuid('creado_por'),
+  /** Solo asistentes: médico al que asiste. */
+  medicoTitularId: uuid('medico_titular_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

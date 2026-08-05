@@ -26,6 +26,13 @@ export type Subject =
   | 'Presupuesto'
   | 'Consentimiento'
   | 'Radiografia'
+  /**
+   * Cuentas del equipo (alta de otros médicos y del asistente). Sin ningún
+   * `can` explícito abajo: solo el titular llega, vía `manage all` de 'admin'.
+   * Administrar la suscripción es del dueño de la cuenta, no de cada médico
+   * que atiende en la clínica.
+   */
+  | 'Cuenta'
   | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 

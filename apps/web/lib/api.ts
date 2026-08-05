@@ -14,8 +14,12 @@ import type {
   FinishConsultationResponse,
   HistorialPaciente,
   UpdateHistorialRequest,
+  ActualizarCuentaRequest,
   ChangePasswordRequest,
   ConfirmRadiografiaRequest,
+  CrearCuentaRequest,
+  CuentasResumen,
+  CuentaView,
   ConsentimientoView,
   CrearConsentimientoRequest,
   CrearPresupuestoRequest,
@@ -247,6 +251,19 @@ export const api = {
     }),
 
   getMyProfile: (token: string) => request<UserProfile>('/users/me', { token }),
+
+  // ── Cuentas del equipo (solo el titular) ──
+  cuentas: (token: string) => request<CuentasResumen>('/cuentas', { token }),
+
+  crearCuenta: (token: string, body: CrearCuentaRequest) =>
+    request<CuentaView>('/cuentas', { method: 'POST', token, body: JSON.stringify(body) }),
+
+  cambiarEstadoCuenta: (token: string, cuentaId: string, body: ActualizarCuentaRequest) =>
+    request<CuentaView>(`/cuentas/${cuentaId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    }),
 
   updateEspecialidad: (token: string, body: UpdateEspecialidadRequest) =>
     request<UserProfile>('/users/me/especialidad', {

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
 import { NotificationsBell } from './notifications-bell';
+import { UserMenu } from './user-menu';
 import {
   IconBudget,
   IconCalendar,
@@ -32,16 +33,6 @@ const NAV = [
   { href: '/ajustes', label: 'Ajustes', icon: IconSettings },
 ] as { href: string; label: string; icon: () => React.JSX.Element; roles?: string[] }[];
 
-function initials(nombre: string): string {
-  return nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-}
-
-const ESPECIALIDAD: Record<string, string> = {
-  medico: 'Medicina',
-  asistente: 'Asistente',
-  admin: 'Administración',
-};
-
 /**
  * Layout base de la app autenticada: sidebar fija + área de contenido.
  * Protege la ruta (redirige a /login si no hay sesión).
@@ -49,7 +40,7 @@ const ESPECIALIDAD: Record<string, string> = {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { token, user, ready, logout } = useAuth();
+  const { token, user, ready } = useAuth();
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -94,21 +85,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
+        {/* El nombre del usuario abre el menú de cuenta (Cuentas, Ajustes, salir). */}
         <div className="border-t border-slate-100 p-3">
-          <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-blue/10 text-sm font-semibold text-brand-blue">
-              {initials(user.nombre)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{user.nombre}</p>
-              <p className="truncate text-xs text-slate-400">{ESPECIALIDAD[user.rol] ?? user.rol}</p>
-            </div>
-            <button onClick={logout} title="Cerrar sesión" className="text-slate-300 hover:text-slate-500">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-              </svg>
-            </button>
-          </div>
+          <UserMenu />
         </div>
       </aside>
 

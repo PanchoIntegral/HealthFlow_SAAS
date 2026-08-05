@@ -176,9 +176,11 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
       -- es_medico cubre al dueño de la cuenta, que es 'admin' por permisos
       -- pero atiende consultas; rol = 'medico' se mantiene para que dar de
       -- alta un médico baste con asignarle el rol.
+      -- Solo cuentas activas: un médico dado de baja conserva sus citas y sus
+      -- notas firmadas, pero no debe poder recibir citas nuevas.
       SELECT id, nombre, especialidad
         FROM users
-       WHERE rol = 'medico' OR es_medico
+       WHERE activo AND (rol = 'medico' OR es_medico)
        ORDER BY nombre ASC
     `);
     return result.rows as unknown as DoctorSummary[];

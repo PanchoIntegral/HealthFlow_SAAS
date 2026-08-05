@@ -429,6 +429,143 @@ export interface ExchangeTicketExpiredResponse {
   status: 'expired';
 }
 
+// ── Cupos del plan contratado ─────────────────────────────────────
+//
+// Lo que la página de precios promete, expresado como datos y en UN solo
+// lugar: la API cobra estos límites al dar de alta cuentas o pacientes, y la
+// UI los muestra con el mismo objeto. Si el precio cambia, se cambia aquí.
+//
+// `null` = sin límite.
+
+export interface LimitesPlan {
+  /** Nombre comercial, tal cual aparece en la página de precios. */
+  nombre: string;
+  /**
+   * Asientos de médico. Cuentan tanto los usuarios con rol 'medico' como el
+   * dueño de la cuenta ('admin' con es_medico), porque el dueño también
+   * atiende y ocupa lugar en la agenda.
+   */
+  maxMedicos: number | null;
+  /**
+   * Asistentes. NO consumen asiento de médico: son personal de recepción, y
+   * el plan se vende por médicos. Van aparte a propósito.
+   */
+  maxAsistentes: number | null;
+  maxPacientes: number | null;
+}
+
+export const LIMITES_PLAN: Record<string, LimitesPlan> = {
+  individual: { nombre: 'Individual', maxMedicos: 1, maxAsistentes: 1, maxPacientes: 300 },
+  consultorio: { nombre: 'Consultorio', maxMedicos: 5, maxAsistentes: 1, maxPacientes: null },
+  /** Plan a cotización: los cupos se pactan en el contrato, no en el código. */
+  clinica: { nombre: 'Clínica', maxMedicos: null, maxAsistentes: null, maxPacientes: null },
+};
+
+/**
+ * Límites del plan de un tenant, con caída SEGURA al plan más chico.
+ *
+ * Nunca lanza y nunca regala capacidad: un `plan` desconocido (una cuenta
+ * anterior a los planes self-serve, un valor tecleado a mano) se trata como
+ * Individual. Ante la duda, el cupo más conservador — es la diferencia entre
+ * cobrar de menos y regalar el producto.
+ */
+export function limitesDePlan(plan: string | null | undefined): LimitesPlan {
+  if (!plan) return LIMITES_PLAN.individual!;
+  // Alias heredados de antes de que existieran los planes self-serve.
+  const normalizado = plan === 'pro' ? 'consultorio' : plan === 'free' ? 'individual' : plan;
+  return LIMITES_PLAN[normalizado] ?? LIMITES_PLAN.individual!;
+}
+
+// ── Cuentas del consultorio ───────────────────────────────────────
+//
+// El titular de la cuenta (rol 'admin') da de alta al resto del equipo: otros
+// médicos —cada uno con su propio expediente y agenda, pero bajo la misma
+// clínica— y la cuenta de asistente que le ayuda con la agenda.
+
+/** Roles que el titular puede dar de alta. 'admin' no está: hay uno solo. */
+export const ROLES_ASIGNABLES = ['medico', 'asistente'] as const;
+export type RolAsignable = (typeof ROLES_ASIGNABLES)[number];
+
+export interface CuentaView {
+  id: string;
+  nombre: string;
+  email: string;
+  rol: UserRole;
+  /** Atiende consulta (aparece en la agenda). True para el titular. */
+  esMedico: boolean;
+  especialidad: string | null;
+  especialidadKey: EspecialidadKey;
+  cedulaProfesional: string | null;
+  /** Una cuenta desactivada no puede iniciar sesión y libera su cupo. */
+  activo: boolean;
+  /** Médico al que asiste (solo asistentes). */
+  medicoTitularId: string | null;
+  medicoTitularNombre: string | null;
+  /** True para el dueño de la suscripción: no se puede desactivar a sí mismo. */
+  esTitular: boolean;
+  createdAt: string;
+}
+
+/** Cuentas del consultorio + cupos del plan, en una sola respuesta. */
+export interface CuentasResumen {
+  plan: string;
+  limites: LimitesPlan;
+  /** Cuentas ACTIVAS de cada tipo (las desactivadas no ocupan cupo). */
+  medicosActivos: number;
+  asistentesActivos: number;
+  cuentas: CuentaView[];
+}
+
+export interface CrearCuentaRequest {
+  nombre: string;
+  email: string;
+  password: string;
+  rol: RolAsignable;
+  /** Solo médicos. */
+  cedulaProfesional?: string;
+  especialidad?: string;
+  especialidadKey?: EspecialidadKey;
+  /** Solo asistentes: a qué médico asiste. Ausente ⇒ al titular de la cuenta. */
+  medicoTitularId?: string;
+}
+
+/** Alta/baja de una cuenta ya existente. */
+export interface ActualizarCuentaRequest {
+  activo: boolean;
+}
+
+/** Cupos libres de un plan, ya calculados. */
+export interface CuposPlan {
+  medicosDisponibles: number | null;
+  asistentesDisponibles: number | null;
+  puedeAgregarMedico: boolean;
+  puedeAgregarAsistente: boolean;
+}
+
+/**
+ * Cuánto cupo queda. Función pura y compartida: la API la usa para RECHAZAR y
+ * la web para deshabilitar el botón. Una sola aritmética evita el peor caso de
+ * UX —dejar llenar el formulario y fallar al enviar— y el peor de negocio
+ * —que la UI permita lo que el plan no incluye.
+ */
+export function cuposDisponibles(
+  limites: LimitesPlan,
+  medicosActivos: number,
+  asistentesActivos: number,
+): CuposPlan {
+  const medicosDisponibles =
+    limites.maxMedicos === null ? null : Math.max(0, limites.maxMedicos - medicosActivos);
+  const asistentesDisponibles =
+    limites.maxAsistentes === null ? null : Math.max(0, limites.maxAsistentes - asistentesActivos);
+
+  return {
+    medicosDisponibles,
+    asistentesDisponibles,
+    puedeAgregarMedico: medicosDisponibles === null || medicosDisponibles > 0,
+    puedeAgregarAsistente: asistentesDisponibles === null || asistentesDisponibles > 0,
+  };
+}
+
 // ── Presupuestos y cobranza ──────────────────────────────────────
 //
 // El plan de tratamiento cotizado. Vive en el PACIENTE y no en la cita: un

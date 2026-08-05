@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { PlanModule } from '../../common/plan/plan.module';
 import { CaslAbilityFactory } from '../auth/casl/ability.factory';
 import { PoliciesGuard } from '../auth/casl/policies.guard';
 import { PATIENT_REPOSITORY } from './domain/patient.repository';
@@ -10,7 +11,7 @@ import { DrizzlePatientRepository } from './infrastructure/patient.drizzle-repo'
 import { PatientsController } from './infrastructure/patients.controller';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, PlanModule],
   controllers: [PatientsController],
   providers: [
     RegisterPatientUseCase,

@@ -45,6 +45,11 @@ export class DrizzlePatientRepository implements PatientRepository {
     return result.rows.length > 0;
   }
 
+  async contarTodos(tx: Tx): Promise<number> {
+    const result = await tx.execute(sql`SELECT count(*)::int AS total FROM patients`);
+    return (result.rows as unknown as { total: number }[])[0]?.total ?? 0;
+  }
+
   async search(tx: Tx, query: string, limit: number): Promise<PatientSummary[]> {
     const like = `${query.toLowerCase()}%`;
     const result = await tx.execute(sql`

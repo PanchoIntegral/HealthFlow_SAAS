@@ -17,6 +17,9 @@ export interface PatientRepository {
   /** ¿Existe ya un paciente con esa CURP en el tenant activo? */
   existsByCurp(tx: Tx, curp: string): Promise<boolean>;
 
+  /** Total de pacientes de la clínica — lo que consume el cupo del plan. */
+  contarTodos(tx: Tx): Promise<number>;
+
   /** Búsqueda por nombre o CURP (prefijo, case-insensitive). Limitada. */
   search(tx: Tx, query: string, limit: number): Promise<PatientSummary[]>;
 
