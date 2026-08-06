@@ -1,9 +1,14 @@
-import type {
-  CampoExtra,
-  DiagnosticoCie10,
-  PerfilEspecialidad,
-  SignosVitales,
-  SugerenciaNotaIa,
+import {
+  CARAS_DIENTE,
+  estadoDentalPorKey,
+  piezasDeCuadrante,
+  type CampoExtra,
+  type CaraDiente,
+  type DiagnosticoCie10,
+  type MarcaDental,
+  type PerfilEspecialidad,
+  type SignosVitales,
+  type SugerenciaNotaIa,
 } from '@healthflow/shared-types';
 import { AsistenteIaRespuestaInvalidaError } from '../domain/asistente-ia.errors';
 import type { ExtraccionClinicaResult } from '../domain/asistente-clinico-ia.port';
@@ -50,6 +55,9 @@ export function mapearRespuesta(texto: string, perfil: PerfilEspecialidad): Extr
 
   const extension = extensionDe(crudo.extension, perfil.camposExtra);
   if (Object.keys(extension).length > 0) contenido.extension = extension;
+
+  const marcas = odontogramaDe(crudo.odontograma);
+  if (marcas.length > 0) contenido.odontograma = marcas;
 
   if (Object.keys(contenido).length === 0) {
     advertencias.push('No se detectó contenido clínico en el audio.');
@@ -184,6 +192,62 @@ function extensionDe(
     if (limpio) salida[campo.key] = limpio;
   }
   return salida;
+}
+
+/** Todas las piezas FDI válidas, permanentes y temporales. */
+const PIEZAS_VALIDAS = new Set(
+  [1, 2, 3, 4, 5, 6, 7, 8].flatMap((cuadrante) => piezasDeCuadrante(cuadrante)),
+);
+
+/**
+ * Marcas del odontograma. La validación es deliberadamente estricta: aquí un
+ * dato mal formado no produce un texto raro, produce un hallazgo en el diente
+ * equivocado, y de ahí sale un presupuesto y eventualmente un tratamiento.
+ *
+ * Se descarta —sin tumbar el resto— cualquier marca cuya pieza no exista en la
+ * notación FDI, cuyo estado no esté en el catálogo, o cuya cara no aplique.
+ */
+function odontogramaDe(valor: unknown): MarcaDental[] {
+  if (!Array.isArray(valor)) return [];
+
+  const vistas = new Set<string>();
+  const marcas: MarcaDental[] = [];
+
+  for (const item of valor) {
+    if (!esObjeto(item)) continue;
+
+    const pieza = typeof item.pieza === 'string' ? item.pieza.trim() : '';
+    if (!PIEZAS_VALIDAS.has(pieza)) continue;
+
+    const estadoKey = typeof item.estado === 'string' ? item.estado.trim().toLowerCase() : '';
+    const estado = estadoDentalPorKey(estadoKey);
+    if (!estado) continue;
+
+    const caraCruda = typeof item.cara === 'string' ? item.cara.trim().toLowerCase() : null;
+    const cara = (CARAS_DIENTE as readonly string[]).includes(caraCruda ?? '')
+      ? (caraCruda as CaraDiente)
+      : undefined;
+
+    // Un estado de pieza completa (ausente, corona, implante…) no admite cara:
+    // el catálogo lo dice y el odontograma lo pinta así. Si el modelo mandó
+    // una, se ignora en vez de generar una marca que la interfaz no sabe
+    // dibujar. Y al revés: un estado por cara SIN cara no se puede colocar.
+    if (estado.piezaCompleta) {
+      const clave = `${pieza}|${estado.key}`;
+      if (vistas.has(clave)) continue;
+      vistas.add(clave);
+      marcas.push({ pieza, estado: estado.key });
+      continue;
+    }
+
+    if (!cara) continue;
+    const clave = `${pieza}|${cara}|${estado.key}`;
+    if (vistas.has(clave)) continue;
+    vistas.add(clave);
+    marcas.push({ pieza, cara, estado: estado.key });
+  }
+
+  return marcas;
 }
 
 function arregloDeTexto(valor: unknown): string[] {

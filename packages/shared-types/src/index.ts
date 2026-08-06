@@ -481,6 +481,16 @@ export interface SugerenciaNotaIa {
   diagnosticos?: DiagnosticoCie10[];
   /** Campos propios de la especialidad, llaveados por `CampoExtra.key`. */
   extension?: Record<string, string | number | null>;
+  /**
+   * Hallazgos dentales que el médico dictó, en notación FDI. Solo se piden en
+   * odontología.
+   *
+   * Van como lista de marcas y NO como un `Odontograma` completo a propósito:
+   * la dentición (permanente/temporal/mixta) la eligió el dentista y no la
+   * decide una transcripción. Se agregan a lo que ya haya marcado, nunca lo
+   * reemplazan — un diente marcado a mano vale más que uno escuchado.
+   */
+  odontograma?: MarcaDental[];
 }
 
 export interface TranscribirConsultaResponse {
@@ -500,6 +510,7 @@ export const CAMPOS_SUGERIBLES_IA = [
   'signosVitales',
   'diagnosticos',
   'extension',
+  'odontograma',
 ] as const satisfies readonly (keyof SugerenciaNotaIa)[];
 export type CampoSugeribleIa = (typeof CAMPOS_SUGERIBLES_IA)[number];
 

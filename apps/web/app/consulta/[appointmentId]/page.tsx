@@ -222,6 +222,20 @@ export default function ConsultaPage({
         tocados.add('diagnosticos');
       }
 
+      // Odontograma: se AGREGAN las marcas que no existan ya en esa pieza y
+      // cara. Nunca se quita una marca del dentista ni se cambia la dentición
+      // que él eligió: solo él sabe si está viendo una boca mixta.
+      if (sugerencia.odontograma?.length) {
+        const previo = c.odontograma ?? ODONTOGRAMA_VACIO;
+        const clave = (m: { pieza: string; cara?: string }) => `${m.pieza}|${m.cara ?? ''}`;
+        const yaMarcadas = new Set(previo.marcas.map(clave));
+        const nuevas = sugerencia.odontograma.filter((m) => !yaMarcadas.has(clave(m)));
+        if (nuevas.length > 0) {
+          siguiente.odontograma = { ...previo, marcas: [...previo.marcas, ...nuevas] };
+          tocados.add('odontograma');
+        }
+      }
+
       const extension = { ...(c.extension ?? {}) };
       let cambioExtension = false;
       for (const [k, v] of Object.entries(sugerencia.extension ?? {})) {

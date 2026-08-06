@@ -1,7 +1,9 @@
-import type {
-  CampoExtra,
-  NotaEvolucionContent,
-  PerfilEspecialidad,
+import {
+  CARAS_DIENTE,
+  ESTADOS_DENTALES,
+  type CampoExtra,
+  type NotaEvolucionContent,
+  type PerfilEspecialidad,
 } from '@healthflow/shared-types';
 
 /**
@@ -52,7 +54,7 @@ esta forma exacta:
   "planTerapeutico": string | null,      // ${etiqueta('planTerapeutico')}. HTML simple.
   "signosVitales": { ${vitales} },       // solo estos; cada uno string o null
   "diagnosticos": [ { "cie10": string, "descripcion": string } ],
-  "extension": { ${camposExtraShape(perfil.camposExtra)} },
+  "extension": { ${camposExtraShape(perfil.camposExtra)} },${odontogramaShape(perfil)}
   "advertencias": [ string ]
 }
 
@@ -74,7 +76,7 @@ diagnóstico si el médico nombró la condición.${rangosCie10(perfil)}
 Si no estás seguro del código exacto, devuelve el arreglo vacío antes que un
 código equivocado: un CIE-10 mal puesto contamina las estadísticas de la
 clínica y los reportes que salen de ellas.
-${camposExtraDetalle(perfil.camposExtra)}${contextoYaLlenado(yaLlenados)}`;
+${camposExtraDetalle(perfil.camposExtra)}${odontogramaDetalle(perfil)}${contextoYaLlenado(yaLlenados)}`;
 }
 
 const DEFAULTS = {
@@ -116,6 +118,54 @@ function camposExtraDetalle(campos: readonly CampoExtra[]): string {
   return `
 CAMPOS DE LA ESPECIALIDAD (clave "extension")
 ${lineas.join('\n')}
+`;
+}
+
+/**
+ * El odontograma solo se le pide a odontología: es la única especialidad que
+ * lo captura, y pedirlo en las demás sería ruido en el prompt (y tokens que
+ * se pagan en cada consulta).
+ */
+function esDental(perfil: PerfilEspecialidad): boolean {
+  return perfil.key === 'odontologia';
+}
+
+function odontogramaShape(perfil: PerfilEspecialidad): string {
+  if (!esDental(perfil)) return '';
+  return `
+  "odontograma": [ { "pieza": string, "cara": string | null, "estado": string } ],`;
+}
+
+/**
+ * Instrucciones del odontograma.
+ *
+ * Es la parte con más riesgo de toda la extracción: una pieza equivocada no es
+ * una falta de ortografía, es marcar caries en el diente sano de al lado. De
+ * ahí el tono de las reglas — ante la duda, no marcar.
+ */
+function odontogramaDetalle(perfil: PerfilEspecialidad): string {
+  if (!esDental(perfil)) return '';
+
+  const porCara = ESTADOS_DENTALES.filter((e) => !e.piezaCompleta).map((e) => e.key);
+  const completos = ESTADOS_DENTALES.filter((e) => e.piezaCompleta).map((e) => e.key);
+
+  return `
+ODONTOGRAMA (clave "odontograma")
+Una entrada por hallazgo dental que el médico haya dicho EN VOZ ALTA.
+- "pieza": notación FDI de dos dígitos ("16", "26", "47"). Permanentes 11-18,
+  21-28, 31-38, 41-48; temporales 51-55, 61-65, 71-75, 81-85. Si el médico dijo
+  el nombre del diente sin número ("el primer molar inferior derecho"), tradúcelo
+  a FDI ("46") solo si la lateralidad y la posición son inequívocas.
+- "cara": ${CARAS_DIENTE.join(' | ')}, o null si el hallazgo es de la pieza completa.
+  Estados por cara: ${porCara.join(', ')}.
+  Estados de pieza completa (cara SIEMPRE null): ${completos.join(', ')}.
+- "estado": exactamente una de estas claves: ${ESTADOS_DENTALES.map((e) => e.key).join(', ')}.
+
+REGLA CRÍTICA: si no estás seguro de QUÉ pieza es, NO la incluyas. Marcar el
+diente equivocado en un expediente es peor que no marcar nada — el dentista
+puede agregar lo que falte con un clic, pero un hallazgo puesto en la pieza
+vecina puede acabar en un tratamiento sobre un diente sano. Un diente del que
+solo se dijo que está bien NO se marca: la salud es la ausencia de marca.
 `;
 }
 

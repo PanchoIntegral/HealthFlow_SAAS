@@ -191,6 +191,82 @@ describe('Asistente de IA · respuesta del modelo', () => {
     expect(contenido.extension).toEqual({ odo_cpod_cariados: 3 });
   });
 
+  describe('odontograma', () => {
+    const dental = PERFILES.odontologia;
+
+    it('solo se le pide a odontología', () => {
+      expect(construirPrompt(dental, {})).toContain('ODONTOGRAMA');
+      expect(construirPrompt(PERFILES.cardiologia, {})).not.toContain('ODONTOGRAMA');
+    });
+
+    it('mapea marcas por cara y de pieza completa', () => {
+      const { contenido } = mapearRespuesta(
+        JSON.stringify({
+          odontograma: [
+            { pieza: '16', cara: 'oclusal', estado: 'caries' },
+            { pieza: '26', cara: null, estado: 'corona' },
+          ],
+        }),
+        dental,
+      );
+
+      expect(contenido.odontograma).toEqual([
+        { pieza: '16', cara: 'oclusal', estado: 'caries' },
+        { pieza: '26', estado: 'corona' }, // sin cara: es de pieza completa
+      ]);
+    });
+
+    it('descarta una pieza que no existe en la notación FDI', () => {
+      const { contenido } = mapearRespuesta(
+        JSON.stringify({
+          odontograma: [
+            { pieza: '99', cara: 'oclusal', estado: 'caries' },
+            { pieza: '9', cara: 'oclusal', estado: 'caries' },
+            { pieza: '16', cara: 'oclusal', estado: 'caries' },
+          ],
+        }),
+        dental,
+      );
+
+      // Marcar el diente equivocado es peor que no marcar: ante la duda, fuera.
+      expect(contenido.odontograma).toEqual([{ pieza: '16', cara: 'oclusal', estado: 'caries' }]);
+    });
+
+    it('descarta estados fuera del catálogo y caras inválidas', () => {
+      const { contenido } = mapearRespuesta(
+        JSON.stringify({
+          odontograma: [
+            { pieza: '16', cara: 'oclusal', estado: 'picado' },
+            { pieza: '17', cara: 'arriba', estado: 'caries' },
+            { pieza: '18', cara: null, estado: 'caries' },
+          ],
+        }),
+        dental,
+      );
+
+      // 'caries' es por cara: sin una cara válida no se puede colocar.
+      expect(contenido.odontograma).toBeUndefined();
+    });
+
+    it('ignora la cara en un estado de pieza completa', () => {
+      const { contenido } = mapearRespuesta(
+        JSON.stringify({ odontograma: [{ pieza: '36', cara: 'mesial', estado: 'ausente' }] }),
+        dental,
+      );
+
+      expect(contenido.odontograma).toEqual([{ pieza: '36', estado: 'ausente' }]);
+    });
+
+    it('acepta piezas temporales', () => {
+      const { contenido } = mapearRespuesta(
+        JSON.stringify({ odontograma: [{ pieza: '54', cara: 'oclusal', estado: 'caries' }] }),
+        dental,
+      );
+
+      expect(contenido.odontograma).toHaveLength(1);
+    });
+  });
+
   it('lanza si la respuesta no es JSON', () => {
     expect(() => mapearRespuesta('lo siento, no puedo ayudarte con eso', perfil)).toThrow(
       AsistenteIaRespuestaInvalidaError,
