@@ -11,6 +11,7 @@ import {
   type CampoBaseKey,
   type Odontograma as OdontogramaData,
   type DiagnosticoCie10,
+  type EspecialidadKey,
   type NotaEvolucionContent,
   type PerfilEspecialidad,
   type PresupuestoView,
@@ -23,6 +24,7 @@ import { CamposEspecialidad } from '../../../components/campos-especialidad';
 import { AlertaAlergias } from '../../../components/alerta-alergias';
 import { Odontograma } from '../../../components/odontograma';
 import { NuevoPresupuestoModal } from '../../../components/nuevo-presupuesto-modal';
+import { Modal } from '../../../components/modal';
 import { pesos } from '../../../components/presupuesto-panel';
 
 /** Etiqueta de cada signo vital. Qué subconjunto se muestra lo decide el perfil. */
@@ -86,6 +88,9 @@ export default function ConsultaPage({
   const [modalPresupuesto, setModalPresupuesto] = useState(false);
   const [presupuestoCreado, setPresupuestoCreado] = useState<PresupuestoView | null>(null);
 
+  /** Se pide la cédula justo antes de firmar, si el médico aún no la tiene. */
+  const [modalCedula, setModalCedula] = useState(false);
+
   useEffect(() => {
     if (ready && !token) router.replace('/login');
   }, [ready, token, router]);
@@ -100,6 +105,18 @@ export default function ConsultaPage({
     queryKey: ['clinical-record', patientId],
     queryFn: () => api.getClinicalRecord(token!, patientId!),
     enabled: !!token && !!patientId,
+  });
+
+  /**
+   * Perfil del médico CONECTADO (distinto del perfil de la nota, más abajo):
+   * de aquí sale la cédula con la que se va a firmar. Se pide al abrir la
+   * consulta, no al hacer clic en firmar, para que el diálogo aparezca al
+   * instante y no después de una espera.
+   */
+  const miPerfil = useQuery({
+    queryKey: ['mi-perfil'],
+    queryFn: () => api.getMyProfile(token!),
+    enabled: !!token,
   });
 
   // Hidrata el contenido local una vez con lo que traiga el borrador.
@@ -136,6 +153,23 @@ export default function ConsultaPage({
       }
     },
   });
+
+  /**
+   * Firmar. Si el médico todavía no tiene cédula registrada, se le pide AQUÍ
+   * —en el único momento en que de verdad hace falta— y queda guardada para
+   * siempre: es la última oportunidad de que la nota salga completa, porque
+   * una vez cerrada ya no se puede tocar.
+   *
+   * Si el perfil no cargó (red caída, 500), no se estorba: se deja firmar. Un
+   * médico bloqueado con la consulta abierta es peor que una nota sin cédula.
+   */
+  const firmar = () => {
+    if (miPerfil.data && miPerfil.data.cedulaProfesional === null) {
+      setModalCedula(true);
+      return;
+    }
+    finish.mutate();
+  };
 
   /**
    * El perfil sale de la NOTA, no del médico conectado: una nota firmada hace
@@ -209,7 +243,7 @@ export default function ConsultaPage({
           )}
           {!readOnly && (
             <button
-              onClick={() => finish.mutate()}
+              onClick={firmar}
               disabled={finish.isPending}
               className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2 font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
             >
@@ -527,7 +561,111 @@ export default function ConsultaPage({
           onCreado={(p) => setPresupuestoCreado(p)}
         />
       )}
+
+      {modalCedula && miPerfil.data && (
+        <CedulaModal
+          token={token}
+          especialidadKey={miPerfil.data.especialidadKey}
+          onClose={() => setModalCedula(false)}
+          onGuardada={() => {
+            setModalCedula(false);
+            void miPerfil.refetch();
+            finish.mutate();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Pide la cédula profesional justo antes de firmar la primera nota, y la deja
+ * guardada en el perfil: se pregunta UNA vez en la vida de la cuenta.
+ *
+ * Se captura aquí y no solo en Ajustes porque este es el momento en que el dato
+ * importa y en que el médico lo tiene presente. Nadie entra a Ajustes a llenar
+ * un campo que todavía no le duele.
+ */
+function CedulaModal({
+  token,
+  especialidadKey,
+  onClose,
+  onGuardada,
+}: {
+  token: string;
+  especialidadKey: EspecialidadKey;
+  onClose: () => void;
+  onGuardada: () => void;
+}) {
+  const [cedula, setCedula] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const guardar = useMutation({
+    // Solo se manda la cédula: el backend conserva la etiqueta de agenda que
+    // ya tuviera (ver update-perfil.use-case.ts).
+    mutationFn: () => api.updatePerfil(token, { especialidadKey, cedulaProfesional: cedula.trim() }),
+    onSuccess: onGuardada,
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'No se pudo guardar la cédula'),
+  });
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!cedula.trim()) {
+      setError('Escribe tu cédula profesional para poder firmar.');
+      return;
+    }
+    guardar.mutate();
+  };
+
+  return (
+    <Modal
+      titulo="Tu cédula profesional"
+      subtitulo="Se guarda una sola vez. No te la volveremos a pedir."
+      onClose={onClose}
+    >
+      <form onSubmit={onSubmit} className="space-y-4">
+        <p className="text-sm leading-relaxed text-slate-600">
+          La NOM-004 exige que cada nota lleve el nombre y la cédula de quien la firma. Se va a
+          estampar en esta nota y en todas las que cierres después.
+        </p>
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">Cédula profesional</span>
+          <input
+            value={cedula}
+            onChange={(e) => setCedula(e.target.value)}
+            placeholder="1234567"
+            maxLength={40}
+            autoFocus
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20"
+          />
+          <span className="mt-1 block text-xs text-slate-400">
+            Después la puedes corregir desde Ajustes.
+          </span>
+        </label>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={guardar.isPending}
+            className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
+          >
+            {guardar.isPending ? 'Guardando…' : 'Guardar y firmar'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

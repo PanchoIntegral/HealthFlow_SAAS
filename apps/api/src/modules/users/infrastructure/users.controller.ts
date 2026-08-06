@@ -3,9 +3,9 @@ import type { UserProfile } from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import type { AuthenticatedUser } from '../../auth/authenticated-user';
 import { GetUserProfileUseCase } from '../application/get-user-profile.use-case';
-import { UpdateEspecialidadUseCase } from '../application/update-especialidad.use-case';
+import { UpdatePerfilUseCase } from '../application/update-perfil.use-case';
 import { ChangePasswordUseCase } from '../application/change-password.use-case';
-import { UpdateEspecialidadDto } from './dto/update-especialidad.dto';
+import { UpdatePerfilDto } from './dto/update-perfil.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 /**
@@ -18,7 +18,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 export class UsersController {
   constructor(
     private readonly getProfile: GetUserProfileUseCase,
-    private readonly updateEspecialidad: UpdateEspecialidadUseCase,
+    private readonly updatePerfil: UpdatePerfilUseCase,
     private readonly changePassword: ChangePasswordUseCase,
   ) {}
 
@@ -27,12 +27,21 @@ export class UsersController {
     return this.getProfile.execute(req.user.userId);
   }
 
-  @Patch('me/especialidad')
-  updateMyEspecialidad(
+  /**
+   * Perfil profesional propio: especialidad + cédula.
+   *
+   * Responde en dos rutas a propósito. `me/perfil` es el nombre correcto ahora
+   * que también lleva la cédula; `me/especialidad` se conserva porque el
+   * frontend se despliega por separado del API, y durante ese hueco una versión
+   * vieja de la web seguiría llamando a la ruta anterior. Se puede retirar en
+   * cuanto todos los clientes desplegados usen la nueva.
+   */
+  @Patch(['me/perfil', 'me/especialidad'])
+  updateMyPerfil(
     @Req() req: { user: AuthenticatedUser },
-    @Body() dto: UpdateEspecialidadDto,
+    @Body() dto: UpdatePerfilDto,
   ): Promise<UserProfile> {
-    return this.updateEspecialidad.execute(req.user.userId, dto);
+    return this.updatePerfil.execute(req.user.userId, dto);
   }
 
   @Patch('me/password')

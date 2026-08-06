@@ -384,12 +384,25 @@ export interface UserProfile {
   especialidad: string | null;
   /** Clave del catálogo PERFILES: personaliza campos, etiquetas y signos vitales de la nota. */
   especialidadKey: EspecialidadKey;
+  /**
+   * Cédula profesional. NOM-004 exige que la nota lleve el nombre COMPLETO y la
+   * cédula de quien la firma, así que este dato no es decorativo: es lo que se
+   * estampa en la firma al cerrar. Si está vacío, la nota se firma sin cédula
+   * y queda incompleta frente a la norma.
+   */
+  cedulaProfesional: string | null;
 }
 
-export interface UpdateEspecialidadRequest {
+/** Perfil profesional propio: lo que aparece en la agenda y en la firma. */
+export interface UpdatePerfilRequest {
   especialidadKey: EspecialidadKey;
   especialidad?: string;
+  /** Cadena vacía = borrar la cédula guardada. */
+  cedulaProfesional?: string;
 }
+
+/** @deprecated Usa UpdatePerfilRequest — mismo cuerpo, más la cédula. */
+export type UpdateEspecialidadRequest = UpdatePerfilRequest;
 
 // ── Suscripciones (Stripe) / onboarding self-serve ────────────────
 export const SELF_SERVE_PLANS = ['individual', 'consultorio'] as const;

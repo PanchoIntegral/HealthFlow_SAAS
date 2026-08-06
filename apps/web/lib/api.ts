@@ -40,7 +40,7 @@ import type {
   ReportsStats,
   StartConsultationResponse,
   TimbrarFacturaRequest,
-  UpdateEspecialidadRequest,
+  UpdatePerfilRequest,
   UserProfile,
   WaitingRoomEntry,
 } from '@healthflow/shared-types';
@@ -265,8 +265,9 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  updateEspecialidad: (token: string, body: UpdateEspecialidadRequest) =>
-    request<UserProfile>('/users/me/especialidad', {
+  /** Especialidad + cédula profesional (la que se estampa al firmar la nota). */
+  updatePerfil: (token: string, body: UpdatePerfilRequest) =>
+    request<UserProfile>('/users/me/perfil', {
       method: 'PATCH',
       token,
       body: JSON.stringify(body),

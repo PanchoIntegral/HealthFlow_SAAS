@@ -1,9 +1,11 @@
 import type { UserProfile } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 
-export interface UpdateEspecialidadInput {
+export interface UpdatePerfilInput {
   especialidadKey: string;
   especialidad: string | null;
+  /** null = borrar la cédula guardada. */
+  cedulaProfesional: string | null;
 }
 
 /**
@@ -15,7 +17,7 @@ export interface UserProfileRepository {
   getById(tx: Tx, userId: string): Promise<UserProfile | null>;
 
   /** Devuelve el perfil actualizado, o null si el usuario no existe en el tenant activo. */
-  updateEspecialidad(tx: Tx, userId: string, input: UpdateEspecialidadInput): Promise<UserProfile | null>;
+  updatePerfil(tx: Tx, userId: string, input: UpdatePerfilInput): Promise<UserProfile | null>;
 
   /** Hash actual de la contraseña, o null si el usuario no existe en el tenant activo. */
   getPasswordHash(tx: Tx, userId: string): Promise<string | null>;

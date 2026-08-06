@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { UserProfile } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
-import type { UpdateEspecialidadInput, UserProfileRepository } from '../domain/user-profile.repository';
+import type { UpdatePerfilInput, UserProfileRepository } from '../domain/user-profile.repository';
 
 interface UserProfileRow {
   id: string;
@@ -10,6 +10,7 @@ interface UserProfileRow {
   rol: UserProfile['rol'];
   especialidad: string | null;
   especialidad_key: UserProfile['especialidadKey'];
+  cedula_profesional: string | null;
 }
 
 function toProfile(row: UserProfileRow): UserProfile {
@@ -19,6 +20,7 @@ function toProfile(row: UserProfileRow): UserProfile {
     rol: row.rol,
     especialidad: row.especialidad,
     especialidadKey: row.especialidad_key,
+    cedulaProfesional: row.cedula_profesional,
   };
 }
 
@@ -31,7 +33,7 @@ function toProfile(row: UserProfileRow): UserProfile {
 export class DrizzleUserProfileRepository implements UserProfileRepository {
   async getById(tx: Tx, userId: string): Promise<UserProfile | null> {
     const result = await tx.execute(sql`
-      SELECT id, nombre, rol, especialidad, especialidad_key
+      SELECT id, nombre, rol, especialidad, especialidad_key, cedula_profesional
         FROM users
        WHERE id = ${userId}
        LIMIT 1
@@ -40,17 +42,18 @@ export class DrizzleUserProfileRepository implements UserProfileRepository {
     return row ? toProfile(row) : null;
   }
 
-  async updateEspecialidad(
+  async updatePerfil(
     tx: Tx,
     userId: string,
-    input: UpdateEspecialidadInput,
+    input: UpdatePerfilInput,
   ): Promise<UserProfile | null> {
     const result = await tx.execute(sql`
       UPDATE users
          SET especialidad = ${input.especialidad},
-             especialidad_key = ${input.especialidadKey}
+             especialidad_key = ${input.especialidadKey},
+             cedula_profesional = ${input.cedulaProfesional}
        WHERE id = ${userId}
-      RETURNING id, nombre, rol, especialidad, especialidad_key
+      RETURNING id, nombre, rol, especialidad, especialidad_key, cedula_profesional
     `);
     const row = (result.rows as unknown as UserProfileRow[])[0];
     return row ? toProfile(row) : null;

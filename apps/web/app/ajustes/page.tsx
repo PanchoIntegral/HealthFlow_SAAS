@@ -15,6 +15,16 @@ export default function AjustesPage() {
 
   const [especialidadKey, setEspecialidadKey] = useState<EspecialidadKey>('general');
   const [especialidad, setEspecialidad] = useState('');
+  const [cedula, setCedula] = useState('');
+  /** Cédula tal como está GUARDADA. Dispara el aviso, no lo que se va tecleando. */
+  const [cedulaGuardada, setCedulaGuardada] = useState<string | null>(null);
+  const [rol, setRol] = useState<string>('medico');
+  /**
+   * Solo true si el perfil se leyó BIEN. `loading` no basta: baja a false
+   * también cuando la petición falla, y ahí el aviso de "falta tu cédula"
+   * saldría sin haber leído nunca si la tiene o no.
+   */
+  const [perfilCargado, setPerfilCargado] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +41,10 @@ export default function AjustesPage() {
       .then((profile) => {
         setEspecialidadKey(profile.especialidadKey);
         setEspecialidad(profile.especialidad ?? '');
+        setCedula(profile.cedulaProfesional ?? '');
+        setCedulaGuardada(profile.cedulaProfesional);
+        setRol(profile.rol);
+        setPerfilCargado(true);
       })
       .catch(() => setError('No se pudo cargar tu perfil'))
       .finally(() => setLoading(false));
@@ -43,10 +57,15 @@ export default function AjustesPage() {
     setGuardado(false);
     setSaving(true);
     try {
-      await api.updateEspecialidad(token, {
+      const perfil = await api.updatePerfil(token, {
         especialidadKey,
         especialidad: especialidad.trim() || undefined,
+        // Se manda siempre (aunque vaya vacío): así vaciar el campo borra la
+        // cédula guardada, en vez de dejarla ahí sin forma de corregir un error
+        // de captura.
+        cedulaProfesional: cedula.trim(),
       });
+      setCedulaGuardada(perfil.cedulaProfesional);
       setGuardado(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Error de conexión');
@@ -62,14 +81,46 @@ export default function AjustesPage() {
       <div className="p-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Ajustes</h1>
-          <p className="text-sm text-slate-500">Tu especialidad personaliza los campos de tu nota clínica.</p>
+          <p className="text-sm text-slate-500">
+            Tu perfil profesional decide cómo es tu nota clínica y con qué datos se firma.
+          </p>
         </div>
+
+        {/* El aviso va ARRIBA de todo y solo para quien firma notas: una nota
+            cerrada sin cédula ya no se puede reparar, así que enterarse tarde
+            no sirve de nada. */}
+        {perfilCargado && cedulaGuardada === null && rol !== 'asistente' && (
+          <div className="mb-6 max-w-lg rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-900">Falta tu cédula profesional</p>
+            <p className="mt-1 text-sm leading-relaxed text-amber-800">
+              La NOM-004 exige que cada nota lleve el nombre y la cédula de quien la firma.
+              Mientras no la captures, tus notas se cierran sin ella — y una nota firmada ya no
+              se puede modificar.
+            </p>
+          </div>
+        )}
 
         <form
           onSubmit={onSubmit}
           className="max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
         >
-          <h2 className="text-lg font-semibold">Especialidad</h2>
+          <h2 className="text-lg font-semibold">Perfil profesional</h2>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">Cédula profesional</span>
+            <input
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value)}
+              disabled={loading}
+              placeholder="1234567"
+              inputMode="text"
+              maxLength={40}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20 disabled:bg-slate-50"
+            />
+            <span className="mt-1 block text-xs text-slate-400">
+              Se estampa en la firma de cada nota que cierres, junto con tu nombre y la fecha.
+            </span>
+          </label>
 
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">Especialidad clínica</span>
