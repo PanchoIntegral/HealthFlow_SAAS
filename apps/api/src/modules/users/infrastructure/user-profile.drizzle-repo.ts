@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { UserProfile } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
-import type { UpdatePerfilInput, UserProfileRepository } from '../domain/user-profile.repository';
+import type {
+  PerfilPersistido,
+  UpdatePerfilInput,
+  UserProfileRepository,
+} from '../domain/user-profile.repository';
 
 interface UserProfileRow {
   id: string;
@@ -13,7 +17,7 @@ interface UserProfileRow {
   cedula_profesional: string | null;
 }
 
-function toProfile(row: UserProfileRow): UserProfile {
+function toProfile(row: UserProfileRow): PerfilPersistido {
   return {
     id: row.id,
     nombre: row.nombre,
@@ -31,7 +35,7 @@ function toProfile(row: UserProfileRow): UserProfile {
  */
 @Injectable()
 export class DrizzleUserProfileRepository implements UserProfileRepository {
-  async getById(tx: Tx, userId: string): Promise<UserProfile | null> {
+  async getById(tx: Tx, userId: string): Promise<PerfilPersistido | null> {
     const result = await tx.execute(sql`
       SELECT id, nombre, rol, especialidad, especialidad_key, cedula_profesional
         FROM users
@@ -46,7 +50,7 @@ export class DrizzleUserProfileRepository implements UserProfileRepository {
     tx: Tx,
     userId: string,
     input: UpdatePerfilInput,
-  ): Promise<UserProfile | null> {
+  ): Promise<PerfilPersistido | null> {
     const result = await tx.execute(sql`
       UPDATE users
          SET especialidad = ${input.especialidad},

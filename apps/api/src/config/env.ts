@@ -61,6 +61,27 @@ export const env = {
   get jwtSecret(): string {
     return required('JWT_SECRET');
   },
+  /**
+   * Llave de la API de Gemini (asistente de transcripción). Getter lazy: solo
+   * se exige cuando corre el adaptador real, así que arrancar con
+   * GEMINI_PROVIDER=fake no la necesita.
+   */
+  get geminiApiKey(): string {
+    return required('GEMINI_API_KEY');
+  },
+  /**
+   * Modelo de Gemini para transcribir la consulta. Configurable porque el
+   * catálogo de Google cambia varias veces al año: actualizar es cambiar una
+   * variable, no desplegar código. Verificable con:
+   *   curl -H "x-goog-api-key: $GEMINI_API_KEY" \
+   *     https://generativelanguage.googleapis.com/v1beta/models
+   */
+  get geminiModel(): string {
+    // Versión FIJA y no un alias tipo `gemini-flash-latest`: en un producto
+    // clínico no conviene que el modelo cambie solo de una noche a otra sin
+    // que nadie haya vuelto a probar la calidad de las notas.
+    return process.env.GEMINI_MODEL ?? 'gemini-3.6-flash';
+  },
   get jwtExpiresIn(): string {
     return process.env.JWT_EXPIRES_IN ?? '1d';
   },

@@ -391,6 +391,13 @@ export interface UserProfile {
    * y queda incompleta frente a la norma.
    */
   cedulaProfesional: string | null;
+  /**
+   * Si la clínica tiene contratado el asistente de transcripción con IA. Viaja
+   * con el perfil —y no en una petición aparte— porque la pantalla de consulta
+   * ya lee el perfil al montar, y así el botón de grabar aparece sin un viaje
+   * extra al servidor.
+   */
+  asistenteIaActivo: boolean;
 }
 
 /** Perfil profesional propio: lo que aparece en la agenda y en la firma. */
@@ -441,6 +448,60 @@ export interface ExchangeTicketPendingResponse {
 export interface ExchangeTicketExpiredResponse {
   status: 'expired';
 }
+
+// ── Asistente de transcripción con IA ─────────────────────────────
+//
+// El médico graba la consulta y el modelo devuelve un BORRADOR de la nota.
+// Todo lo que sale de aquí es una sugerencia que el médico revisa y corrige
+// antes de firmar: la responsabilidad del expediente no se delega.
+
+/** Contenedores que el navegador puede producir con MediaRecorder. */
+export const MIME_TYPES_AUDIO = ['audio/webm', 'audio/ogg', 'audio/mp4'] as const;
+export type MimeTypeAudio = (typeof MIME_TYPES_AUDIO)[number];
+
+/**
+ * Lo que el asistente propone tras escuchar la consulta.
+ *
+ * Tipo PLANO y con todo opcional, en vez de un `Partial<NotaEvolucionContent>`:
+ * una sugerencia no es una nota a medio hacer. Solo viajan las claves que el
+ * modelo pudo inferir de lo que se dijo; lo que no se mencionó viene ausente,
+ * nunca relleno con texto genérico — un campo inventado en un expediente es
+ * peor que un campo vacío. Y `signosVitales` es parcial de verdad: si en la
+ * consulta solo se dijo la presión, viaja la presión y nada más, sin fingir
+ * que se midió el resto.
+ *
+ * El frontend MEZCLA esto sobre lo que el médico ya escribió; jamás reemplaza.
+ */
+export interface SugerenciaNotaIa {
+  padecimientoActual?: string;
+  hallazgos?: string;
+  planTerapeutico?: string;
+  signosVitales?: Partial<SignosVitales>;
+  /** Candidatos a revisar, NUNCA diagnósticos en firme. */
+  diagnosticos?: DiagnosticoCie10[];
+  /** Campos propios de la especialidad, llaveados por `CampoExtra.key`. */
+  extension?: Record<string, string | number | null>;
+}
+
+export interface TranscribirConsultaResponse {
+  contenido: SugerenciaNotaIa;
+  /** Avisos para el médico, p.ej. "no se detectaron signos vitales en el audio". */
+  advertencias: string[];
+}
+
+/**
+ * Claves que el asistente puede proponer. Se usa para marcar en la interfaz
+ * qué escribió la IA y qué escribió el médico.
+ */
+export const CAMPOS_SUGERIBLES_IA = [
+  'padecimientoActual',
+  'hallazgos',
+  'planTerapeutico',
+  'signosVitales',
+  'diagnosticos',
+  'extension',
+] as const satisfies readonly (keyof SugerenciaNotaIa)[];
+export type CampoSugeribleIa = (typeof CAMPOS_SUGERIBLES_IA)[number];
 
 // ── Cupos del plan contratado ─────────────────────────────────────
 //

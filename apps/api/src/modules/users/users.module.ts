@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AsistenteIaActivoReader } from '../ai-scribe/application/asistente-ia-activo.reader';
 import { USER_PROFILE_REPOSITORY } from './domain/user-profile.repository';
 import { GetUserProfileUseCase } from './application/get-user-profile.use-case';
 import { UpdatePerfilUseCase } from './application/update-perfil.use-case';
@@ -15,6 +16,9 @@ import { UsersController } from './infrastructure/users.controller';
   providers: [
     GetUserProfileUseCase,
     UpdatePerfilUseCase,
+    // Lector sin estado del flag del tenant: se provee aquí para componerlo en
+    // el perfil, sin importar el módulo del asistente entero.
+    AsistenteIaActivoReader,
     ChangePasswordUseCase,
     { provide: USER_PROFILE_REPOSITORY, useClass: DrizzleUserProfileRepository },
   ],

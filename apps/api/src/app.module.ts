@@ -22,6 +22,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ConsentimientosModule } from './modules/consentimientos/consentimientos.module';
 import { RadiografiasModule } from './modules/radiografias/radiografias.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     ConsentimientosModule,
     RadiografiasModule,
     AccountsModule,
+    AiScribeModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.

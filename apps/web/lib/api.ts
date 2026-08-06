@@ -40,6 +40,7 @@ import type {
   ReportsStats,
   StartConsultationResponse,
   TimbrarFacturaRequest,
+  TranscribirConsultaResponse,
   UpdatePerfilRequest,
   UserProfile,
   WaitingRoomEntry,
@@ -251,6 +252,35 @@ export const api = {
     }),
 
   getMyProfile: (token: string) => request<UserProfile>('/users/me', { token }),
+
+  /**
+   * Manda el audio de la consulta a transcribir. No usa `request()` porque el
+   * cuerpo es multipart: el navegador tiene que poner él mismo el
+   * Content-Type con su boundary, y fijarlo a mano rompe la petición.
+   */
+  transcribirIa: async (
+    token: string,
+    appointmentId: string,
+    audio: Blob,
+    camposYaLlenados: NotaEvolucionContent,
+  ): Promise<TranscribirConsultaResponse> => {
+    const form = new FormData();
+    // La extensión importa poco; el mime del Blob es lo que el API valida.
+    form.append('audio', audio, 'consulta.webm');
+    form.append('camposYaLlenados', JSON.stringify(camposYaLlenados));
+
+    const res = await fetch(`${API_URL}/api/consultations/${appointmentId}/transcribir-ia`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, body.message ?? res.statusText, body);
+    }
+    return res.json() as Promise<TranscribirConsultaResponse>;
+  },
 
   // ── Cuentas del equipo (solo el titular) ──
   cuentas: (token: string) => request<CuentasResumen>('/cuentas', { token }),

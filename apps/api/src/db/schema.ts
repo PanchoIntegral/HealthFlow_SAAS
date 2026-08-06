@@ -44,6 +44,11 @@ export const tenants = pgTable('tenants', {
   subscriptionStatus: text('subscription_status').notNull().default('none'),
   /** 'mensual' | 'anual' — qué Price de Stripe se está cobrando. */
   billingPeriod: text('billing_period').notNull().default('mensual'),
+  /**
+   * Asistente de transcripción con IA (ver 0019). Apagado por omisión: mandar
+   * el audio de una consulta a un tercero es una decisión de cada clínica.
+   */
+  asistenteIaActivo: boolean('asistente_ia_activo').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
