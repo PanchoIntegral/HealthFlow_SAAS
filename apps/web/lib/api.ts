@@ -46,6 +46,7 @@ import type {
   WaitingRoomEntry,
 } from '@healthflow/shared-types';
 import { API_URL } from './config';
+import { marcarAlCorriente, marcarSuspendida } from './suscripcion';
 
 async function request<T>(
   path: string,
@@ -70,8 +71,17 @@ async function request<T>(
         window.location.href = '/login';
       }
     }
+    // La suscripción venció: la cuenta quedó en solo lectura. No se redirige
+    // (a diferencia del 401) porque consultar sí funciona — solo se levanta
+    // el aviso global para que el usuario sepa por qué no pudo guardar.
+    if (res.status === 402 && body.error === 'SuscripcionSuspendida') {
+      marcarSuspendida();
+    }
     throw new ApiError(res.status, body.message ?? res.statusText, body);
   }
+  // Una escritura que pasó significa que la suscripción está al corriente:
+  // es como se baja el aviso tras pagar, sin necesidad de recargar.
+  if (rest.method && rest.method !== 'GET') marcarAlCorriente();
   if (res.status === 204) return undefined as T;
   // Algunos endpoints responden 200 con body vacío para representar `null`
   // (p.ej. Express serializa un valor `null` de vuelta como respuesta sin
@@ -112,6 +122,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ stripeSessionId }),
     }),
+
+  /**
+   * Abre el portal de facturación de Stripe (actualizar tarjeta, ver
+   * facturas, cancelar). Funciona aun con la suscripción vencida: es
+   * justamente como se deja de estarlo.
+   */
+  portalSession: (token: string) =>
+    request<{ url: string }>('/subscriptions/portal-session', { method: 'POST', token }),
 
   waitingRoom: (token: string) =>
     request<WaitingRoomEntry[]>('/appointments/waiting-room', { token }),
