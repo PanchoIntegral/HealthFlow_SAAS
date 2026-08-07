@@ -67,3 +67,23 @@ export function diasDeGracia(ultimoPagoAt: Date | null): number {
 export function requiereAtencion(status: SubscriptionStatus): boolean {
   return status === 'past_due' || status === 'unpaid' || status === 'incomplete';
 }
+
+/**
+ * Qué tan grave es la situación de pago, para la UI.
+ *
+ * Existe porque el 402 llega DEMASIADO TARDE: solo se dispara cuando la cuenta
+ * ya quedó en solo lectura, es decir con la gracia agotada. Durante esos 7 días
+ * el usuario no se enteraba de nada y un buen día dejaba de poder guardar. La
+ * cláusula 5.3 de los términos además promete avisar con anticipación, así que
+ * el aviso previo no es solo cortesía.
+ *
+ * Se deriva aquí, junto a `debeRestringir`, y no en el cliente: si el frontend
+ * reimplementara el umbral, las dos definiciones de "suspendida" se separarían
+ * al primer cambio de política y el banner mentiría.
+ */
+export type AvisoSuscripcion = 'ok' | 'advertencia' | 'suspendida';
+
+export function avisoSuscripcion(estado: EstadoSuscripcion, ahora: Date): AvisoSuscripcion {
+  if (debeRestringir(estado, ahora)) return 'suspendida';
+  return requiereAtencion(estado.status) ? 'advertencia' : 'ok';
+}

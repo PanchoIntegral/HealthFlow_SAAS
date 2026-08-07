@@ -166,4 +166,40 @@ describe('Gating de suscripción (solo lectura por impago)', () => {
     await comoTenant('canceled', null);
     await request(app.getHttpServer()).post('/api/patients').send({}).expect(401);
   });
+
+  /**
+   * El 402 solo aparece cuando ya se restringió, o sea con la gracia agotada.
+   * GET /users/me es lo que permite avisar ANTES — y tiene que funcionar
+   * incluso con la cuenta suspendida, porque es justo entonces cuando el banner
+   * necesita explicar qué pasa.
+   */
+  describe('GET /users/me expone el estado de pago', () => {
+    const leerPerfil = () =>
+      request(app.getHttpServer()).get('/api/users/me').set(auth()).expect(200);
+
+    it('al corriente: no hay nada que avisar', async () => {
+      await comoTenant('active', null);
+      const { body } = await leerPerfil();
+      expect(body.suscripcion).toMatchObject({ aviso: 'ok', graceUntil: null });
+    });
+
+    it('dentro de la gracia: advierte y dice hasta cuándo', async () => {
+      await comoTenant('past_due', manana);
+      const { body } = await leerPerfil();
+      expect(body.suscripcion.aviso).toBe('advertencia');
+      // La fecha es el contenido del aviso: sin ella el banner no puede
+      // cumplir lo que promete la cláusula 5.3 de los términos.
+      expect(new Date(body.suscripcion.graceUntil).toISOString()).toBe(
+        new Date(manana).toISOString(),
+      );
+    });
+
+    it('gracia agotada: suspendida, y la lectura sigue respondiendo', async () => {
+      await comoTenant('past_due', ayer);
+      const { body } = await leerPerfil();
+      expect(body.suscripcion).toMatchObject({ aviso: 'suspendida', graceUntil: null });
+      // El perfil completo sigue viajando: el gating no bloquea lecturas.
+      expect(body.id).toBe(userId);
+    });
+  });
 });

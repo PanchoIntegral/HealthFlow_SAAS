@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
-import type { UserProfile } from '@healthflow/shared-types';
+import type { UserProfile, UserProfileMe } from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermitirSinSuscripcion } from '../../../common/subscription/permitir-sin-suscripcion.decorator';
 import type { AuthenticatedUser } from '../../auth/authenticated-user';
@@ -24,7 +24,7 @@ export class UsersController {
   ) {}
 
   @Get('me')
-  me(@Req() req: { user: AuthenticatedUser }): Promise<UserProfile> {
+  me(@Req() req: { user: AuthenticatedUser }): Promise<UserProfileMe> {
     return this.getProfile.execute(req.user.userId);
   }
 

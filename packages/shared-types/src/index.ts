@@ -400,6 +400,40 @@ export interface UserProfile {
   asistenteIaActivo: boolean;
 }
 
+/**
+ * Qué tan grave es la situación de pago de la clínica.
+ *
+ * Lo DERIVA el servidor (common/subscription/debe-restringir.ts) y el cliente
+ * solo lo pinta: el umbral de la gracia es política de negocio y tenerlo en un
+ * solo lado evita que el banner y el gating discrepen.
+ *
+ *  - `ok`          — al corriente (o sin suscripción: seeds y desarrollo).
+ *  - `advertencia` — un cobro falló y corre la gracia. Todavía puede escribir.
+ *  - `suspendida`  — gracia agotada: la cuenta está en SOLO LECTURA.
+ */
+export type AvisoSuscripcion = 'ok' | 'advertencia' | 'suspendida';
+
+/** Estado de pago de la clínica, tal como lo consume la UI. Fechas en ISO. */
+export interface SuscripcionEstadoView {
+  aviso: AvisoSuscripcion;
+  /** Hasta cuándo se tolera el impago. Solo viene con `aviso: 'advertencia'`. */
+  graceUntil: string | null;
+  /** Fin del periodo pagado, para "tu plan se renueva el …". */
+  currentPeriodEnd: string | null;
+}
+
+/**
+ * GET /users/me: el perfil más el estado de pago de la clínica.
+ *
+ * Van juntos porque el AppShell necesita el estado de pago en TODAS las
+ * pantallas y el perfil ya se leía; una respuesta ahorra un viaje. El PATCH del
+ * perfil sigue devolviendo `UserProfile` a secas: editar la cédula no es un
+ * momento en el que haga falta reevaluar la cobranza.
+ */
+export interface UserProfileMe extends UserProfile {
+  suscripcion: SuscripcionEstadoView;
+}
+
 /** Perfil profesional propio: lo que aparece en la agenda y en la firma. */
 export interface UpdatePerfilRequest {
   especialidadKey: EspecialidadKey;

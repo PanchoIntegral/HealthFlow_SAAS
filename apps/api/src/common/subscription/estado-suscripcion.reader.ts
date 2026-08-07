@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { TenantDbService } from '../tenant-context/tenant-db.service';
-import { esSubscriptionStatus, type EstadoSuscripcion } from './subscription-status';
+import { esSubscriptionStatus, type EstadoSuscripcionDetallado } from './subscription-status';
 
 /**
  * Estado de pago del tenant activo. Mismo patrón que PlanService
@@ -17,13 +17,17 @@ import { esSubscriptionStatus, type EstadoSuscripcion } from './subscription-sta
 export class EstadoSuscripcionReader {
   constructor(private readonly tenantDb: TenantDbService) {}
 
-  async leer(): Promise<EstadoSuscripcion> {
+  async leer(): Promise<EstadoSuscripcionDetallado> {
     const row = await this.tenantDb.run(async (tx) => {
       const result = await tx.execute(
-        sql`SELECT subscription_status, grace_until FROM tenants LIMIT 1`,
+        sql`SELECT subscription_status, grace_until, current_period_end FROM tenants LIMIT 1`,
       );
       return (result.rows as unknown as
-        | { subscription_status: string; grace_until: Date | string | null }[])[0];
+        | {
+            subscription_status: string;
+            grace_until: Date | string | null;
+            current_period_end: Date | string | null;
+          }[])[0];
     });
 
     // Sin fila (no debería pasar: el JWT trae un tenant que existe) se trata
@@ -34,6 +38,7 @@ export class EstadoSuscripcionReader {
     return {
       status: esSubscriptionStatus(status) ? status : 'none',
       graceUntil: row?.grace_until ? new Date(row.grace_until) : null,
+      currentPeriodEnd: row?.current_period_end ? new Date(row.current_period_end) : null,
     };
   }
 }

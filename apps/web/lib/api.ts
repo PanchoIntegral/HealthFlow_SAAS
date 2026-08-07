@@ -43,6 +43,7 @@ import type {
   TranscribirConsultaResponse,
   UpdatePerfilRequest,
   UserProfile,
+  UserProfileMe,
   WaitingRoomEntry,
 } from '@healthflow/shared-types';
 import { API_URL } from './config';
@@ -269,7 +270,8 @@ export const api = {
       body: JSON.stringify(historial),
     }),
 
-  getMyProfile: (token: string) => request<UserProfile>('/users/me', { token }),
+  /** Trae también `suscripcion`: es la lectura de la que vive el banner. */
+  getMyProfile: (token: string) => request<UserProfileMe>('/users/me', { token }),
 
   /**
    * Manda el audio de la consulta a transcribir. No usa `request()` porque el
