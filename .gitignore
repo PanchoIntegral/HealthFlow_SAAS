@@ -7,6 +7,9 @@ coverage/
 *.log
 .DS_Store
 
+# caché incremental de tsc
+*.tsbuildinfo
+
 # env
 .env
 .env.local
