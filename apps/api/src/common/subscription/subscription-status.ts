@@ -30,3 +30,12 @@ export interface EstadoSuscripcion {
   status: SubscriptionStatus;
   graceUntil: Date | null;
 }
+
+/**
+ * Lo mismo más la fecha de renovación, que el gating NO usa pero la UI sí
+ * ("tu plan se renueva el …"). Se mantiene aparte para que la firma de
+ * `debeRestringir` siga pidiendo únicamente lo que de verdad decide.
+ */
+export interface EstadoSuscripcionDetallado extends EstadoSuscripcion {
+  currentPeriodEnd: Date | null;
+}
