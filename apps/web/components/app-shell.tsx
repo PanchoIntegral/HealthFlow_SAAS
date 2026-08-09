@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
+import { BannerSuscripcion } from './banner-suscripcion';
 import { NotificationsBell } from './notifications-bell';
 import { UserMenu } from './user-menu';
 import {
@@ -91,7 +92,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <main className="ml-60 flex-1">{children}</main>
+      <main className="ml-60 flex-1">
+        {/* Arriba de todo y en todas las pantallas: si la cuenta está vencida,
+            el usuario tiene que enterarse antes de intentar guardar algo. */}
+        <BannerSuscripcion />
+        {children}
+      </main>
     </div>
   );
 }

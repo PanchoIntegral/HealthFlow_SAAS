@@ -5,6 +5,8 @@ import { GlobalThrottlerGuard } from './common/security/global-throttler.guard';
 import { DrizzleModule } from './db/drizzle.module';
 import { TenantContextModule } from './common/tenant-context/tenant-context.module';
 import { RequestContextInterceptor } from './common/tenant-context/request-context.interceptor';
+import { SubscriptionModule } from './common/subscription/subscription.module';
+import { SuscripcionInterceptor } from './common/subscription/suscripcion.interceptor';
 import { DomainExceptionFilter } from './common/errors/domain-exception.filter';
 import { AuditModule } from './common/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -22,6 +24,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ConsentimientosModule } from './modules/consentimientos/consentimientos.module';
 import { RadiografiasModule } from './modules/radiografias/radiografias.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
 
 @Module({
   imports: [
@@ -44,6 +47,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     ]),
     DrizzleModule,
     TenantContextModule,
+    SubscriptionModule,
     AuditModule,
     AuthModule,
     NotificationsModule,
@@ -60,6 +64,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     ConsentimientosModule,
     RadiografiasModule,
     AccountsModule,
+    AiScribeModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.
@@ -67,6 +72,16 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     // Global: tras autenticar, corre cada request dentro del AsyncLocalStorage
     // con el tenant activo (para RLS) y el usuario (para auditoría).
     { provide: APP_INTERCEPTOR, useClass: RequestContextInterceptor },
+    /**
+     * Global: deja la cuenta en solo lectura si la suscripción está vencida.
+     *
+     * EL ORDEN IMPORTA y es parte del diseño: los interceptores globales se
+     * anidan en orden de registro, así que este corre DENTRO del
+     * AsyncLocalStorage que abre RequestContextInterceptor — que es lo que le
+     * permite consultar el estado de pago con el tenant ya fijado para RLS.
+     * Invertirlos rompe el gating con "No hay contexto de petición".
+     */
+    { provide: APP_INTERCEPTOR, useClass: SuscripcionInterceptor },
     { provide: APP_FILTER, useClass: DomainExceptionFilter },
   ],
 })

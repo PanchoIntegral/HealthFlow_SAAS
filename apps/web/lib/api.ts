@@ -40,11 +40,14 @@ import type {
   ReportsStats,
   StartConsultationResponse,
   TimbrarFacturaRequest,
+  TranscribirConsultaResponse,
   UpdatePerfilRequest,
   UserProfile,
+  UserProfileMe,
   WaitingRoomEntry,
 } from '@healthflow/shared-types';
 import { API_URL } from './config';
+import { marcarAlCorriente, marcarSuspendida } from './suscripcion';
 
 async function request<T>(
   path: string,
@@ -69,8 +72,17 @@ async function request<T>(
         window.location.href = '/login';
       }
     }
+    // La suscripción venció: la cuenta quedó en solo lectura. No se redirige
+    // (a diferencia del 401) porque consultar sí funciona — solo se levanta
+    // el aviso global para que el usuario sepa por qué no pudo guardar.
+    if (res.status === 402 && body.error === 'SuscripcionSuspendida') {
+      marcarSuspendida();
+    }
     throw new ApiError(res.status, body.message ?? res.statusText, body);
   }
+  // Una escritura que pasó significa que la suscripción está al corriente:
+  // es como se baja el aviso tras pagar, sin necesidad de recargar.
+  if (rest.method && rest.method !== 'GET') marcarAlCorriente();
   if (res.status === 204) return undefined as T;
   // Algunos endpoints responden 200 con body vacío para representar `null`
   // (p.ej. Express serializa un valor `null` de vuelta como respuesta sin
@@ -111,6 +123,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ stripeSessionId }),
     }),
+
+  /**
+   * Abre el portal de facturación de Stripe (actualizar tarjeta, ver
+   * facturas, cancelar). Funciona aun con la suscripción vencida: es
+   * justamente como se deja de estarlo.
+   */
+  portalSession: (token: string) =>
+    request<{ url: string }>('/subscriptions/portal-session', { method: 'POST', token }),
 
   waitingRoom: (token: string) =>
     request<WaitingRoomEntry[]>('/appointments/waiting-room', { token }),
@@ -250,7 +270,37 @@ export const api = {
       body: JSON.stringify(historial),
     }),
 
-  getMyProfile: (token: string) => request<UserProfile>('/users/me', { token }),
+  /** Trae también `suscripcion`: es la lectura de la que vive el banner. */
+  getMyProfile: (token: string) => request<UserProfileMe>('/users/me', { token }),
+
+  /**
+   * Manda el audio de la consulta a transcribir. No usa `request()` porque el
+   * cuerpo es multipart: el navegador tiene que poner él mismo el
+   * Content-Type con su boundary, y fijarlo a mano rompe la petición.
+   */
+  transcribirIa: async (
+    token: string,
+    appointmentId: string,
+    audio: Blob,
+    camposYaLlenados: NotaEvolucionContent,
+  ): Promise<TranscribirConsultaResponse> => {
+    const form = new FormData();
+    // La extensión importa poco; el mime del Blob es lo que el API valida.
+    form.append('audio', audio, 'consulta.webm');
+    form.append('camposYaLlenados', JSON.stringify(camposYaLlenados));
+
+    const res = await fetch(`${API_URL}/api/consultations/${appointmentId}/transcribir-ia`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, body.message ?? res.statusText, body);
+    }
+    return res.json() as Promise<TranscribirConsultaResponse>;
+  },
 
   // ── Cuentas del equipo (solo el titular) ──
   cuentas: (token: string) => request<CuentasResumen>('/cuentas', { token }),

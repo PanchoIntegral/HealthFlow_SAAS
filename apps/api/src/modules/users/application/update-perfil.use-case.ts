@@ -2,6 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { UpdatePerfilRequest, UserProfile } from '@healthflow/shared-types';
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { AuditService } from '../../../common/audit/audit.service';
+import { AsistenteIaActivoReader } from '../../ai-scribe/application/asistente-ia-activo.reader';
 import { USER_PROFILE_REPOSITORY, type UserProfileRepository } from '../domain/user-profile.repository';
 
 /**
@@ -23,6 +24,7 @@ export class UpdatePerfilUseCase {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly audit: AuditService,
+    private readonly asistenteIa: AsistenteIaActivoReader,
     @Inject(USER_PROFILE_REPOSITORY) private readonly users: UserProfileRepository,
   ) {}
 
@@ -62,7 +64,9 @@ export class UpdatePerfilUseCase {
         },
       });
 
-      return actualizado;
+      // El flag es del tenant, no del usuario; se compone igual que en
+      // GetUserProfileUseCase para que ambas respuestas tengan la misma forma.
+      return { ...actualizado, asistenteIaActivo: await this.asistenteIa.leer(tx) };
     });
   }
 }

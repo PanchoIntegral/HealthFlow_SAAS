@@ -44,6 +44,23 @@ export const tenants = pgTable('tenants', {
   subscriptionStatus: text('subscription_status').notNull().default('none'),
   /** 'mensual' | 'anual' — qué Price de Stripe se está cobrando. */
   billingPeriod: text('billing_period').notNull().default('mensual'),
+  /** Fin del periodo ya pagado, según Stripe. Informativo para la UI. */
+  currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
+  /**
+   * Hasta cuándo se tolera el impago antes de dejar la cuenta en solo lectura
+   * (ver 0020 y common/subscription/). NULL = no hay impago pendiente.
+   */
+  graceUntil: timestamp('grace_until', { withTimezone: true }),
+  /**
+   * Último cobro exitoso. Su ausencia significa "nunca pagó" (trial vencido),
+   * y esos no reciben días de gracia.
+   */
+  ultimoPagoAt: timestamp('ultimo_pago_at', { withTimezone: true }),
+  /**
+   * Asistente de transcripción con IA (ver 0019). Apagado por omisión: mandar
+   * el audio de una consulta a un tercero es una decisión de cada clínica.
+   */
+  asistenteIaActivo: boolean('asistente_ia_activo').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -325,6 +342,8 @@ export const stripeEvents = pgTable('stripe_events', {
   id: text('id').primaryKey(),
   type: text('type').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  /** NULL = se reclamó el evento pero el handler no terminó (ver 0020). */
+  processedAt: timestamp('processed_at', { withTimezone: true }),
 });
 
 /** Token de un solo uso para el auto-login tras pagar (ver 0009_subscriptions.sql). */

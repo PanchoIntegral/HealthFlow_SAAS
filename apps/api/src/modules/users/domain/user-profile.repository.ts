@@ -1,6 +1,15 @@
 import type { UserProfile } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 
+/**
+ * El perfil tal como vive en la tabla `users`.
+ *
+ * `asistenteIaActivo` queda fuera a propósito: es del TENANT, no del usuario.
+ * El caso de uso lo compone antes de responder; el repositorio no tiene por
+ * qué saber que existe.
+ */
+export type PerfilPersistido = Omit<UserProfile, 'asistenteIaActivo'>;
+
 export interface UpdatePerfilInput {
   especialidadKey: string;
   especialidad: string | null;
@@ -14,10 +23,10 @@ export interface UpdatePerfilInput {
  * solo pueda leer/tocar su propio registro dentro de su propia clínica.
  */
 export interface UserProfileRepository {
-  getById(tx: Tx, userId: string): Promise<UserProfile | null>;
+  getById(tx: Tx, userId: string): Promise<PerfilPersistido | null>;
 
   /** Devuelve el perfil actualizado, o null si el usuario no existe en el tenant activo. */
-  updatePerfil(tx: Tx, userId: string, input: UpdatePerfilInput): Promise<UserProfile | null>;
+  updatePerfil(tx: Tx, userId: string, input: UpdatePerfilInput): Promise<PerfilPersistido | null>;
 
   /** Hash actual de la contraseña, o null si el usuario no existe en el tenant activo. */
   getPasswordHash(tx: Tx, userId: string): Promise<string | null>;

@@ -20,12 +20,22 @@ const MESES = [
 @Injectable()
 export class DrizzleReportsRepository {
   async getStats(tx: Tx): Promise<ReportsStats> {
+    // Ventana de 12 meses. Sin ella esta query expande el jsonb de TODAS las
+    // notas cerradas del histórico para devolver ocho filas, y su costo crece
+    // para siempre — es la query que peor escala del sistema.
+    //
+    // La cota es de REPORTING, no del expediente: "los diagnósticos más
+    // frecuentes" es una foto del presente, y un panel que promedia una década
+    // dice menos, no más. El acceso clínico al historial (getRecordView,
+    // findNoteByAppointment) sigue sin filtro temporal y no se borra nada, así
+    // que la conservación NOM-004 queda intacta.
     const diagnosticosRows = (
       await tx.execute(sql`
         SELECT d->>'cie10' AS cie10, d->>'descripcion' AS descripcion, count(*)::int AS total
           FROM clinical_notes cn,
                jsonb_array_elements(cn.contenido_nom004->'diagnosticos') AS d
          WHERE cn.estatus = 'cerrada'
+           AND cn.cerrado_en >= current_date - interval '12 months'
          GROUP BY d->>'cie10', d->>'descripcion'
          ORDER BY count(*) DESC
          LIMIT 8

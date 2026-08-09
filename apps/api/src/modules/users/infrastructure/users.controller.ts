@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
-import type { UserProfile } from '@healthflow/shared-types';
+import type { UserProfile, UserProfileMe } from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { PermitirSinSuscripcion } from '../../../common/subscription/permitir-sin-suscripcion.decorator';
 import type { AuthenticatedUser } from '../../auth/authenticated-user';
 import { GetUserProfileUseCase } from '../application/get-user-profile.use-case';
 import { UpdatePerfilUseCase } from '../application/update-perfil.use-case';
@@ -23,7 +24,7 @@ export class UsersController {
   ) {}
 
   @Get('me')
-  me(@Req() req: { user: AuthenticatedUser }): Promise<UserProfile> {
+  me(@Req() req: { user: AuthenticatedUser }): Promise<UserProfileMe> {
     return this.getProfile.execute(req.user.userId);
   }
 
@@ -44,7 +45,11 @@ export class UsersController {
     return this.updatePerfil.execute(req.user.userId, dto);
   }
 
+  // Cuidar la propia contraseña no debe depender de estar al corriente del
+  // pago: bloquearlo dejaría a una cuenta suspendida sin poder responder a
+  // un acceso indebido.
   @Patch('me/password')
+  @PermitirSinSuscripcion()
   updateMyPassword(
     @Req() req: { user: AuthenticatedUser },
     @Body() dto: ChangePasswordDto,

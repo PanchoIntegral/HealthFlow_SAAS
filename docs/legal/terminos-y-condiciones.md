@@ -83,7 +83,15 @@ Para efectos de estos Términos:
 
 5.2. **Cobro y renovación automática.** La suscripción se factura por adelantado, en periodos [mensuales / anuales], y **se renueva automáticamente** por periodos iguales, salvo que el Cliente cancele antes de la fecha de renovación conforme a la cláusula 11. El Cliente autoriza a HealthFlow a cargar el medio de pago registrado en cada renovación.
 
-5.3. **Mora.** La falta de pago genera intereses moratorios del [ ]% mensual sobre saldos insolutos. Transcurridos [10] días naturales de mora, HealthFlow podrá suspender el acceso previo aviso con al menos [5] días de anticipación, conservando los Datos del Cliente conforme a la cláusula 12.
+5.3. **Mora y restricción por falta de pago.** Si un cobro no puede procesarse, HealthFlow lo reintentará y otorgará al Cliente un **periodo de gracia de 7 días naturales**, contado desde el primer intento fallido, para regularizar el pago. Durante ese periodo el Servicio funciona con normalidad y el Cliente recibe un **aviso visible dentro de la propia Plataforma desde el primer día**, indicando la fecha límite.
+
+Transcurrido el periodo de gracia sin que se regularice el pago, la Cuenta pasará a **modo de solo lectura**: el Cliente **conserva el acceso de consulta** a la totalidad de sus Datos —incluidos los expedientes clínicos— y a las funciones de descarga o exportación que la Plataforma tenga disponibles, pero **no podrá registrar información nueva ni modificar la existente** hasta regularizar el pago. HealthFlow **no suprime ni bloquea la consulta** de los Datos del Cliente por falta de pago; su conservación se rige por la cláusula 12.
+
+La restricción **se levanta automáticamente** en cuanto se confirma el pago, sin necesidad de gestión alguna por parte del Cliente.
+
+El periodo de gracia no aplica cuando el Cliente nunca ha completado un pago (por ejemplo, si el periodo de prueba concluye sin un medio de pago válido); en ese supuesto la Cuenta pasa a solo lectura al vencer la prueba.
+
+HealthFlow **no cobra intereses moratorios** por el retraso en el pago de la suscripción.
 
 5.4. **Cambios de precio.** HealthFlow podrá modificar sus precios con aviso de al menos **[60] días naturales** previo a la renovación. Si el Cliente no acepta el nuevo precio, podrá cancelar antes de la renovación sin penalidad; el uso posterior a la entrada en vigor implica aceptación.
 

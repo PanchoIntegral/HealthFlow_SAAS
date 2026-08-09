@@ -9,9 +9,11 @@ import {
   partidasDesdeOdontograma,
   perfilDe,
   type CampoBaseKey,
+  type CampoSugeribleIa,
   type Odontograma as OdontogramaData,
   type DiagnosticoCie10,
   type EspecialidadKey,
+  type SugerenciaNotaIa,
   type NotaEvolucionContent,
   type PerfilEspecialidad,
   type PresupuestoView,
@@ -25,6 +27,7 @@ import { AlertaAlergias } from '../../../components/alerta-alergias';
 import { Odontograma } from '../../../components/odontograma';
 import { NuevoPresupuestoModal } from '../../../components/nuevo-presupuesto-modal';
 import { Modal } from '../../../components/modal';
+import { GrabadorIa } from '../../../components/grabador-ia';
 import { pesos } from '../../../components/presupuesto-panel';
 
 /** Etiqueta de cada signo vital. Qué subconjunto se muestra lo decide el perfil. */
@@ -91,6 +94,15 @@ export default function ConsultaPage({
   /** Se pide la cédula justo antes de firmar, si el médico aún no la tiene. */
   const [modalCedula, setModalCedula] = useState(false);
 
+  /**
+   * Qué campos vienen de la IA y siguen sin revisar. Vive en el estado de la
+   * pantalla y NO dentro de la nota: es información de esta sesión de edición
+   * ("revisa esto antes de firmar"), no un dato del expediente. Al firmar, la
+   * nota queda idéntica a una escrita a mano.
+   */
+  const [camposDeIa, setCamposDeIa] = useState<Set<CampoSugeribleIa>>(new Set());
+  const [avisosIa, setAvisosIa] = useState<string[]>([]);
+
   useEffect(() => {
     if (ready && !token) router.replace('/login');
   }, [ready, token, router]);
@@ -153,6 +165,110 @@ export default function ConsultaPage({
       }
     },
   });
+
+  /**
+   * Mezcla la sugerencia de la IA sobre lo que ya hay en pantalla.
+   *
+   * Aditiva y conservadora: un campo que el médico ya escribió NO se pisa, y
+   * los diagnósticos se suman a los suyos en vez de reemplazarlos. Que la IA
+   * borre de un golpe lo que alguien tecleó es exactamente la forma de perder
+   * su confianza para siempre.
+   */
+  const aplicarSugerencia = (sugerencia: SugerenciaNotaIa, advertencias: string[]) => {
+    const tocados = new Set<CampoSugeribleIa>();
+
+    setContent((c) => {
+      const siguiente: NotaEvolucionContent = { ...c };
+
+      if (sugerencia.padecimientoActual && !tieneValor(c.padecimientoActual)) {
+        siguiente.padecimientoActual = sugerencia.padecimientoActual;
+        tocados.add('padecimientoActual');
+      }
+      if (sugerencia.planTerapeutico && !tieneValor(c.planTerapeutico)) {
+        siguiente.planTerapeutico = sugerencia.planTerapeutico;
+        tocados.add('planTerapeutico');
+      }
+
+      const hallazgosNuevos =
+        sugerencia.hallazgos && !tieneValor(c.exploracionFisica.hallazgos)
+          ? sugerencia.hallazgos
+          : undefined;
+      // Solo los signos que el médico dejó vacíos: una cifra medida por él
+      // manda siempre sobre una escuchada por el modelo.
+      const vitales = { ...c.exploracionFisica.signosVitales };
+      let cambioVital = false;
+      for (const [k, v] of Object.entries(sugerencia.signosVitales ?? {})) {
+        const key = k as keyof SignosVitales;
+        if (v && !vitales[key]) {
+          vitales[key] = v;
+          cambioVital = true;
+        }
+      }
+      if (hallazgosNuevos || cambioVital) {
+        siguiente.exploracionFisica = {
+          ...c.exploracionFisica,
+          signosVitales: vitales,
+          ...(hallazgosNuevos ? { hallazgos: hallazgosNuevos } : {}),
+        };
+        if (hallazgosNuevos) tocados.add('hallazgos');
+        if (cambioVital) tocados.add('signosVitales');
+      }
+
+      const nuevos = (sugerencia.diagnosticos ?? []).filter(
+        (d) => !c.diagnosticos.some((x) => x.cie10 === d.cie10),
+      );
+      if (nuevos.length > 0) {
+        siguiente.diagnosticos = [...c.diagnosticos, ...nuevos];
+        tocados.add('diagnosticos');
+      }
+
+      // Odontograma: se AGREGAN las marcas que no existan ya en esa pieza y
+      // cara. Nunca se quita una marca del dentista ni se cambia la dentición
+      // que él eligió: solo él sabe si está viendo una boca mixta.
+      if (sugerencia.odontograma?.length) {
+        const previo = c.odontograma ?? ODONTOGRAMA_VACIO;
+        const clave = (m: { pieza: string; cara?: string }) => `${m.pieza}|${m.cara ?? ''}`;
+        const yaMarcadas = new Set(previo.marcas.map(clave));
+        const nuevas = sugerencia.odontograma.filter((m) => !yaMarcadas.has(clave(m)));
+        if (nuevas.length > 0) {
+          siguiente.odontograma = { ...previo, marcas: [...previo.marcas, ...nuevas] };
+          tocados.add('odontograma');
+        }
+      }
+
+      const extension = { ...(c.extension ?? {}) };
+      let cambioExtension = false;
+      for (const [k, v] of Object.entries(sugerencia.extension ?? {})) {
+        const actual = extension[k];
+        if (v !== null && v !== undefined && (actual === undefined || actual === null || actual === '')) {
+          extension[k] = v;
+          cambioExtension = true;
+        }
+      }
+      if (cambioExtension) {
+        siguiente.extension = extension;
+        tocados.add('extension');
+      }
+
+      return siguiente;
+    });
+
+    setCamposDeIa(tocados);
+    setAvisosIa(
+      tocados.size === 0 && advertencias.length === 0
+        ? ['La IA no encontró información nueva que agregar a lo que ya escribiste.']
+        : advertencias,
+    );
+  };
+
+  /** El médico revisó (o corrigió) un campo: deja de estar marcado como de IA. */
+  const marcarRevisado = (campo: CampoSugeribleIa) =>
+    setCamposDeIa((previos) => {
+      if (!previos.has(campo)) return previos;
+      const siguiente = new Set(previos);
+      siguiente.delete(campo);
+      return siguiente;
+    });
 
   /**
    * Firmar. Si el médico todavía no tiene cédula registrada, se le pide AQUÍ
@@ -236,6 +352,15 @@ export default function ConsultaPage({
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          {/* Solo si la clínica lo contrató y solo para quien firma la nota. */}
+          {!readOnly && miPerfil.data?.asistenteIaActivo && user.rol !== 'asistente' && (
+            <GrabadorIa
+              token={token}
+              appointmentId={appointmentId}
+              contenidoActual={content}
+              onSugerencia={aplicarSugerencia}
+            />
+          )}
           {!readOnly && (
             <span className="text-slate-400">
               {saveDraft.isPending ? 'Guardando…' : savedAt ? `Guardado ${hace(savedAt)}` : 'Autoguardado activo'}
@@ -268,6 +393,22 @@ export default function ConsultaPage({
           {missing.length > 0 && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
               Faltan {missing.length} campo(s) obligatorio(s) para poder firmar.
+            </div>
+          )}
+
+          {(camposDeIa.size > 0 || avisosIa.length > 0) && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900">
+              {camposDeIa.size > 0 && (
+                <p className="font-medium">
+                  ✨ La IA llenó {camposDeIa.size} sección(es). Revísalas antes de firmar — tú eres
+                  quien responde por lo que dice el expediente.
+                </p>
+              )}
+              {avisosIa.map((aviso) => (
+                <p key={aviso} className="mt-1 text-violet-800">
+                  {aviso}
+                </p>
+              ))}
             </div>
           )}
 
