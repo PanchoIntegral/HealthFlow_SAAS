@@ -14,9 +14,27 @@ import { API_URL } from './config';
 const QUERY_KEY = ['waiting-room'];
 
 /**
+ * Inserta o reemplaza la cita del evento manteniendo el orden por hora de
+ * inicio que devuelve el servidor. Es un upsert porque `appointment.updated`
+ * también anuncia ALTAS: una cita recién agendada para hoy todavía no está en
+ * la lista y hay que darla de alta, no ignorarla.
+ *
+ * No hay bajas: una cita cancelada sigue apareciendo (columna de terminadas),
+ * igual que la devolvería una recarga de la sala de espera.
+ */
+function upsertEntry(prev: WaitingRoomEntry[], entry: WaitingRoomEntry): WaitingRoomEntry[] {
+  const i = prev.findIndex((e) => e.appointmentId === entry.appointmentId);
+  if (i !== -1) return prev.map((e, j) => (j === i ? entry : e));
+
+  const next = [...prev, entry];
+  next.sort((a, b) => a.inicioProgramado.localeCompare(b.inicioProgramado));
+  return next;
+}
+
+/**
  * Sala de espera en tiempo real: carga inicial con TanStack Query + suscripción
  * WebSocket. Al recibir un `appointment.updated`, actualiza la cache in-place
- * (sin refetch) para que la tarjeta cambie de estado al instante.
+ * (sin refetch) para que la tarjeta aparezca o cambie de estado al instante.
  */
 export function useWaitingRoom(token: string) {
   const queryClient = useQueryClient();
@@ -35,12 +53,9 @@ export function useWaitingRoom(token: string) {
     });
 
     socket.on(WAITING_ROOM_EVENTS.APPOINTMENT_UPDATED, (event: AppointmentUpdatedEvent) => {
-      queryClient.setQueryData<WaitingRoomEntry[]>(QUERY_KEY, (prev) => {
-        if (!prev) return prev;
-        return prev.map((e) =>
-          e.appointmentId === event.entry.appointmentId ? event.entry : e,
-        );
-      });
+      queryClient.setQueryData<WaitingRoomEntry[]>(QUERY_KEY, (prev) =>
+        prev ? upsertEntry(prev, event.entry) : prev,
+      );
     });
 
     return () => {

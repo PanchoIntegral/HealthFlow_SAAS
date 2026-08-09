@@ -21,7 +21,15 @@ export interface AppointmentRepository {
 
   /** Vista enriquecida para la sala de espera (citas activas del día). */
   listWaitingRoom(tx: Tx): Promise<WaitingRoomEntry[]>;
-  findWaitingRoomEntry(tx: Tx, appointmentId: string): Promise<WaitingRoomEntry | null>;
+  /**
+   * Con `soloHoy` devuelve null si la cita no es del día en curso: sirve para
+   * no emitir por WebSocket citas que `listWaitingRoom` nunca devolvería.
+   */
+  findWaitingRoomEntry(
+    tx: Tx,
+    appointmentId: string,
+    opts?: { soloHoy?: boolean },
+  ): Promise<WaitingRoomEntry | null>;
 
   /** Agenda una cita nueva (estatus 'agendada') y devuelve su id. */
   create(tx: Tx, input: NewAppointmentInput): Promise<string>;

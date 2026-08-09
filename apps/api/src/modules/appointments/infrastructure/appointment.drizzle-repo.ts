@@ -91,7 +91,11 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     return (result.rows as unknown as WaitingRoomRow[]).map(mapRow);
   }
 
-  async findWaitingRoomEntry(tx: Tx, appointmentId: string): Promise<WaitingRoomEntry | null> {
+  async findWaitingRoomEntry(
+    tx: Tx,
+    appointmentId: string,
+    opts?: { soloHoy?: boolean },
+  ): Promise<WaitingRoomEntry | null> {
     const result = await tx.execute(sql`
       SELECT a.id            AS appointment_id,
              p.id            AS patient_id,
@@ -104,6 +108,9 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
        WHERE a.id = ${appointmentId}
+         -- mismo criterio de "hoy" que listWaitingRoom, para que un evento
+         -- realtime nunca meta en la lista una cita de otro día.
+         ${opts?.soloHoy ? sql`AND a.inicio_programado::date = current_date` : sql``}
        LIMIT 1
     `);
     const row = (result.rows as unknown as WaitingRoomRow[])[0];

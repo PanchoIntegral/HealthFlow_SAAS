@@ -1,5 +1,9 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type { AppointmentView } from '@healthflow/shared-types';
+import type {
+  AppointmentStatus,
+  AppointmentView,
+  WaitingRoomEntry,
+} from '@healthflow/shared-types';
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { RequestContextService } from '../../../common/tenant-context/request-context';
 import { AuditService } from '../../../common/audit/audit.service';
@@ -7,6 +11,10 @@ import {
   APPOINTMENT_REPOSITORY,
   type AppointmentRepository,
 } from '../domain/appointment.repository';
+import {
+  WAITING_ROOM_NOTIFIER,
+  type WaitingRoomNotifier,
+} from './waiting-room-notifier.port';
 import {
   NOTIFICATION_REPOSITORY,
   type NotificationRepository,
@@ -19,7 +27,9 @@ import {
 /**
  * Cancela una cita: agendada → cancelada (única transición previa al check-in;
  * ver ALLOWED_TRANSITIONS). Registra el motivo en la auditoría y notifica al
- * médico asignado.
+ * médico asignado (canal de notificaciones) y, si la cita es de HOY, también
+ * a las salas de espera abiertas (canal de sala de espera): la tarjeta pasa
+ * sola a la columna de terminadas, igual que ya listaría un refetch.
  */
 @Injectable()
 export class CancelAppointmentUseCase {
@@ -28,15 +38,17 @@ export class CancelAppointmentUseCase {
     private readonly ctx: RequestContextService,
     private readonly audit: AuditService,
     @Inject(APPOINTMENT_REPOSITORY) private readonly repo: AppointmentRepository,
+    @Inject(WAITING_ROOM_NOTIFIER) private readonly notifier: WaitingRoomNotifier,
     @Inject(NOTIFICATION_REPOSITORY) private readonly notifications: NotificationRepository,
     @Inject(NOTIFICATIONS_NOTIFIER) private readonly notificationsNotifier: NotificationsNotifier,
   ) {}
 
   async execute(appointmentId: string, motivo?: string | null): Promise<AppointmentView> {
-    const { view, notification } = await this.tenantDb.run(async (tx) => {
+    const { view, entry, previousStatus, notification } = await this.tenantDb.run(async (tx) => {
       const appointment = await this.repo.findById(tx, appointmentId);
       if (!appointment) throw new NotFoundException('Cita no encontrada');
 
+      const previousStatus: AppointmentStatus = appointment.estatus;
       appointment.cancel(); // regla de dominio: valida agendada → cancelada
       await this.repo.save(tx, appointment);
 
@@ -58,10 +70,20 @@ export class CancelAppointmentUseCase {
         mensaje: `${view.patientNombre} · ${new Date(view.inicioProgramado).toLocaleString('es-MX')}`,
       });
 
-      return { view, notification };
+      // null si la cita no es de hoy: la sala de espera solo lista el día en curso.
+      const entry: WaitingRoomEntry | null = await this.repo.findWaitingRoomEntry(
+        tx,
+        appointmentId,
+        { soloHoy: true },
+      );
+
+      return { view, entry, previousStatus, notification };
     });
 
-    // Efecto externo: solo tras confirmar la transacción.
+    // Efectos externos: solo tras confirmar la transacción.
+    if (entry) {
+      this.notifier.appointmentUpdated(this.ctx.get().tenantId, { entry, previousStatus });
+    }
     this.notificationsNotifier.notificationCreated(this.ctx.get().tenantId, view.doctorId, {
       notification,
     });
