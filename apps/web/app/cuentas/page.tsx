@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   cuposDisponibles,
@@ -215,31 +216,16 @@ export default function CuentasPage() {
 
 // ── Tarjeta del plan ─────────────────────────────────────────────
 
+/**
+ * Cupos del plan. La GESTIÓN de la suscripción (tarjeta, historial de cobros,
+ * portal de Stripe) vive ahora en Ajustes › Facturación: el dinero está en un
+ * solo lugar y esta pantalla se queda con lo suyo, que es el equipo.
+ *
+ * Lo que sí se queda aquí son los cupos: se consumen justo al dar de alta una
+ * cuenta, y el botón de "agregar" depende de ellos. Mandarlos a Ajustes
+ * obligaría a cambiar de pantalla para saber si queda lugar.
+ */
 function TarjetaPlan({ data }: { data: CuentasResumen }) {
-  const { token } = useAuth();
-  const [abriendo, setAbriendo] = useState(false);
-  const [errorPortal, setErrorPortal] = useState<string | null>(null);
-
-  // Antes esto era un mailto a ventas. Ahora que la suscripción se cobra y se
-  // suspende sola, el portal de Stripe es el lugar donde el cliente cambia de
-  // plan, actualiza su tarjeta o consulta sus facturas.
-  const abrirPortal = async () => {
-    if (!token) return;
-    setAbriendo(true);
-    setErrorPortal(null);
-    try {
-      const { url } = await api.portalSession(token);
-      window.location.href = url;
-    } catch (err) {
-      setErrorPortal(
-        err instanceof ApiError
-          ? err.message
-          : 'No pudimos abrir el portal de facturación. Inténtalo de nuevo.',
-      );
-      setAbriendo(false);
-    }
-  };
-
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -247,16 +233,13 @@ function TarjetaPlan({ data }: { data: CuentasResumen }) {
           <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Tu plan</p>
           <p className="text-lg font-bold">{data.limites.nombre}</p>
         </div>
-        <button
-          type="button"
-          onClick={abrirPortal}
-          disabled={abriendo}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue disabled:opacity-60"
+        <Link
+          href="/ajustes"
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue"
         >
-          {abriendo ? 'Abriendo…' : 'Gestionar suscripción'}
-        </button>
+          Facturación y pagos
+        </Link>
       </div>
-      {errorPortal && <p className="mt-3 text-sm text-red-600">{errorPortal}</p>}
 
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
         <BarraCupo

@@ -6,7 +6,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
-import { CaslAbilityFactory } from './casl/ability.factory';
+import { CaslModule } from './casl/casl.module';
 import { LoginAttemptsService } from './application/login-attempts.service';
 import { PasswordHasherService } from './application/password-hasher.service';
 import { EMAIL_PORT } from './domain/email.port';
@@ -29,18 +29,22 @@ const usarEmailFake = process.env.NODE_ENV === 'test' || process.env.EMAIL_PROVI
     }),
     // Provee OnboardingTicketsService para /auth/exchange-ticket (post-pago).
     SubscriptionsModule,
+    CaslModule,
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     JwtStrategy,
-    CaslAbilityFactory,
     LoginAttemptsService,
     PasswordHasherService,
     { provide: EMAIL_PORT, useClass: usarEmailFake ? FakeEmailAdapter : ResendAdapter },
   ],
   // PasswordHasherService se exporta para que el módulo `users` la reuse en
   // "cambiar contraseña" — un solo semáforo de bcrypt para todo el proceso.
-  exports: [CaslAbilityFactory, JwtModule, PasswordHasherService],
+  //
+  // CaslModule se REEXPORTA (en vez de exportar la fábrica suelta) para que
+  // los módulos que ya importaban AuthModule por `@RequirePolicy` no tengan
+  // que cambiar nada.
+  exports: [CaslModule, JwtModule, PasswordHasherService],
 })
 export class AuthModule {}

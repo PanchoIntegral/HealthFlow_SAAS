@@ -2,6 +2,7 @@ import type {
   AppointmentView,
   CancelAppointmentRequest,
   CancelarFacturaRequest,
+  FacturacionView,
   FacturaView,
   FinanzasResumen,
   ClinicalNoteView,
@@ -131,6 +132,13 @@ export const api = {
    */
   portalSession: (token: string) =>
     request<{ url: string }>('/subscriptions/portal-session', { method: 'POST', token }),
+
+  /**
+   * Plan, tarjeta e historial de cobros. Solo responde al titular (el resto
+   * recibe 403), así que quien la llame debe estar preparado para ese caso.
+   */
+  facturacion: (token: string) =>
+    request<FacturacionView>('/subscriptions/facturacion', { token }),
 
   waitingRoom: (token: string) =>
     request<WaitingRoomEntry[]>('/appointments/waiting-room', { token }),

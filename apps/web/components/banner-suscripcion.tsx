@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { AvisoSuscripcion } from '@healthflow/shared-types';
+import type { AvisoSuscripcion, PagoPendienteView } from '@healthflow/shared-types';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { rehidratarSuscripcion, useSuscripcionSuspendida } from '../lib/suscripcion';
@@ -28,9 +28,10 @@ import { rehidratarSuscripcion, useSuscripcionSuspendida } from '../lib/suscripc
  * al montar y una suspensión que ocurra con la pantalla ya abierta.
  */
 export function BannerSuscripcion() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const suspendidaPor402 = useSuscripcionSuspendida();
   const [estado, setEstado] = useState<{ aviso: AvisoSuscripcion; graceUntil: string | null } | null>(null);
+  const [pagoPendiente, setPagoPendiente] = useState<PagoPendienteView | null>(null);
   const [abriendo, setAbriendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +58,29 @@ export function BannerSuscripcion() {
   // El 402 gana sobre la lectura: si la API acaba de rechazar una escritura, la
   // cuenta está suspendida AHORA, aunque al montar la pantalla no lo estuviera.
   const aviso: AvisoSuscripcion = suspendidaPor402 ? 'suspendida' : (estado?.aviso ?? 'ok');
+
+  /**
+   * La factura pendiente solo se consulta cuando SÍ hay un aviso y quien mira
+   * es el titular: el endpoint es suyo (403 para el resto) y pedirlo en cada
+   * pantalla, para todos, sería una llamada a Stripe por gusto.
+   */
+  const esTitular = user?.rol === 'admin';
+  useEffect(() => {
+    if (!token || !esTitular || aviso === 'ok') return;
+    let vigente = true;
+    api
+      .facturacion(token)
+      .then((f) => {
+        if (vigente) setPagoPendiente(f.pagoPendiente);
+      })
+      .catch(() => {
+        // Sin factura que ofrecer se cae al portal, que siempre funciona.
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [token, esTitular, aviso]);
+
   if (aviso === 'ok') return null;
 
   const suspendida = aviso === 'suspendida';
@@ -116,18 +140,52 @@ export function BannerSuscripcion() {
             </>
           )}
         </p>
-        <button
-          type="button"
-          onClick={abrirPortal}
-          disabled={abriendo}
-          className={`ml-auto rounded-lg px-3 py-1.5 text-sm font-semibold text-white transition disabled:opacity-60 ${c.boton}`}
-        >
-          {abriendo ? 'Abriendo…' : 'Regularizar pago'}
-        </button>
+        {/* Con una factura abierta, el camino corto: un clic a la página de
+            pago de Stripe, sin pasar por el portal ni esperar el reintento
+            automático. El portal queda como alternativa para cambiar la
+            tarjeta o revisar el detalle. */}
+        {pagoPendiente ? (
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={abrirPortal}
+              disabled={abriendo}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:opacity-60 ${c.texto} hover:underline`}
+            >
+              {abriendo ? 'Abriendo…' : 'Ver detalle'}
+            </button>
+            <a
+              href={pagoPendiente.urlPago}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`rounded-lg px-3 py-1.5 text-sm font-semibold text-white transition ${c.boton}`}
+            >
+              Pagar {dineroCorto(pagoPendiente.montoCentavos, pagoPendiente.moneda)}
+            </a>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={abrirPortal}
+            disabled={abriendo}
+            className={`ml-auto rounded-lg px-3 py-1.5 text-sm font-semibold text-white transition disabled:opacity-60 ${c.boton}`}
+          >
+            {abriendo ? 'Abriendo…' : 'Regularizar pago'}
+          </button>
+        )}
       </div>
       {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
     </div>
   );
+}
+
+/** "$899" — sin centavos: en un botón de banner el monto es para reconocerlo, no para cuadrar. */
+function dineroCorto(centavos: number, moneda: string): string {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: moneda || 'MXN',
+    maximumFractionDigits: 0,
+  }).format(centavos / 100);
 }
 
 /** "14 de agosto de 2026". Sin hora: el plazo se vive en días, no en minutos. */

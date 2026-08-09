@@ -428,6 +428,80 @@ export interface SuscripcionEstadoView {
 }
 
 /**
+ * Tarjeta con la que se cobra la suscripción, tal como la reporta Stripe.
+ *
+ * Deliberadamente incompleta: marca, últimos 4 y vencimiento son lo único que
+ * hace falta para que el titular reconozca SU tarjeta. El número completo
+ * nunca pasa por HealthFlow — cambiarla ocurre en el portal de Stripe, que es
+ * también lo que nos mantiene fuera del alcance de PCI.
+ */
+export interface MetodoPagoView {
+  marca: string;
+  ultimos4: string;
+  expiraMes: number;
+  expiraAnio: number;
+}
+
+/** Un cobro del historial. Importes en centavos, como el resto del dominio. */
+export interface PagoView {
+  id: string;
+  /** Folio de Stripe (p. ej. "A1B2C3-0001"). Null en facturas sin numerar. */
+  numero: string | null;
+  /** Fecha de pago si se cobró; si no, la de emisión. ISO. */
+  fecha: string;
+  montoCentavos: number;
+  moneda: string;
+  /** Estado crudo de Stripe: 'paid' | 'open' | 'void' | 'uncollectible' | 'draft'. */
+  estatus: string;
+  /** Recibo en línea de Stripe. Null en borradores. */
+  urlRecibo: string | null;
+}
+
+/**
+ * Cobro pendiente que el titular puede liquidar AHORA, sin esperar a que
+ * Stripe reintente por su cuenta (que puede tardar días).
+ *
+ * `urlPago` es la página de pago alojada por Stripe. Se manda ahí y no se
+ * dispara el cobro desde el servidor por dos razones: el caso típico es que la
+ * tarjeta guardada falló —así que reintentarla volvería a fallar— y porque la
+ * autenticación 3DS/SCA la tiene que resolver el banco con el usuario delante.
+ */
+export interface PagoPendienteView {
+  urlPago: string;
+  montoCentavos: number;
+  moneda: string;
+  /** Fecha límite de la factura, si Stripe la define. */
+  venceEl: string | null;
+}
+
+/**
+ * GET /subscriptions/facturacion — plan, tarjeta e historial de cobros.
+ *
+ * Solo lo alcanza el TITULAR: el endpoint exige `read` sobre 'Cuenta', que en
+ * la fábrica de CASL únicamente cubre el rol 'admin'. Un médico contratado no
+ * tiene por qué ver lo que paga la clínica.
+ */
+export interface FacturacionView {
+  plan: string;
+  subscriptionStatus: string;
+  /** 'mensual' | 'anual'. */
+  billingPeriod: string;
+  currentPeriodEnd: string | null;
+  /** true si la clínica nunca pasó por Stripe (seeds, cuentas previas al self-serve). */
+  sinCliente: boolean;
+  metodoPago: MetodoPagoView | null;
+  /** Factura abierta que se puede liquidar ya. null si no hay nada que deber. */
+  pagoPendiente: PagoPendienteView | null;
+  pagos: PagoView[];
+  /**
+   * false si Stripe no respondió. Distingue "esta clínica no tiene cobros"
+   * de "no pudimos consultarlos", que en una pantalla de dinero no es lo
+   * mismo: lo primero se afirma, lo segundo se advierte.
+   */
+  historialDisponible: boolean;
+}
+
+/**
  * GET /users/me: el perfil más el estado de pago de la clínica.
  *
  * Van juntos porque el AppShell necesita el estado de pago en TODAS las
