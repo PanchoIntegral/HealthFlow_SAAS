@@ -4,7 +4,7 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
-import type { Observable } from 'rxjs';
+import { Observable } from 'rxjs';
 import { RequestContextService } from './request-context';
 import type { AuthenticatedUser } from '../../modules/auth/authenticated-user';
 
@@ -25,9 +25,29 @@ export class RequestContextInterceptor implements NestInterceptor {
     if (!user) {
       return next.handle();
     }
-    return this.ctx.run(
-      { tenantId: user.tenantId, userId: user.userId, rol: user.rol },
-      () => next.handle(),
+    const store = { tenantId: user.tenantId, userId: user.userId, rol: user.rol };
+
+    /**
+     * El `run` envuelve la SUSCRIPCIÓN, no la construcción del Observable.
+     *
+     * `return this.ctx.run(store, () => next.handle())` parece equivalente y
+     * no lo es: `next.handle()` solo CONSTRUYE el observable, y todo el
+     * pipeline (interceptores siguientes, handler, casos de uso) se ejecuta
+     * después, al suscribirse — ya fuera del `run`, y por tanto sin contexto.
+     *
+     * Con la forma anterior funcionaba por accidente mientras todos los
+     * interceptores de más adentro devolvían `next.handle()` de forma
+     * síncrona. En cuanto uno metió un `await` antes de llamarlo
+     * (SuscripcionInterceptor, que consulta el estado de pago en toda
+     * ESCRITURA), la continuación pasó a otro microtask y el contexto se
+     * perdió: las lecturas seguían bien y las escrituras reventaban con
+     * "No hay contexto de petición".
+     *
+     * Envolviendo la suscripción, el contexto cubre todo lo que ocurra
+     * después, sea síncrono o no.
+     */
+    return new Observable((subscriber) =>
+      this.ctx.run(store, () => next.handle().subscribe(subscriber)),
     );
   }
 }
