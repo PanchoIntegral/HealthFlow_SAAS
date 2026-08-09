@@ -336,12 +336,17 @@ export interface WaitingRoomEntry {
 
 // ── Eventos WebSocket (sala de espera en tiempo real) ────────────
 export const WAITING_ROOM_EVENTS = {
-  /** El servidor emite esto cuando una cita cambia de estado. */
+  /**
+   * El servidor emite esto cuando una cita del día en curso se crea o cambia
+   * de estado. El cliente hace *upsert* de `entry` en su lista: una cita
+   * recién agendada se da de alta, una existente se reemplaza.
+   */
   APPOINTMENT_UPDATED: 'appointment.updated',
 } as const;
 
 export interface AppointmentUpdatedEvent {
   entry: WaitingRoomEntry;
+  /** Estado anterior, o null si la cita se acaba de crear (alta). */
   previousStatus: AppointmentStatus | null;
 }
 
