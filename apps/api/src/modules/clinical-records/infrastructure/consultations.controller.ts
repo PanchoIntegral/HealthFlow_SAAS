@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type {
@@ -22,6 +23,7 @@ import { FinishConsultationUseCase } from '../application/finish-consultation.us
 import { GetClinicalRecordUseCase } from '../application/get-clinical-record.use-case';
 import { GetConsultationNoteUseCase } from '../application/get-consultation-note.use-case';
 import { NoteContentDto } from './dto/note-content.dto';
+import { ClinicalRecordQueryDto } from './dto/clinical-record-query.dto';
 
 /**
  * Endpoints de la consulta y el expediente. Todos exigen JWT + política CASL
@@ -76,12 +78,16 @@ export class ConsultationsController {
     return this.finishConsultation.execute(appointmentId, dto.contenido);
   }
 
-  /** Expediente completo de un paciente. */
+  /**
+   * Expediente de un paciente, con el historial paginado por cursor (de la
+   * nota más reciente hacia atrás). Sin parámetros devuelve la primera página.
+   */
   @Get('patients/:patientId/clinical-record')
   @RequirePolicy('read', 'Consultation')
   record(
     @Param('patientId', ParseUUIDPipe) patientId: string,
+    @Query() query: ClinicalRecordQueryDto,
   ): Promise<ClinicalRecordView> {
-    return this.getClinicalRecord.execute(patientId);
+    return this.getClinicalRecord.execute(patientId, query);
   }
 }

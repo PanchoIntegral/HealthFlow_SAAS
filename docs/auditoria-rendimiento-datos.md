@@ -36,7 +36,7 @@ lectura. No se borra ni se archiva ninguna fila.
 | P1 | Queries no-sargables sobre `appointments` + índice de fecha sin `tenant_id` | Alto | ✅ Aplicado |
 | P2 | `hasOverlap` sin índice por médico | Medio-alto | ✅ Aplicado |
 | P3 | Búsqueda de pacientes: el `OR` anula ambos índices | Medio | ✅ Aplicado |
-| P4 | `getRecordView` trae el expediente completo sin paginación | Medio hoy / alto a 3-5 años | ⚠️ Índice aplicado, paginación diferida |
+| P4 | `getRecordView` trae el expediente completo sin paginación | Medio hoy / alto a 3-5 años | ✅ Aplicado (índice + paginación por cursor) |
 | P5 | `getUltimoOdontograma` sin índice parcial | Medio (dentales) | ✅ Aplicado |
 | P6 | Reportes: `jsonb_array_elements` sobre todo el histórico | Alto a mediano plazo | ⚠️ Cota aplicada, rollup diferido |
 | P7 | Transacción extra por escritura (`SuscripcionInterceptor`) | Medio | ⏸ Diferido |
@@ -160,14 +160,24 @@ CREATE INDEX clinical_notes_tenant_record_created_idx
   ON clinical_notes (tenant_id, clinical_record_id, created_at DESC);
 ```
 
-**Diferido — paginación cursor-based.** Separar la *lista* del expediente (cabeceras: id, tipo,
-fecha, médico, estatus — sin `contenido_nom004`) del *detalle* de una nota, y paginar sobre
-`(created_at, id)`. Cursor y no `OFFSET`: el expediente se lee de lo más reciente hacia atrás, y el
-`OFFSET` degrada justo en los pacientes con más historia, que son los que más importan. El índice ya
-aplicado es exactamente el que necesita ese cursor, así que la deuda queda preparada.
+**Solución aplicada (paginación por cursor).** `GET /patients/:id/clinical-record` acepta `limit`
+(por omisión 20, tope 50) y `cursor`, y devuelve `nextCursor` más `totalNotas`. El keyset va sobre
+`(created_at, id)` y encaja con el índice de arriba.
 
-**Disparador:** cuando un expediente real supere ~100 notas, o cuando el p95 de `GET` de expediente
-pase de ~300 ms.
+Cursor y no `OFFSET`: el expediente se lee de lo más reciente hacia atrás, y el `OFFSET` degrada
+justo en los pacientes con más historia, que son los que más importan. El `id` desempata para que dos
+notas del mismo instante no puedan repetirse ni perderse al cambiar de página. Un cursor corrupto
+devuelve 400 en vez de degradar a la primera página — devolver silenciosamente el inicio del
+historial haría creer al médico que está viendo la continuación.
+
+**Nota sobre el diseño.** La versión original de esta auditoría proponía además separar una lista de
+cabeceras (sin `contenido_nom004`) del detalle de cada nota. Al revisar cómo se consume resultó
+innecesario: la vista del expediente muestra cada nota expandida —necesita el contenido— y la barra
+lateral de la consulta, que era el peor derroche (se bajaba el historial entero para pintar tres
+líneas), se arregla pidiendo `limit=6`. La paginación sola cubre los dos casos sin rediseñar la UI.
+
+**Verificado:** recorriendo el historial completo con `limit` de 1, 3, 5 y 100, la concatenación de
+páginas es idéntica al orden sin paginar, sin duplicados ni omisiones.
 
 **Compatibilidad NOM-004.** Paginar y no traer el jsonb en la lista **no altera** el expediente. Las
 notas cerradas siguen siendo inmutables (`saveNote` es el único camino de escritura y el dominio

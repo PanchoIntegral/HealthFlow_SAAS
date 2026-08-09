@@ -53,8 +53,22 @@ export interface ClinicalRecordRepository {
    */
   getUltimoOdontograma(tx: Tx, clinicalRecordId: string): Promise<Odontograma | null>;
 
-  /** Expediente completo (record + notas) de un paciente para la vista del médico. */
-  getRecordView(tx: Tx, patientId: string): Promise<ClinicalRecordView | null>;
+  /**
+   * Expediente de un paciente con UNA PÁGINA de su historial, de la nota más
+   * reciente a la más antigua.
+   *
+   * Paginado y no completo: el historial de un paciente crónico crece sin
+   * techo (conservación NOM-004), y traerlo entero en cada apertura es la
+   * carga que peor envejece del sistema. El expediente sigue completo y
+   * accesible — se recorre por páginas, no se recorta.
+   */
+  getRecordView(tx: Tx, patientId: string, page: PaginaNotas): Promise<ClinicalRecordView | null>;
+}
+
+/** Ventana del historial a devolver. `cursor` null = primera página. */
+export interface PaginaNotas {
+  limit: number;
+  cursor: string | null;
 }
 
 export const CLINICAL_RECORD_REPOSITORY = Symbol('CLINICAL_RECORD_REPOSITORY');

@@ -185,8 +185,22 @@ export const api = {
       body: JSON.stringify({ contenido }),
     }),
 
-  getClinicalRecord: (token: string, patientId: string) =>
-    request<ClinicalRecordView>(`/patients/${patientId}/clinical-record`, { token }),
+  /**
+   * Expediente con una página del historial. `cursor` viene del `nextCursor`
+   * de la página anterior; `limit` sirve para las vistas que solo necesitan
+   * las últimas consultas y no el expediente entero.
+   */
+  getClinicalRecord: (
+    token: string,
+    patientId: string,
+    page: { limit?: number; cursor?: string } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (page.limit !== undefined) qs.set('limit', String(page.limit));
+    if (page.cursor) qs.set('cursor', page.cursor);
+    const sufijo = qs.toString() ? `?${qs}` : '';
+    return request<ClinicalRecordView>(`/patients/${patientId}/clinical-record${sufijo}`, { token });
+  },
 
   // ── Presupuestos ───────────────────────────────────────────────
   listarPresupuestos: (token: string, patientId: string) =>

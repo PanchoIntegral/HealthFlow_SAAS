@@ -113,9 +113,22 @@ export default function ConsultaPage({
     enabled: !!token,
   });
 
+  /**
+   * Esta pantalla solo usa el expediente para dos cosas: la alerta de alergias
+   * y las tres últimas consultas de la barra lateral. Pedía el historial
+   * ENTERO para pintar tres líneas.
+   *
+   * Se piden 6 y no 3 porque de esas notas hay que descartar la de esta misma
+   * consulta y las que sigan en borrador. Si aun así quedaran menos de tres,
+   * se muestran las que haya: es un resumen de cortesía, y el expediente
+   * completo está a un clic.
+   *
+   * Clave distinta de la del expediente (`…, 'resumen'`) para que esta página
+   * reducida y la vista paginada del paciente no se pisen en la cache.
+   */
   const record = useQuery({
-    queryKey: ['clinical-record', patientId],
-    queryFn: () => api.getClinicalRecord(token!, patientId!),
+    queryKey: ['clinical-record', patientId, 'resumen'],
+    queryFn: () => api.getClinicalRecord(token!, patientId!, { limit: 6 }),
     enabled: !!token && !!patientId,
   });
 

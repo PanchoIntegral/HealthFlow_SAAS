@@ -988,12 +988,30 @@ export interface ClinicalNoteView {
   createdAt: string;
 }
 
+/** Tamaño de página por omisión y tope duro del historial del expediente. */
+export const NOTAS_PAGE_SIZE = 20;
+export const NOTAS_PAGE_SIZE_MAX = 50;
+
 export interface ClinicalRecordView {
   recordId: string;
   patientId: string;
   patientNombre: string;
   abiertoEn: string;
+  /** Una PÁGINA de notas, de la más reciente a la más antigua. */
   notas: ClinicalNoteView[];
+  /**
+   * Cursor opaco para pedir la página siguiente; null cuando ya no hay más.
+   * No lo interpretes en el cliente: su formato es un detalle del servidor.
+   */
+  nextCursor: string | null;
+  /**
+   * Total de notas del expediente, independiente de la paginación.
+   *
+   * Existe porque la cabecera dice "N notas": mostrar ahí el largo de la
+   * página haría que un expediente de 137 notas se anunciara como de 20, y en
+   * un expediente clínico un conteo equivocado no es un detalle cosmético.
+   */
+  totalNotas: number;
   /**
    * Viaja con el expediente para que el editor de consulta pueda advertir de
    * las alergias SIN una segunda petición: la alerta tiene que estar en

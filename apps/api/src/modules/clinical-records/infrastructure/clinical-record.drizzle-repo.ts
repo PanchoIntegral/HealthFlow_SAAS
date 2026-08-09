@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
   ANTECEDENTES_VACIOS,
@@ -19,7 +19,31 @@ import { ClinicalNote } from '../domain/clinical-note.entity';
 import type {
   ClinicalRecordRepository,
   CreateDraftNoteInput,
+  PaginaNotas,
 } from '../domain/clinical-record.repository';
+
+/**
+ * El cursor es opaco a propósito: es `<created_at ISO>|<id>` en base64url, y
+ * su formato es un detalle del servidor que el cliente no debe interpretar ni
+ * construir. Si mañana el orden del historial cambia, cambia esto y nada más.
+ */
+function codificarCursor(row: { created_at: Date; id: string }): string {
+  return Buffer.from(`${new Date(row.created_at).toISOString()}|${row.id}`).toString('base64url');
+}
+
+function decodificarCursor(cursor: string | null): { createdAt: string; id: string } | null {
+  if (!cursor) return null;
+  const [createdAt, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+  // Un cursor corrupto o inventado se rechaza en vez de degradar a "primera
+  // página": devolver silenciosamente el inicio del expediente haría que el
+  // médico creyera estar viendo la continuación del historial.
+  if (!createdAt || !id || Number.isNaN(Date.parse(createdAt)) || !UUID_RE.test(id)) {
+    throw new BadRequestException('Cursor de paginación inválido');
+  }
+  return { createdAt, id };
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface NoteRow {
   id: string;
@@ -148,7 +172,11 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     return (result.rows as unknown as { odontograma: Odontograma | null }[])[0]?.odontograma ?? null;
   }
 
-  async getRecordView(tx: Tx, patientId: string): Promise<ClinicalRecordView | null> {
+  async getRecordView(
+    tx: Tx,
+    patientId: string,
+    page: PaginaNotas,
+  ): Promise<ClinicalRecordView | null> {
     const recordRes = await tx.execute(sql`
       SELECT cr.id AS record_id, cr.patient_id, cr.abierto_en, p.nombre AS patient_nombre,
              p.sin_alergias_conocidas, p.alergias, p.antecedentes
@@ -170,20 +198,52 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     )[0];
     if (!record) return null;
 
+    const desde = decodificarCursor(page.cursor);
+
+    // Se piden limit+1 filas: la de más es solo el testigo de que hay página
+    // siguiente, y no se devuelve. Evita un count extra por página.
+    //
+    // Keyset y no OFFSET: el expediente se recorre de lo más reciente hacia
+    // atrás, y el OFFSET obliga a Postgres a contar y descartar todas las
+    // notas anteriores — se degrada justo en los pacientes con más historia,
+    // que son los que más importan. La comparación de tupla
+    // (created_at, id) < (…) va con el ORDER BY y con
+    // clinical_notes_tenant_record_created_idx (ver 0021).
+    //
+    // `id` desempata: dos notas creadas en el mismo instante (autoguardado,
+    // migraciones) tendrían un orden inestable entre páginas, y una nota
+    // podría repetirse o desaparecer al pasar de página.
     const notesRes = await tx.execute(sql`
       SELECT id, clinical_record_id, appointment_id, doctor_id, tipo_nota,
              estatus, contenido_nom004, cerrado_en, created_at
         FROM clinical_notes
        WHERE clinical_record_id = ${record.record_id}
-       ORDER BY created_at DESC
+         ${desde ? sql`AND (created_at, id) < (${desde.createdAt}::timestamptz, ${desde.id}::uuid)` : sql``}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ${page.limit + 1}
     `);
+
+    const filas = notesRes.rows as unknown as NoteRow[];
+    const hayMas = filas.length > page.limit;
+    const pagina = hayMas ? filas.slice(0, page.limit) : filas;
+    const ultima = pagina[pagina.length - 1];
+
+    // El total es del expediente entero, no de la página: la cabecera dice
+    // "N notas" y ahí un número parcial sería engañoso.
+    const totalRes = await tx.execute(sql`
+      SELECT count(*)::int AS total FROM clinical_notes
+       WHERE clinical_record_id = ${record.record_id}
+    `);
+    const totalNotas = (totalRes.rows as unknown as { total: number }[])[0]?.total ?? 0;
 
     return {
       recordId: record.record_id,
       patientId: record.patient_id,
       patientNombre: record.patient_nombre,
       abiertoEn: new Date(record.abierto_en).toISOString(),
-      notas: (notesRes.rows as unknown as NoteRow[]).map((row) => ({
+      nextCursor: hayMas && ultima ? codificarCursor(ultima) : null,
+      totalNotas,
+      notas: pagina.map((row) => ({
         id: row.id,
         appointmentId: row.appointment_id,
         doctorId: row.doctor_id,

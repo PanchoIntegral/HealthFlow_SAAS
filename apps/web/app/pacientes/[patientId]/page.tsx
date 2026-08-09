@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   ClinicalNoteView,
   HistorialPaciente,
@@ -34,12 +34,26 @@ export default function ExpedientePage({
     if (ready && !token) router.replace('/login');
   }, [ready, token, router]);
 
-  const record = useQuery({
+  /**
+   * Historial paginado por cursor: el expediente de un paciente crónico crece
+   * sin techo (conservación NOM-004) y traerlo entero de golpe es lo que peor
+   * envejece de esta pantalla. Se recorre por páginas, no se recorta: el botón
+   * "Cargar más" llega hasta la primera nota.
+   */
+  const record = useInfiniteQuery({
     queryKey: ['clinical-record', patientId],
-    queryFn: () => api.getClinicalRecord(token!, patientId),
+    queryFn: ({ pageParam }) =>
+      api.getClinicalRecord(token!, patientId, { cursor: pageParam ?? undefined }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (ultima) => ultima.nextCursor,
     enabled: !!token,
     retry: false,
   });
+
+  // La cabecera del expediente (nombre, alergias, total) es la misma en todas
+  // las páginas: se lee de la primera. Las notas se concatenan.
+  const expediente = record.data?.pages[0];
+  const notas = record.data?.pages.flatMap((p) => p.notas) ?? [];
 
   const queryClient = useQueryClient();
   const [editando, setEditando] = useState(false);
@@ -78,13 +92,15 @@ export default function ExpedientePage({
           </p>
         )}
 
-        {record.data && (
+        {expediente && (
           <>
             <div className="mb-6">
-              <h1 className="text-2xl font-bold">{record.data.patientNombre}</h1>
+              <h1 className="text-2xl font-bold">{expediente.patientNombre}</h1>
               <p className="text-sm text-slate-500">
-                Expediente abierto el {fecha(record.data.abiertoEn)} · {record.data.notas.length}{' '}
-                nota{record.data.notas.length === 1 ? '' : 's'}
+                {/* El total es del expediente entero, no de lo ya cargado: en
+                    un expediente clínico un conteo parcial engaña. */}
+                Expediente abierto el {fecha(expediente.abiertoEn)} · {expediente.totalNotas}{' '}
+                nota{expediente.totalNotas === 1 ? '' : 's'}
               </p>
             </div>
 
@@ -92,7 +108,7 @@ export default function ExpedientePage({
               <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5">
                 <h2 className="mb-4 font-semibold">Alergias y antecedentes</h2>
                 <EditorHistorial
-                  inicial={record.data.historial}
+                  inicial={expediente.historial}
                   guardando={guardarHistorial.isPending}
                   onGuardar={(h) => guardarHistorial.mutate(h)}
                   onCancelar={() => setEditando(false)}
@@ -105,7 +121,7 @@ export default function ExpedientePage({
               </section>
             ) : (
               <AlertaAlergias
-                historial={record.data.historial}
+                historial={expediente.historial}
                 onCapturar={() => setEditando(true)}
               />
             )}
@@ -131,15 +147,27 @@ export default function ExpedientePage({
               />
             </section>
 
-            {record.data.notas.length === 0 ? (
+            {notas.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">
                 Sin notas todavía.
               </p>
             ) : (
               <div className="flex flex-col gap-4">
-                {record.data.notas.map((nota) => (
+                {notas.map((nota) => (
                   <NotaCard key={nota.id} nota={nota} />
                 ))}
+
+                {record.hasNextPage && (
+                  <button
+                    onClick={() => void record.fetchNextPage()}
+                    disabled={record.isFetchingNextPage}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue disabled:opacity-50"
+                  >
+                    {record.isFetchingNextPage
+                      ? 'Cargando…'
+                      : `Cargar notas anteriores (${expediente.totalNotas - notas.length} restantes)`}
+                  </button>
+                )}
               </div>
             )}
           </>
