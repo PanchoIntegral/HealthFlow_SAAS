@@ -140,11 +140,15 @@ export function BannerSuscripcion() {
             </>
           )}
         </p>
-        {/* Con una factura abierta, el camino corto: un clic a la página de
-            pago de Stripe, sin pasar por el portal ni esperar el reintento
-            automático. El portal queda como alternativa para cambiar la
-            tarjeta o revisar el detalle. */}
-        {pagoPendiente ? (
+        {/* Quien no es titular ve el aviso pero no botones: el portal de pago
+            es suyo (403 para el resto), y un botón que falla al pulsarlo es
+            peor que no tenerlo. Se le dice a quién acudir, que es lo único
+            accionable desde su lado. */}
+        {!esTitular ? (
+          <p className={`ml-auto text-sm ${c.texto} opacity-80`}>
+            Avísale al titular de la cuenta para regularizar el pago.
+          </p>
+        ) : pagoPendiente ? (
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
