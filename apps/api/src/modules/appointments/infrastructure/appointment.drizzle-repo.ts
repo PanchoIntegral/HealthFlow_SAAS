@@ -85,7 +85,12 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
              a.checkin_at    AS checkin_at
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
-       WHERE a.inicio_programado::date = current_date
+       -- Rango en vez de un cast a ::date comparado con current_date: el cast
+       -- se evalúa por fila y deja inservible el índice por fecha. El rango
+       -- delimita el MISMO día (current_date se resuelve en la zona horaria de
+       -- la sesión, igual que hacía el cast), pero sí usa el índice.
+       WHERE a.inicio_programado >= current_date::timestamptz
+         AND a.inicio_programado <  (current_date + 1)::timestamptz
        ORDER BY a.inicio_programado ASC
     `);
     return (result.rows as unknown as WaitingRoomRow[]).map(mapRow);

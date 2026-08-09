@@ -52,15 +52,38 @@ export class DrizzlePatientRepository implements PatientRepository {
 
   async search(tx: Tx, query: string, limit: number): Promise<PatientSummary[]> {
     const like = `${query.toLowerCase()}%`;
+    // Dos ramas UNION en vez de un OR: con `A LIKE … OR B LIKE …` el
+    // planificador casi nunca usa índice (tendría que combinar dos índices
+    // distintos sobre la misma tabla) y acaba en seq scan. Separadas, cada
+    // rama puede atacar su propio índice por prefijo.
+    //
+    // UNION y no UNION ALL: un paciente cuyo nombre y CURP empiecen igual
+    // aparecería dos veces. El LIMIT interno de cada rama acota el trabajo;
+    // el externo devuelve el mismo tope de siempre. Esto es un autocompletado
+    // por prefijo — mismo criterio de coincidencia que antes.
     const result = await tx.execute(sql`
-      SELECT id,
-             nombre,
-             date_part('year', age(fecha_nacimiento))::int AS edad,
-             curp,
-             telefono
-        FROM patients
-       WHERE lower(nombre) LIKE ${like}
-          OR lower(curp) LIKE ${like}
+      SELECT id, nombre, edad, curp, telefono
+        FROM (
+          (SELECT id,
+                  nombre,
+                  date_part('year', age(fecha_nacimiento))::int AS edad,
+                  curp,
+                  telefono
+             FROM patients
+            WHERE lower(nombre) LIKE ${like}
+            ORDER BY nombre ASC
+            LIMIT ${limit})
+          UNION
+          (SELECT id,
+                  nombre,
+                  date_part('year', age(fecha_nacimiento))::int AS edad,
+                  curp,
+                  telefono
+             FROM patients
+            WHERE lower(curp) LIKE ${like}
+            ORDER BY nombre ASC
+            LIMIT ${limit})
+        ) coincidencias
        ORDER BY nombre ASC
        LIMIT ${limit}
     `);
