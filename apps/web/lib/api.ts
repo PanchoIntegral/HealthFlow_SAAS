@@ -1,5 +1,11 @@
 import type {
   AppointmentView,
+  HuecoDisponible,
+  ReagendaCitaView,
+  ReagendarRequest,
+  SaveWhatsappConfigRequest,
+  WhatsappConsumoMes,
+  WhatsappConfigView,
   CancelAppointmentRequest,
   CancelarFacturaRequest,
   FacturacionView,
@@ -169,6 +175,35 @@ export const api = {
       token,
       body: JSON.stringify(body),
     }),
+
+  // ── Reagendado público (sin sesión) ─────────────────────────────
+  // El paciente llega por el enlace que recibió en WhatsApp: no hay JWT que
+  // mandar, el token del path ES la credencial.
+  verReagenda: (token: string) =>
+    request<ReagendaCitaView>(`/publico/reagendar/${encodeURIComponent(token)}`),
+
+  huecosReagenda: (token: string) =>
+    request<HuecoDisponible[]>(`/publico/reagendar/${encodeURIComponent(token)}/huecos`),
+
+  confirmarReagenda: (token: string, inicio: string) =>
+    request<ReagendaCitaView>(`/publico/reagendar/${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: JSON.stringify({ inicio } satisfies ReagendarRequest),
+    }),
+
+  // ── Recordatorios por WhatsApp ──────────────────────────────────
+  getWhatsappConfig: (token: string) =>
+    request<WhatsappConfigView>('/whatsapp/config', { token }),
+
+  saveWhatsappConfig: (token: string, body: SaveWhatsappConfigRequest) =>
+    request<WhatsappConfigView>('/whatsapp/config', {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  getWhatsappConsumo: (token: string) =>
+    request<WhatsappConsumoMes[]>('/whatsapp/config/consumo', { token }),
 
   startConsultation: (token: string, appointmentId: string) =>
     request<StartConsultationResponse>(`/appointments/${appointmentId}/start-consultation`, {

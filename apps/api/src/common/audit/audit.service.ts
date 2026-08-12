@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { auditLog } from '../../db/schema';
 import type { Tx } from '../../db/drizzle';
 import { RequestContextService } from '../tenant-context/request-context';
+import { ACTOR_SISTEMA } from '../tenant-context/system-context.runner';
 
 export interface AuditEntry {
   entidad: string;
@@ -23,7 +24,11 @@ export class AuditService {
     const { tenantId, userId } = this.ctx.get();
     await tx.insert(auditLog).values({
       tenantId,
-      userId,
+      // El actor de sistema (recordatorios, respuestas del paciente por
+      // WhatsApp) se guarda como NULL: no es un usuario de la clínica, y
+      // `audit_log.user_id` es FK a `users`. Atribuirle la acción a alguien
+      // real sería más cómodo y falsearía la bitácora.
+      userId: userId === ACTOR_SISTEMA ? null : userId,
       entidad: entry.entidad,
       entidadId: entry.entidadId ?? null,
       accion: entry.accion,

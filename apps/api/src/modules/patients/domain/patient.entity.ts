@@ -1,3 +1,4 @@
+import { normalizarE164Mx } from '@healthflow/shared-types';
 import { InvalidBirthDateError, InvalidCurpError } from './patient.errors';
 
 /**
@@ -13,6 +14,8 @@ export interface NewPatientInput {
   fechaNacimiento: string; // YYYY-MM-DD
   curp?: string | null;
   telefono?: string | null;
+  /** Casilla que el paciente marca. Sin ella no se le manda nada. */
+  whatsappOptIn?: boolean;
 }
 
 export interface PatientProps {
@@ -20,6 +23,10 @@ export interface PatientProps {
   fechaNacimiento: string;
   curp: string | null;
   telefono: string | null;
+  /** Celular normalizado; null si el capturado no es enviable. */
+  telefonoE164: string | null;
+  whatsappOptIn: boolean;
+  whatsappOptInAt: Date | null;
 }
 
 /**
@@ -41,11 +48,27 @@ export class Patient {
 
     const fechaNacimiento = normalizeBirthDate(input.fechaNacimiento);
 
+    const telefono = input.telefono?.trim() || null;
+    // El E.164 se DERIVA del teléfono capturado, no es un campo aparte que el
+    // cliente pueda mandar por su cuenta: así no hay forma de que el número al
+    // que se manda el WhatsApp difiera del que ve la clínica en la ficha.
+    const telefonoE164 = normalizarE164Mx(telefono);
+
+    // Consentimiento solo si además hay un número al que mandar: marcar la
+    // casilla con un teléfono que WhatsApp rechaza no es un consentimiento
+    // útil, y guardarlo haría creer que el paciente sí recibe avisos.
+    const whatsappOptIn = Boolean(input.whatsappOptIn) && telefonoE164 !== null;
+
     return new Patient({
       nombre,
       fechaNacimiento,
       curp,
-      telefono: input.telefono?.trim() || null,
+      telefono,
+      telefonoE164,
+      whatsappOptIn,
+      // Fecha del consentimiento: la LFPDPPP exige poder acreditar cuándo se
+      // otorgó, no solo que existe.
+      whatsappOptInAt: whatsappOptIn ? new Date() : null,
     });
   }
 
@@ -54,6 +77,12 @@ export class Patient {
   }
   get curp(): string | null {
     return this.props.curp;
+  }
+  get telefonoE164(): string | null {
+    return this.props.telefonoE164;
+  }
+  get whatsappOptIn(): boolean {
+    return this.props.whatsappOptIn;
   }
 
   static edad(fechaNacimiento: string, now: Date = new Date()): number {

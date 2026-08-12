@@ -13,6 +13,7 @@ function make(estatus: AppointmentStatus): Appointment {
     checkinAt: null,
     inicioReal: null,
     finReal: null,
+    confirmadaAt: null,
   };
   return Appointment.fromState(props);
 }

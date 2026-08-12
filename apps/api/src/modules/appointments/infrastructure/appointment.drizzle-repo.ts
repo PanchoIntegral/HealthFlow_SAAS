@@ -32,6 +32,7 @@ interface AppointmentViewRow {
   inicio_programado: Date;
   fin_programado: Date;
   estatus: AppointmentStatus;
+  confirmada_at: Date | null;
 }
 
 /** Estados que NO bloquean el horario del médico al validar traslape. */
@@ -57,6 +58,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
       checkinAt: row.checkinAt,
       inicioReal: row.inicioReal,
       finReal: row.finReal,
+      confirmadaAt: row.confirmadaAt,
     });
   }
 
@@ -69,6 +71,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         checkinAt: s.checkinAt,
         inicioReal: s.inicioReal,
         finReal: s.finReal,
+        confirmadaAt: s.confirmadaAt,
       })
       .where(eq(appointments.id, s.id));
   }
@@ -137,7 +140,8 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const result = await tx.execute(sql`
       SELECT a.id, a.patient_id, p.nombre AS patient_nombre,
              a.doctor_id, u.nombre AS doctor_nombre,
-             a.motivo, a.inicio_programado, a.fin_programado, a.estatus
+             a.motivo, a.inicio_programado, a.fin_programado, a.estatus,
+             a.confirmada_at
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
         JOIN users u ON u.id = a.doctor_id
@@ -152,7 +156,8 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const result = await tx.execute(sql`
       SELECT a.id, a.patient_id, p.nombre AS patient_nombre,
              a.doctor_id, u.nombre AS doctor_nombre,
-             a.motivo, a.inicio_programado, a.fin_programado, a.estatus
+             a.motivo, a.inicio_programado, a.fin_programado, a.estatus,
+             a.confirmada_at
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
         JOIN users u ON u.id = a.doctor_id
@@ -210,6 +215,7 @@ function mapViewRow(row: AppointmentViewRow): AppointmentView {
     inicioProgramado: new Date(row.inicio_programado).toISOString(),
     finProgramado: new Date(row.fin_programado).toISOString(),
     estatus: row.estatus,
+    confirmadaAt: row.confirmada_at ? new Date(row.confirmada_at).toISOString() : null,
   };
 }
 

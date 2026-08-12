@@ -114,6 +114,14 @@ export const patients = pgTable('patients', {
   fechaNacimiento: date('fecha_nacimiento').notNull(),
   curp: text('curp'),
   telefono: text('telefono'),
+  /**
+   * Celular normalizado a E.164, el ÚNICO que se usa para mandar WhatsApp.
+   * Aparte de `telefono` a propósito: ese es texto libre y no se backfillea
+   * (ver 0022). Sin consentimiento explícito no se manda nada.
+   */
+  telefonoE164: text('telefono_e164'),
+  whatsappOptIn: boolean('whatsapp_opt_in').notNull().default(false),
+  whatsappOptInAt: timestamp('whatsapp_opt_in_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -129,6 +137,11 @@ export const appointments = pgTable('appointments', {
   checkinAt: timestamp('checkin_at', { withTimezone: true }),
   inicioReal: timestamp('inicio_real', { withTimezone: true }),
   finReal: timestamp('fin_real', { withTimezone: true }),
+  /**
+   * Cuándo confirmó el paciente por WhatsApp. Ortogonal a `estatus`: confirmar
+   * no es una transición del ciclo de vida de la cita (ver 0022).
+   */
+  confirmadaAt: timestamp('confirmada_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -368,6 +381,75 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ── Recordatorios por WhatsApp (ver 0022_whatsapp_recordatorios.sql) ──
+
+/** Remitente y preferencias de recordatorio de cada clínica. */
+export const tenantWhatsappConfig = pgTable('tenant_whatsapp_config', {
+  tenantId: uuid('tenant_id').primaryKey(),
+  /** 'compartido' = número de HealthFlow; 'propio' = WABA de la clínica. */
+  modo: text('modo').notNull().default('compartido'),
+  wabaId: text('waba_id'),
+  phoneNumberId: text('phone_number_id'),
+  /** AES-256-GCM con AAD = tenantId. Nunca sale del backend. */
+  accessTokenCifrado: text('access_token_cifrado'),
+  nombreRemitente: text('nombre_remitente'),
+  activo: boolean('activo').notNull().default(false),
+  horasAnticipacion: integer('horas_anticipacion').notNull().default(24),
+  enviarConfirmacion: boolean('enviar_confirmacion').notNull().default(true),
+  zonaHoraria: text('zona_horaria').notNull().default('America/Mexico_City'),
+  silencioDesde: integer('silencio_desde').notNull().default(21),
+  silencioHasta: integer('silencio_hasta').notNull().default(8),
+  /** HorarioAtencion — ver shared-types. */
+  horarioAtencion: jsonb('horario_atencion').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Cola de salida: una fila por mensaje que se pretende mandar. */
+export const whatsappOutbox = pgTable('whatsapp_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  patientId: uuid('patient_id').notNull(),
+  appointmentId: uuid('appointment_id'),
+  plantilla: text('plantilla').notNull(),
+  variables: jsonb('variables').notNull().default({}),
+  estado: text('estado').notNull().default('pendiente'),
+  /** Id que devuelve Meta. Llave de ruteo del inbound — nunca el teléfono. */
+  metaMessageId: text('meta_message_id'),
+  programadoPara: timestamp('programado_para', { withTimezone: true }).notNull(),
+  reclamadoAt: timestamp('reclamado_at', { withTimezone: true }),
+  enviadoAt: timestamp('enviado_at', { withTimezone: true }),
+  intentos: integer('intentos').notNull().default(0),
+  ultimoError: text('ultimo_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Token de un solo uso del link de reagendado que recibe el paciente. */
+export const whatsappReagendaTokens = pgTable('whatsapp_reagenda_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  appointmentId: uuid('appointment_id').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  intentos: integer('intentos').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Idempotencia de los webhooks de Meta. Sin tenant_id: registro global, igual
+ * que stripeEvents. Solo el hash del cuerpo — el payload trae teléfonos de
+ * pacientes y no puede vivir en una tabla sin RLS (ver 0022).
+ */
+export const whatsappEvents = pgTable('whatsapp_events', {
+  id: text('id').primaryKey(),
+  tipo: text('tipo').notNull(),
+  recibidoAt: timestamp('recibido_at', { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+  intentos: integer('intentos').notNull().default(0),
+  ultimoError: text('ultimo_error'),
+});
+
 export const schema = {
   tenants,
   users,
@@ -392,5 +474,9 @@ export const schema = {
   presupuestoAbonos,
   consentimientos,
   radiografias,
+  tenantWhatsappConfig,
+  whatsappOutbox,
+  whatsappReagendaTokens,
+  whatsappEvents,
 };
 export type DbSchema = typeof schema;

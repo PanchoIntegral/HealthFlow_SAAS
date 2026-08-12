@@ -199,4 +199,67 @@ export const env = {
   get emailFrom(): string {
     return process.env.EMAIL_FROM ?? 'HealthFlow <onboarding@resend.dev>';
   },
+
+  // ── Recordatorios por WhatsApp (Meta Cloud API) ────────────────────
+  /**
+   * 'fake' escribe los mensajes al log en lugar de mandarlos. Default seguro:
+   * mandar de verdad —y cobrarle a la clínica— tiene que ser una decisión
+   * explícita. En tests es siempre fake, igual que el PAC.
+   */
+  get whatsappProvider(): string {
+    if (process.env.NODE_ENV === 'test') return 'fake';
+    return process.env.WHATSAPP_PROVIDER ?? 'fake';
+  },
+  /**
+   * Credenciales del número COMPARTIDO de HealthFlow: la clínica que no tiene
+   * número propio (modo 'compartido') manda desde aquí.
+   *
+   * Con el proveedor 'fake' devuelven un valor de relleno en vez de exigirlas:
+   * el adaptador falso no las usa, y hacerlas obligatorias rompería el barrido
+   * en dev y en los tests, que es justo donde el modo fake debe funcionar solo.
+   */
+  get whatsappSharedPhoneNumberId(): string {
+    if (this.whatsappProvider === 'fake') return process.env.WHATSAPP_PHONE_NUMBER_ID ?? 'fake';
+    return required('WHATSAPP_PHONE_NUMBER_ID');
+  },
+  get whatsappSharedAccessToken(): string {
+    if (this.whatsappProvider === 'fake') return process.env.WHATSAPP_ACCESS_TOKEN ?? 'fake';
+    return required('WHATSAPP_ACCESS_TOKEN');
+  },
+  /** Secreto de la app de Meta: firma el webhook (X-Hub-Signature-256). */
+  get whatsappAppSecret(): string {
+    return required('WHATSAPP_APP_SECRET');
+  },
+  /** Token del handshake de verificación del webhook. Lo elige uno, no Meta. */
+  get whatsappVerifyToken(): string {
+    return required('WHATSAPP_VERIFY_TOKEN');
+  },
+  get whatsappGraphVersion(): string {
+    return process.env.WHATSAPP_GRAPH_VERSION ?? 'v21.0';
+  },
+  /**
+   * Llavero para cifrar el access token de las clínicas con número propio:
+   * JSON {"k1":"<32 bytes en base64>"} + el id de la llave activa. Ver
+   * common/crypto/secreto-cifrado.ts. Solo se exige si alguna clínica está en
+   * modo 'propio'.
+   */
+  get whatsappTokenKeys(): string {
+    return required('WHATSAPP_TOKEN_KEYS');
+  },
+  get whatsappTokenKeyActive(): string {
+    return process.env.WHATSAPP_TOKEN_KEY_ACTIVE ?? 'k1';
+  },
+  /** Cada cuánto barre el scheduler. Vacío = default; 'off' lo desactiva. */
+  get whatsappSchedulerIntervalMs(): number {
+    return Number(process.env.WHATSAPP_SCHEDULER_INTERVAL_MS ?? 120_000);
+  },
+  /**
+   * El cron arranca con la app, así que en los tests de integración (que
+   * levantan AppModule completo) barrería la base mientras corren otros specs.
+   */
+  get whatsappSchedulerEnabled(): boolean {
+    if (process.env.WHATSAPP_SCHEDULER === 'off') return false;
+    if (process.env.WHATSAPP_SCHEDULER === 'on') return true;
+    return process.env.NODE_ENV !== 'test';
+  },
 };

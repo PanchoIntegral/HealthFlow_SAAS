@@ -39,6 +39,10 @@ import { WaitingRoomGateway } from './infrastructure/waiting-room.gateway';
   ],
   // Se exportan para que clinical-records reutilice la transición de cita y la
   // notificación realtime sin re-implementarlas.
-  exports: [APPOINTMENT_REPOSITORY, WAITING_ROOM_NOTIFIER],
+  // CancelAppointmentUseCase se exporta para el módulo de WhatsApp: cuando el
+  // paciente cancela desde el recordatorio se reutiliza este caso de uso tal
+  // cual, en vez de duplicar la regla y sus efectos (notificación al médico,
+  // sala de espera, bitácora).
+  exports: [APPOINTMENT_REPOSITORY, WAITING_ROOM_NOTIFIER, CancelAppointmentUseCase],
 })
 export class AppointmentsModule {}

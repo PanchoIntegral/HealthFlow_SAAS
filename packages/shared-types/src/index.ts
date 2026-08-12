@@ -35,6 +35,10 @@ export interface Patient {
   fechaNacimiento: string; // ISO date (YYYY-MM-DD)
   curp: string | null;
   telefono: string | null;
+  /** Celular normalizado (+52…), el único usable para WhatsApp. */
+  telefonoE164?: string | null;
+  /** Consentimiento explícito para recibir recordatorios por WhatsApp. */
+  whatsappOptIn?: boolean;
 }
 
 /** Datos para dar de alta un paciente (el tenant lo asigna el backend). */
@@ -43,6 +47,12 @@ export interface CreatePatientRequest {
   fechaNacimiento: string; // ISO date (YYYY-MM-DD)
   curp?: string | null;
   telefono?: string | null;
+  telefonoE164?: string | null;
+  /**
+   * Debe venir de una casilla que el paciente marca, no de un default: sin
+   * consentimiento explícito no se le manda nada (LFPDPPP).
+   */
+  whatsappOptIn?: boolean;
 }
 
 // ── Alergias y antecedentes del paciente ─────────────────────────
@@ -1155,6 +1165,8 @@ export interface AppointmentView {
   inicioProgramado: string; // ISO datetime
   finProgramado: string; // ISO datetime
   estatus: AppointmentStatus;
+  /** Cuándo confirmó el paciente por WhatsApp; null si no ha respondido. */
+  confirmadaAt: string | null; // ISO datetime
 }
 
 export interface CreateAppointmentRequest {
@@ -1726,4 +1738,206 @@ export function perfilDe(key: string | null | undefined): PerfilEspecialidad {
 /** Opciones para poblar un `<select>`, con 'general' siempre primero. */
 export function opcionesEspecialidad(): { key: EspecialidadKey; nombre: string }[] {
   return ESPECIALIDADES.map((key) => ({ key, nombre: PERFILES[key].nombre }));
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ * Recordatorios de cita por WhatsApp
+ * ═══════════════════════════════════════════════════════════════════
+ */
+
+/** 'compartido' = número de HealthFlow; 'propio' = WABA de la clínica. */
+export const WHATSAPP_MODOS = ['compartido', 'propio'] as const;
+export type WhatsappModo = (typeof WHATSAPP_MODOS)[number];
+
+export const WHATSAPP_PLANTILLAS = [
+  'recordatorio_cita',
+  'confirmacion_cita',
+  'cancelacion_cita',
+] as const;
+export type WhatsappPlantilla = (typeof WHATSAPP_PLANTILLAS)[number];
+
+/**
+ * 'enviando' es el claim: la fila se marca ANTES de llamar a Meta y se
+ * confirma después, porque la llamada HTTP no puede ocurrir dentro de la
+ * transacción. Los tres siguientes los reporta Meta por webhook.
+ */
+export const WHATSAPP_ESTADOS_OUTBOX = [
+  'pendiente',
+  'enviando',
+  'enviado',
+  'entregado',
+  'leido',
+  'fallido',
+] as const;
+export type WhatsappEstadoOutbox = (typeof WHATSAPP_ESTADOS_OUTBOX)[number];
+
+/** Progreso real de un mensaje: un 'entregado' tardío no debe pisar un 'leido'. */
+const ORDEN_ESTADOS: Record<WhatsappEstadoOutbox, number> = {
+  pendiente: 0,
+  enviando: 1,
+  enviado: 2,
+  entregado: 3,
+  leido: 4,
+  fallido: 5,
+};
+
+/**
+ * ¿El estado nuevo es un avance sobre el actual? Meta no garantiza el orden de
+ * los webhooks de estado, así que sin esto un 'delivered' que llega tarde
+ * haría retroceder un mensaje que el paciente ya leyó.
+ */
+export function esAvanceDeEstado(
+  actual: WhatsappEstadoOutbox,
+  nuevo: WhatsappEstadoOutbox,
+): boolean {
+  if (nuevo === 'fallido') return actual !== 'fallido';
+  return ORDEN_ESTADOS[nuevo] > ORDEN_ESTADOS[actual];
+}
+
+/** Días de la semana en que la clínica ofrece huecos (1 = lunes … 7 = domingo). */
+export interface HorarioAtencion {
+  dias: number[];
+  desde: string; // 'HH:MM' local
+  hasta: string; // 'HH:MM' local
+}
+
+/**
+ * Configuración visible en Ajustes. NUNCA incluye el access token: solo si
+ * hay uno guardado.
+ */
+export interface WhatsappConfigView {
+  modo: WhatsappModo;
+  wabaId: string | null;
+  phoneNumberId: string | null;
+  tieneToken: boolean;
+  nombreRemitente: string | null;
+  activo: boolean;
+  horasAnticipacion: number;
+  enviarConfirmacion: boolean;
+  zonaHoraria: string;
+  silencioDesde: number;
+  silencioHasta: number;
+  horarioAtencion: HorarioAtencion;
+}
+
+export interface SaveWhatsappConfigRequest {
+  modo?: WhatsappModo;
+  wabaId?: string | null;
+  phoneNumberId?: string | null;
+  /** En claro y una sola vez: el backend lo cifra antes de guardarlo. */
+  accessToken?: string | null;
+  nombreRemitente?: string | null;
+  activo?: boolean;
+  horasAnticipacion?: number;
+  enviarConfirmacion?: boolean;
+  zonaHoraria?: string;
+  silencioDesde?: number;
+  silencioHasta?: number;
+  horarioAtencion?: HorarioAtencion;
+}
+
+/** Cuánto mandó una clínica en un mes, para saber cuánto cuesta. */
+export interface WhatsappConsumoMes {
+  mes: string; // 'YYYY-MM'
+  enviados: number;
+  entregados: number;
+  leidos: number;
+  fallidos: number;
+  /** Solo los que Meta cobra: los que salieron de verdad. */
+  facturables: number;
+}
+
+export interface WhatsappOutboxSummary {
+  id: string;
+  plantilla: WhatsappPlantilla;
+  estado: WhatsappEstadoOutbox;
+  pacienteNombre: string;
+  programadoPara: string; // ISO datetime
+  enviadoAt: string | null; // ISO datetime
+  ultimoError: string | null;
+}
+
+// ── Página pública de reagendado ─────────────────────────────────
+// El paciente llega por un link con token, sin cuenta ni sesión. Por eso NADA
+// de lo que se devuelve aquí es información clínica: ni el motivo de la
+// consulta, ni la CURP, ni el historial. El token es un bearer y puede acabar
+// en el historial de un teléfono prestado.
+
+export interface ReagendaCitaView {
+  nombreClinica: string;
+  doctorNombre: string;
+  inicioProgramado: string; // ISO datetime
+  duracionMinutos: number;
+}
+
+export interface HuecoDisponible {
+  inicio: string; // ISO datetime
+  fin: string; // ISO datetime
+}
+
+export interface ReagendarRequest {
+  inicio: string; // ISO datetime, tomado de un HuecoDisponible
+}
+
+// ── Normalización de celulares ───────────────────────────────────
+
+/** E.164: un `+`, dígito inicial distinto de cero, entre 8 y 15 dígitos. */
+const E164 = /^\+[1-9]\d{7,14}$/;
+const LADA_MX = '52';
+const DIGITOS_NACIONALES_MX = 10;
+
+/**
+ * Normaliza un celular mexicano a E.164 (`+52##########`), o devuelve `null`
+ * si no se puede afirmar con seguridad cuál es.
+ *
+ * Vive aquí, y no en cada app, para que el formulario del navegador y la
+ * validación del backend no puedan discrepar: si la web aceptara un número que
+ * el API rechaza, el paciente quedaría dado de alta sin canal de aviso.
+ *
+ * Ante la duda siempre `null`: es preferible no mandar el recordatorio a
+ * mandárselo a quien no es.
+ */
+export function normalizarE164Mx(crudo: string | null | undefined): string | null {
+  if (!crudo) return null;
+
+  const tieneMas = crudo.trimStart().startsWith('+');
+  let digitos = crudo.replace(/\D/g, '');
+  if (!digitos) return null;
+
+  // Un número internacional explícito (+34…, +1…) se respeta tal cual: hay
+  // pacientes extranjeros y forzarles la lada de México los volvería inválidos.
+  if (tieneMas) {
+    const e164 = `+${digitos}`;
+    return E164.test(e164) ? e164 : null;
+  }
+
+  // 044/045 + 10 dígitos: prefijos de celular derogados en 2019 que siguen
+  // capturados en expedientes viejos.
+  if (digitos.length === 13 && (digitos.startsWith('044') || digitos.startsWith('045'))) {
+    digitos = digitos.slice(3);
+  }
+
+  // 1 intermedio del formato viejo de celular (52 1 ##########).
+  if (digitos.length === 13 && digitos.startsWith(`${LADA_MX}1`)) {
+    digitos = LADA_MX + digitos.slice(3);
+  }
+
+  if (digitos.length === DIGITOS_NACIONALES_MX) {
+    digitos = LADA_MX + digitos;
+  }
+
+  // Sin `+` explícito solo se acepta lo que ya es un nacional mexicano con
+  // lada: interpretar cualquier otra longitud sería adivinar el país.
+  if (digitos.length !== LADA_MX.length + DIGITOS_NACIONALES_MX || !digitos.startsWith(LADA_MX)) {
+    return null;
+  }
+
+  const e164 = `+${digitos}`;
+  return E164.test(e164) ? e164 : null;
+}
+
+/** Valida un número que ya viene en E.164 (p. ej. desde un DTO). */
+export function esE164(valor: string): boolean {
+  return E164.test(valor);
 }

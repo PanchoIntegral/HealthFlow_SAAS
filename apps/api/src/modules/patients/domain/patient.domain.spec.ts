@@ -57,4 +57,42 @@ describe('Patient (dominio)', () => {
       expect(Patient.edad('2000-12-31', new Date('2026-07-04T12:00:00Z'))).toBe(25);
     });
   });
+
+  describe('consentimiento de WhatsApp', () => {
+    const alta = (extra: Record<string, unknown>) =>
+      Patient.register({ nombre: 'Ana López', fechaNacimiento: '1990-05-05', ...extra });
+
+    it('nace sin consentimiento si no se pide explícitamente', () => {
+      const p = alta({ telefono: '5551234567' });
+      expect(p.whatsappOptIn).toBe(false);
+      expect(p.toProps().whatsappOptInAt).toBeNull();
+    });
+
+    it('deriva el E.164 del teléfono capturado', () => {
+      expect(alta({ telefono: '(555) 123 45 67' }).telefonoE164).toBe('+525551234567');
+    });
+
+    it('deja el E.164 en null si el teléfono no es enviable', () => {
+      const p = alta({ telefono: '555-123' });
+      expect(p.telefonoE164).toBeNull();
+      expect(p.toProps().telefono).toBe('555-123'); // el capturado se conserva
+    });
+
+    it('guarda el consentimiento con su fecha', () => {
+      const p = alta({ telefono: '5551234567', whatsappOptIn: true });
+      expect(p.whatsappOptIn).toBe(true);
+      expect(p.toProps().whatsappOptInAt).toBeInstanceOf(Date);
+    });
+
+    // Un consentimiento sin número al que mandar haría creer a la clínica que
+    // el paciente recibe recordatorios que nunca van a salir.
+    it.each([
+      ['un teléfono que WhatsApp rechaza', '555-123'],
+      ['sin teléfono', undefined],
+    ])('ignora el consentimiento con %s', (_caso, telefono) => {
+      const p = alta({ telefono, whatsappOptIn: true });
+      expect(p.whatsappOptIn).toBe(false);
+      expect(p.toProps().whatsappOptInAt).toBeNull();
+    });
+  });
 });

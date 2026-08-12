@@ -1,5 +1,6 @@
 import type { AppointmentStatus } from '@healthflow/shared-types';
 import { InvalidAppointmentRangeError, InvalidAppointmentTransitionError } from './appointment.errors';
+import { CitaNoConfirmableError } from '../../whatsapp/domain/whatsapp.errors';
 
 /**
  * Mapa explícito de transiciones permitidas. Los estados terminales
@@ -26,6 +27,16 @@ export interface AppointmentProps {
   checkinAt: Date | null;
   inicioReal: Date | null;
   finReal: Date | null;
+  /**
+   * Cuándo confirmó el paciente su asistencia (hoy, por WhatsApp).
+   *
+   * Es un dato ORTOGONAL al `estatus`, no un estado más: una cita confirmada
+   * sigue siendo 'agendada' y recorre el mismo ciclo de vida. Modelarlo como
+   * estado habría obligado a tocar ALLOWED_TRANSITIONS, el calendario y la
+   * sala de espera para expresar algo que no cambia lo que se puede hacer con
+   * la cita.
+   */
+  confirmadaAt: Date | null;
 }
 
 /**
@@ -57,6 +68,26 @@ export class Appointment {
   }
   get checkinAt(): Date | null {
     return this.props.checkinAt;
+  }
+  get confirmadaAt(): Date | null {
+    return this.props.confirmadaAt;
+  }
+
+  /**
+   * El paciente confirma que va a venir. No pasa por `transition()`: no hay
+   * cambio de estado y `agendada → agendada` no es una transición válida.
+   *
+   * Idempotente porque el mismo webhook de Meta puede llegar dos veces (Meta
+   * reintenta si tarda la respuesta) y porque nada impide al paciente pulsar
+   * el botón dos veces. Se conserva la PRIMERA confirmación, que es el dato
+   * que la clínica querría auditar.
+   */
+  confirmar(now: Date = new Date()): void {
+    if (this.props.estatus !== 'agendada') {
+      throw new CitaNoConfirmableError(this.props.estatus);
+    }
+    if (this.props.confirmadaAt) return;
+    this.props.confirmadaAt = now;
   }
 
   canTransitionTo(to: AppointmentStatus): boolean {

@@ -1,4 +1,11 @@
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreatePatientDto {
   @IsString()
@@ -18,4 +25,16 @@ export class CreatePatientDto {
   @IsString()
   @MaxLength(20)
   telefono?: string;
+
+  /**
+   * Consentimiento para recibir recordatorios por WhatsApp. Debe venir de una
+   * casilla que el paciente marca, no de un default.
+   *
+   * Aquí NO se recibe el número en E.164: lo deriva la entidad a partir de
+   * `telefono`, para que el número al que se manda el mensaje no pueda diferir
+   * del que la clínica ve en la ficha.
+   */
+  @IsOptional()
+  @IsBoolean()
+  whatsappOptIn?: boolean;
 }

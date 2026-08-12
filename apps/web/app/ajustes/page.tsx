@@ -7,16 +7,25 @@ import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
 import { FacturacionSeccion } from '../../components/facturacion-seccion';
+import { WhatsappSeccion } from '../../components/whatsapp-seccion';
 
 const OPCIONES = opcionesEspecialidad();
 
-type SeccionKey = 'perfil' | 'seguridad' | 'facturacion';
+type SeccionKey = 'perfil' | 'seguridad' | 'whatsapp' | 'facturacion';
 
 const SECCIONES: { key: SeccionKey; nombre: string; descripcion: string }[] = [
   { key: 'perfil', nombre: 'Perfil profesional', descripcion: 'Cómo es tu nota y con qué datos se firma.' },
   { key: 'seguridad', nombre: 'Seguridad', descripcion: 'Tu contraseña de acceso.' },
+  {
+    key: 'whatsapp',
+    nombre: 'Recordatorios',
+    descripcion: 'Avisos de cita por WhatsApp y cuándo se envían.',
+  },
   { key: 'facturacion', nombre: 'Facturación', descripcion: 'Plan, método de pago e historial de cobros.' },
 ];
+
+/** Secciones que solo ve el titular: quién paga y con qué número se manda. */
+const SOLO_TITULAR: SeccionKey[] = ['whatsapp', 'facturacion'];
 
 /**
  * Ajustes de la cuenta, organizados por secciones.
@@ -44,7 +53,7 @@ export default function AjustesPage() {
    * un médico contratado una puerta que se le va a cerrar en la cara.
    */
   const esTitular = user.rol === 'admin';
-  const visibles = SECCIONES.filter((s) => s.key !== 'facturacion' || esTitular);
+  const visibles = SECCIONES.filter((s) => !SOLO_TITULAR.includes(s.key) || esTitular);
   const actual = visibles.find((s) => s.key === seccion) ?? visibles[0]!;
 
   return (
@@ -93,6 +102,7 @@ export default function AjustesPage() {
 
             {actual.key === 'perfil' && <PerfilSeccion token={token} />}
             {actual.key === 'seguridad' && <SeguridadSeccion token={token} />}
+            {actual.key === 'whatsapp' && <WhatsappSeccion token={token} />}
             {actual.key === 'facturacion' && <FacturacionSeccion token={token} />}
           </div>
         </div>

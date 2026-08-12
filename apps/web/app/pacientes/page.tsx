@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreatePatientRequest } from '@healthflow/shared-types';
+import { normalizarE164Mx, type CreatePatientRequest } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
@@ -186,6 +186,15 @@ function NewPatientForm({
     curp: '',
     telefono: '',
   });
+  const [optIn, setOptIn] = useState(false);
+
+  /**
+   * Se valida con la MISMA función que usa el backend (shared-types): si aquí
+   * se aceptara un número que el API rechaza, el paciente quedaría dado de
+   * alta creyendo que va a recibir recordatorios que nunca saldrían.
+   */
+  const celular = normalizarE164Mx(form.telefono ?? null);
+  const telefonoEscrito = (form.telefono ?? '').trim().length > 0;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -194,6 +203,7 @@ function NewPatientForm({
         fechaNacimiento: form.fechaNacimiento,
         curp: form.curp?.trim() || null,
         telefono: form.telefono?.trim() || null,
+        whatsappOptIn: optIn && celular !== null,
       }),
     onSuccess: onCreated,
   });
@@ -241,13 +251,41 @@ function NewPatientForm({
         />
       </label>
       <label className="text-sm sm:col-span-2">
-        <span className="mb-1 block font-medium text-slate-600">Teléfono</span>
+        <span className="mb-1 block font-medium text-slate-600">Celular</span>
         <input
+          type="tel"
           value={form.telefono ?? ''}
           onChange={set('telefono')}
-          placeholder="Opcional"
+          placeholder="Opcional — 10 dígitos"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue"
         />
+        {telefonoEscrito && (
+          <span
+            className={`mt-1 block text-xs ${celular ? 'text-slate-500' : 'text-amber-600'}`}
+          >
+            {celular
+              ? `Se enviará a ${celular}`
+              : 'No parece un celular válido. Se guarda igual, pero no se le podrán mandar recordatorios.'}
+          </span>
+        )}
+      </label>
+
+      {/*
+        Consentimiento explícito y desmarcado por default: la LFPDPPP exige que
+        el paciente lo otorgue, no que se le suponga. Sin un celular válido no
+        hay nada que consentir, así que la casilla queda inhabilitada.
+      */}
+      <label className="flex items-start gap-2 text-sm sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={optIn && celular !== null}
+          disabled={celular === null}
+          onChange={(e) => setOptIn(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-blue focus:ring-brand-blue disabled:opacity-40"
+        />
+        <span className={celular === null ? 'text-slate-400' : 'text-slate-600'}>
+          El paciente autoriza recibir recordatorios de sus citas por WhatsApp.
+        </span>
       </label>
 
       {mutation.isError && (

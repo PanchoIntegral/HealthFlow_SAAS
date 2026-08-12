@@ -31,8 +31,11 @@ export class DrizzlePatientRepository implements PatientRepository {
     const p = patient.toProps();
     // tenant_id se autocompleta por DEFAULT current_tenant_id() (ver 0003).
     const result = await tx.execute(sql`
-      INSERT INTO patients (nombre, fecha_nacimiento, curp, telefono)
-      VALUES (${p.nombre}, ${p.fechaNacimiento}, ${p.curp}, ${p.telefono})
+      INSERT INTO patients (nombre, fecha_nacimiento, curp, telefono,
+                            telefono_e164, whatsapp_opt_in, whatsapp_opt_in_at)
+      VALUES (${p.nombre}, ${p.fechaNacimiento}, ${p.curp}, ${p.telefono},
+              ${p.telefonoE164}, ${p.whatsappOptIn},
+              ${p.whatsappOptInAt ? p.whatsappOptInAt.toISOString() : null})
       RETURNING id
     `);
     return (result.rows[0] as { id: string }).id;

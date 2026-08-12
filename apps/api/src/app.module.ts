@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { GlobalThrottlerGuard } from './common/security/global-throttler.guard';
 import { DrizzleModule } from './db/drizzle.module';
 import { TenantContextModule } from './common/tenant-context/tenant-context.module';
@@ -25,6 +26,8 @@ import { ConsentimientosModule } from './modules/consentimientos/consentimientos
 import { RadiografiasModule } from './modules/radiografias/radiografias.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
+import { CryptoModule } from './common/crypto/crypto.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -45,8 +48,16 @@ import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
       { name: 'burst', ttl: 1_000, limit: 60 },
       { ttl: 60_000, limit: 600 },
     ]),
+    /**
+     * ScheduleModule habilita los @Cron/@Interval del proceso. Hoy solo lo usa
+     * el barrido de recordatorios por WhatsApp, que decide por su cuenta si
+     * corre (env.whatsappSchedulerEnabled): registrar el módulo aquí no
+     * arranca ningún trabajo por sí solo.
+     */
+    ScheduleModule.forRoot(),
     DrizzleModule,
     TenantContextModule,
+    CryptoModule,
     SubscriptionModule,
     AuditModule,
     AuthModule,
@@ -65,6 +76,7 @@ import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
     RadiografiasModule,
     AccountsModule,
     AiScribeModule,
+    WhatsappModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.
