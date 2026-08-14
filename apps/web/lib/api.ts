@@ -15,7 +15,13 @@ import type {
   FinishConsultationResponse,
   HistorialPaciente,
   UpdateHistorialRequest,
+  AbrirCajaRequest,
   ActualizarCuentaRequest,
+  ActualizarMovimientoCajaRequest,
+  CerrarCajaRequest,
+  RegistrarMovimientoCajaRequest,
+  TurnoCajaResumen,
+  TurnoCajaView,
   ChangePasswordRequest,
   ConfirmRadiografiaRequest,
   CrearCuentaRequest,
@@ -259,6 +265,52 @@ export const api = {
     }),
 
   saldosPorCobrar: (token: string) => request<SaldosPorCobrar>('/presupuestos/saldos', { token }),
+
+  // ── Caja ───────────────────────────────────────────────────────
+  /** `null` cuando la caja del día todavía no se abre. */
+  cajaAbierta: (token: string) => request<TurnoCajaView | null>('/caja/abierta', { token }),
+
+  abrirCaja: (token: string, body: AbrirCajaRequest) =>
+    request<TurnoCajaView>('/caja/abrir', { method: 'POST', token, body: JSON.stringify(body) }),
+
+  cerrarCaja: (token: string, body: CerrarCajaRequest) =>
+    request<TurnoCajaView>('/caja/cerrar', { method: 'POST', token, body: JSON.stringify(body) }),
+
+  registrarMovimientoCaja: (token: string, body: RegistrarMovimientoCajaRequest) =>
+    request<TurnoCajaView>('/caja/movimientos', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  actualizarMovimientoCaja: (
+    token: string,
+    id: string,
+    body: ActualizarMovimientoCajaRequest,
+  ) =>
+    request<TurnoCajaView>(`/caja/movimientos/${id}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  cancelarMovimientoCaja: (token: string, id: string, motivo: string) =>
+    request<TurnoCajaView>(`/caja/movimientos/${id}/cancelar`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** Histórico de cortes. Sin rango, los últimos turnos del consultorio. */
+  listarCortes: (token: string, rango?: { desde?: string; hasta?: string }) => {
+    const qs = new URLSearchParams();
+    if (rango?.desde) qs.set('desde', rango.desde);
+    if (rango?.hasta) qs.set('hasta', rango.hasta);
+    return request<TurnoCajaResumen[]>(`/caja/turnos${qs.toString() ? `?${qs}` : ''}`, { token });
+  },
+
+  corteDeCaja: (token: string, turnoId: string) =>
+    request<TurnoCajaView>(`/caja/turnos/${turnoId}`, { token }),
 
   // ── Consentimiento informado ─────────────────────────────────────
   listarConsentimientos: (token: string, patientId: string) =>

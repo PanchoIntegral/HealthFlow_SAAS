@@ -20,6 +20,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { CatalogosModule } from './modules/catalogos/catalogos.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { PresupuestosModule } from './modules/presupuestos/presupuestos.module';
+import { CajaModule } from './modules/caja/caja.module';
 import { UsersModule } from './modules/users/users.module';
 import { ConsentimientosModule } from './modules/consentimientos/consentimientos.module';
 import { RadiografiasModule } from './modules/radiografias/radiografias.module';
@@ -60,6 +61,7 @@ import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
     BillingModule,
     SubscriptionsModule,
     PresupuestosModule,
+    CajaModule,
     UsersModule,
     ConsentimientosModule,
     RadiografiasModule,

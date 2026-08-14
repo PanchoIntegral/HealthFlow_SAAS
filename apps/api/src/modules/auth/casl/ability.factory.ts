@@ -24,6 +24,13 @@ export type Subject =
   | 'Factura'
   | 'Finanzas'
   | 'Presupuesto'
+  /**
+   * Caja del consultorio (turno + movimientos). `read` consulta el corte,
+   * `create` registra cobros y salidas, `write` abre/cierra el turno y corrige
+   * capturas, y `cancel` anula un movimiento — esta última separada a
+   * propósito: quien cobra no debería poder borrar lo cobrado.
+   */
+  | 'Caja'
   | 'Consentimiento'
   | 'Radiografia'
   /**
@@ -77,6 +84,13 @@ export class CaslAbilityFactory {
         // cambiar precios — eso es una decisión clínica y comercial del médico.
         can('read', 'Presupuesto');
         can('abonar', 'Presupuesto');
+        // La caja ES el trabajo de recepción: abre el turno en la mañana,
+        // cobra durante el día y hace el corte al cerrar. Lo único que NO
+        // puede es cancelar un movimiento ya registrado — ese es el control
+        // interno que hace que el corte signifique algo.
+        can('read', 'Caja');
+        can('create', 'Caja');
+        can('write', 'Caja');
         // Documentar riesgos/alternativas es juicio clínico del médico; el
         // asistente puede consultarlos, no crearlos (mismo criterio que Presupuesto).
         can('read', 'Consentimiento');
@@ -107,6 +121,12 @@ export class CaslAbilityFactory {
         can('create', 'Presupuesto');
         can('write', 'Presupuesto');
         can('abonar', 'Presupuesto');
+        // En un consultorio sin asistente el médico hace todo, incluido el
+        // corte; y la cancelación de movimientos es suya, no de recepción.
+        can('read', 'Caja');
+        can('create', 'Caja');
+        can('write', 'Caja');
+        can('cancel', 'Caja');
         can('read', 'Consentimiento');
         can('create', 'Consentimiento');
         can('read', 'Radiografia');

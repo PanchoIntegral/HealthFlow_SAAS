@@ -19,5 +19,9 @@ import { PresupuestosController } from './infrastructure/presupuestos.controller
     PoliciesGuard,
     { provide: PRESUPUESTO_REPOSITORY, useClass: DrizzlePresupuestoRepository },
   ],
+  // La caja registra el abono al presupuesto dentro de su propia transacción,
+  // reusando este agregado en vez de escribir en `presupuesto_abonos` por su
+  // cuenta: así las reglas del abono siguen definidas en un solo lugar.
+  exports: [PRESUPUESTO_REPOSITORY],
 })
 export class PresupuestosModule {}

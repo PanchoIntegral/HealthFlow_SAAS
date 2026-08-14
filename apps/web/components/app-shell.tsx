@@ -11,6 +11,7 @@ import { UserMenu } from './user-menu';
 import {
   IconBudget,
   IconCalendar,
+  IconCash,
   IconDashboard,
   IconFinance,
   IconRecords,
@@ -33,8 +34,14 @@ const NAV = [
   // (notación FDI) y nace del odontograma, y a un pediatra o un podólogo no
   // le sirve de nada. Por eso `soloDental` y no `roles`.
   { href: '/presupuestos', label: 'Presupuestos', icon: IconBudget, soloDental: true },
+  // Caja: sin `roles` a propósito. Abrir el turno, cobrar y hacer el corte es
+  // trabajo de recepción tanto como del médico que atiende solo.
+  { href: '/caja', label: 'Caja', icon: IconCash },
   { href: '/reportes', label: 'Reportes', icon: IconReports },
-  { href: '/finanzas', label: 'Finanzas', icon: IconFinance, roles: ['medico', 'admin'] },
+  // Finanzas: oculto temporalmente del menú a petición del usuario. La ruta
+  // /finanzas y su permiso siguen existiendo; para volver a mostrarlo basta
+  // con descomentar esta línea.
+  // { href: '/finanzas', label: 'Finanzas', icon: IconFinance, roles: ['medico', 'admin'] },
   // Autoservicio sobre el propio registro: cualquier rol puede ajustar su
   // especialidad, sin restricción por `roles`.
   { href: '/ajustes', label: 'Ajustes', icon: IconSettings },

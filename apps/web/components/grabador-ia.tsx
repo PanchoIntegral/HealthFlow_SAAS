@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { NotaEvolucionContent, SugerenciaNotaIa } from '@healthflow/shared-types';
 import { api, ApiError } from '../lib/api';
+import { IconMic, IconRefreshCw, IconSpinner, IconStop } from './icons';
 
 type Estado = 'idle' | 'grabando' | 'procesando' | 'error';
 
@@ -168,8 +169,9 @@ export function GrabadorIa({
         </span>
         <button
           onClick={detener}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:border-brand-blue hover:text-brand-blue"
+          className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:border-brand-blue hover:text-brand-blue"
         >
+          <IconStop />
           Detener y transcribir
         </button>
       </div>
@@ -178,7 +180,12 @@ export function GrabadorIa({
 
   if (estado === 'procesando') {
     return (
-      <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-500">
+      <span className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-sm text-slate-500">
+        {/* El giro es la única señal de que sigue vivo: la transcripción puede
+            tardar un minuto y sin él parece que se colgó. */}
+        <span className="animate-spin">
+          <IconSpinner />
+        </span>
         Transcribiendo… puede tardar un minuto
       </span>
     );
@@ -193,9 +200,10 @@ export function GrabadorIa({
       )}
       <button
         onClick={() => (pendiente.current ? void enviar(pendiente.current) : void iniciar())}
-        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue"
+        className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue"
       >
-        {pendiente.current ? '↻ Reintentar transcripción' : '🎙 Grabar con IA'}
+        {pendiente.current ? <IconRefreshCw /> : <IconMic />}
+        {pendiente.current ? 'Reintentar transcripción' : 'Grabar con IA'}
       </button>
     </div>
   );

@@ -312,7 +312,14 @@ export default function ConsultaPage({
 
   if (!ready || !token || !user) return null;
 
-  const puedeCotizar = (user.rol === 'medico' || user.rol === 'admin') && !!patientId;
+  /**
+   * Cotizar es odontológico: el presupuesto se arma por pieza (notación FDI) y
+   * nace del odontograma, así que a un internista o a un pediatra le aparecía
+   * un panel que no puede llenar. Se gobierna con la MISMA condición que el
+   * odontograma de arriba —la especialidad de la nota— y no con el rol solo.
+   */
+  const puedeCotizar =
+    (user.rol === 'medico' || user.rol === 'admin') && !!patientId && perfil.key === 'odontologia';
 
   const isMissing = (field: string) => missing.includes(field);
   const setVital = (key: keyof SignosVitales, value: string) =>

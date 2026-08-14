@@ -94,6 +94,47 @@ export function IconBudget() {
   );
 }
 
+/** Micrófono: dictar la nota con el asistente de IA. */
+export function IconMic({ size = 16 }: { size?: number } = {}) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <rect x="9" y="2" width="6" height="11" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0" />
+      <path d="M12 17v4M9 21h6" />
+    </svg>
+  );
+}
+
+/** Detener la grabación. Cuadrado, como en cualquier grabadora. */
+export function IconStop({ size = 16 }: { size?: number } = {}) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  );
+}
+
+/** Anillo de carga; se anima con `animate-spin` desde quien lo usa. */
+export function IconSpinner({ size = 16 }: { size?: number } = {}) {
+  return (
+    <svg {...base} width={size} height={size}>
+      {/* Un arco, no un círculo: cerrado no se notaría que gira. */}
+      <path d="M21 12a9 9 0 1 1-6.2-8.56" />
+    </svg>
+  );
+}
+
+/** Caja: el cajón de billetes de la recepción. */
+export function IconCash({ size = 20 }: { size?: number } = {}) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 10v4M18 10v4" />
+    </svg>
+  );
+}
+
 export function IconSettings({ size = 20 }: { size?: number } = {}) {
   return (
     <svg {...base} width={size} height={size}>

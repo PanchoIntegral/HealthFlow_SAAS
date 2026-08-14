@@ -877,6 +877,124 @@ export interface RegistrarAbonoRequest {
   referencia?: string;
 }
 
+// ── Caja (corte de caja) ─────────────────────────────────────────
+//
+// Tesorería del consultorio: cuánto dinero hay HOY en el cajón de recepción.
+// Distinto de `presupuestos` (cobranza: cuánto debe el paciente) y de
+// `facturas` (el acto fiscal ante el SAT). Un cobro de caja puede alimentar a
+// los tres, pero cada uno responde una pregunta diferente.
+//
+// Montos en CENTAVOS enteros, como todo el dinero de la app.
+
+export const TIPOS_MOVIMIENTO_CAJA = ['ingreso', 'egreso', 'retiro'] as const;
+/**
+ * `ingreso` entra dinero (cobro), `egreso` es un gasto pagado desde el cajón,
+ * `retiro` es efectivo que se lleva a bóveda/banco — sale del cajón pero no es
+ * un gasto, y por eso se cuenta aparte en el corte.
+ */
+export type TipoMovimientoCaja = (typeof TIPOS_MOVIMIENTO_CAJA)[number];
+
+export interface MovimientoCaja {
+  id: string;
+  tipo: TipoMovimientoCaja;
+  concepto: string;
+  montoCentavos: number;
+  metodo: MetodoPago;
+  /** Contexto opcional: un cobro de mostrador puede no tener paciente. */
+  patientId: string | null;
+  appointmentId: string | null;
+  presupuestoId: string | null;
+  /** Abono generado en el presupuesto por este cobro, si se ligó a uno. */
+  abonoId: string | null;
+  referencia: string | null;
+  registradoPor: string;
+  createdAt: string;
+  /** Cancelación lógica: el movimiento sigue en el corte, sin sumar. */
+  canceladoEn: string | null;
+  canceladoPor: string | null;
+  motivoCancelacion: string | null;
+}
+
+export interface MovimientoCajaView extends MovimientoCaja {
+  patientNombre: string | null;
+  registradoPorNombre: string;
+  canceladoPorNombre: string | null;
+}
+
+/**
+ * Corte de caja. Todo se deriva de los movimientos NO cancelados: nada de
+ * esto se guarda en la base, porque un total almacenado que se desfasa —en un
+ * corte de caja— es una acusación de robo contra alguien.
+ */
+export interface ResumenCaja {
+  fondoInicialCentavos: number;
+  /** Suma de todos los ingresos, sin importar el método de pago. */
+  ingresosCentavos: number;
+  egresosCentavos: number;
+  retirosCentavos: number;
+  /** Ingresos desglosados por método; lo que se concilia contra la terminal. */
+  ingresosPorMetodo: Record<MetodoPago, number>;
+  /** fondo + ingresos en efectivo − egresos en efectivo − retiros. Lo que debería haber en el cajón. */
+  efectivoEsperadoCentavos: number;
+  /** Lo que el usuario contó al cerrar. `null` mientras el turno sigue abierto. */
+  efectivoContadoCentavos: number | null;
+  /** contado − esperado. Negativo = falta dinero. `null` si sigue abierto. */
+  diferenciaCentavos: number | null;
+}
+
+export interface TurnoCajaResumen {
+  id: string;
+  abierta: boolean;
+  abiertaPor: string;
+  abiertaPorNombre: string;
+  abiertaEn: string;
+  notasApertura: string | null;
+  cerradaPor: string | null;
+  cerradaPorNombre: string | null;
+  cerradaEn: string | null;
+  notasCierre: string | null;
+  resumen: ResumenCaja;
+}
+
+/** El turno con su detalle. Los cancelados vienen incluidos y marcados. */
+export interface TurnoCajaView extends TurnoCajaResumen {
+  movimientos: MovimientoCajaView[];
+}
+
+export interface AbrirCajaRequest {
+  fondoInicialCentavos: number;
+  notas?: string;
+}
+
+export interface RegistrarMovimientoCajaRequest {
+  tipo: TipoMovimientoCaja;
+  concepto: string;
+  montoCentavos: number;
+  metodo: MetodoPago;
+  patientId?: string;
+  appointmentId?: string;
+  /** Si se manda en un `ingreso`, además se registra el abono al presupuesto. */
+  presupuestoId?: string;
+  referencia?: string;
+}
+
+/** Corrección de captura. No incluye el tipo: un ingreso no se vuelve egreso. */
+export interface ActualizarMovimientoCajaRequest {
+  concepto?: string;
+  montoCentavos?: number;
+  metodo?: MetodoPago;
+  referencia?: string;
+}
+
+export interface CancelarMovimientoCajaRequest {
+  motivo: string;
+}
+
+export interface CerrarCajaRequest {
+  efectivoContadoCentavos: number;
+  notas?: string;
+}
+
 /**
  * Consentimiento informado. Insert-only: no hay estatus ni transición — se
  * crea ya completo, y ni la API ni los permisos de base de datos exponen

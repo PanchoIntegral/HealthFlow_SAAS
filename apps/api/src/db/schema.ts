@@ -293,6 +293,46 @@ export const presupuestoAbonos = pgTable('presupuesto_abonos', {
 });
 
 /**
+ * Turnos de caja (ver 0022_caja.sql). Un solo turno abierto a la vez por
+ * clínica, garantizado por un índice único parcial en la migración. Sin
+ * columnas de totales: se derivan de los movimientos.
+ */
+export const cajaTurnos = pgTable('caja_turnos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  abiertaPor: uuid('abierta_por').notNull(),
+  fondoInicialCentavos: bigint('fondo_inicial_centavos', { mode: 'number' }).notNull(),
+  abiertaEn: timestamp('abierta_en', { withTimezone: true }).defaultNow().notNull(),
+  notasApertura: text('notas_apertura'),
+  cerradaPor: uuid('cerrada_por'),
+  cerradaEn: timestamp('cerrada_en', { withTimezone: true }),
+  efectivoContadoCentavos: bigint('efectivo_contado_centavos', { mode: 'number' }),
+  notasCierre: text('notas_cierre'),
+});
+
+/** Entradas y salidas de dinero del turno. Nunca se borran: se cancelan. */
+export const cajaMovimientos = pgTable('caja_movimientos', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  turnoId: uuid('turno_id').notNull(),
+  tipo: text('tipo').notNull(),
+  concepto: text('concepto').notNull(),
+  montoCentavos: bigint('monto_centavos', { mode: 'number' }).notNull(),
+  metodo: text('metodo').notNull(),
+  patientId: uuid('patient_id'),
+  appointmentId: uuid('appointment_id'),
+  presupuestoId: uuid('presupuesto_id'),
+  /** Abono generado en el presupuesto por este cobro; amarra caja con cobranza. */
+  abonoId: uuid('abono_id'),
+  referencia: text('referencia'),
+  registradoPor: uuid('registrado_por').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  canceladoEn: timestamp('cancelado_en', { withTimezone: true }),
+  canceladoPor: uuid('cancelado_por'),
+  motivoCancelacion: text('motivo_cancelacion'),
+});
+
+/**
  * Consentimiento informado (ver 0015_consentimientos.sql). Insert-only: sin
  * estatus ni columnas de edición, porque no las hay — el GRANT de la
  * migración ni siquiera permite UPDATE/DELETE al rol de la app.
@@ -390,6 +430,8 @@ export const schema = {
   presupuestos,
   presupuestoPartidas,
   presupuestoAbonos,
+  cajaTurnos,
+  cajaMovimientos,
   consentimientos,
   radiografias,
 };
