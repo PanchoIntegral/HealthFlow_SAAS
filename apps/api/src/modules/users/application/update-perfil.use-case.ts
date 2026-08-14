@@ -3,6 +3,7 @@ import type { UpdatePerfilRequest, UserProfile } from '@healthflow/shared-types'
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { AuditService } from '../../../common/audit/audit.service';
 import { AsistenteIaActivoReader } from '../../ai-scribe/application/asistente-ia-activo.reader';
+import { ClinicaDentalReader } from '../../presupuestos/application/clinica-dental.reader';
 import { USER_PROFILE_REPOSITORY, type UserProfileRepository } from '../domain/user-profile.repository';
 
 /**
@@ -25,6 +26,7 @@ export class UpdatePerfilUseCase {
     private readonly tenantDb: TenantDbService,
     private readonly audit: AuditService,
     private readonly asistenteIa: AsistenteIaActivoReader,
+    private readonly clinicaDental: ClinicaDentalReader,
     @Inject(USER_PROFILE_REPOSITORY) private readonly users: UserProfileRepository,
   ) {}
 
@@ -64,9 +66,18 @@ export class UpdatePerfilUseCase {
         },
       });
 
-      // El flag es del tenant, no del usuario; se compone igual que en
+      // Los flags son del tenant, no del usuario; se componen igual que en
       // GetUserProfileUseCase para que ambas respuestas tengan la misma forma.
-      return { ...actualizado, asistenteIaActivo: await this.asistenteIa.leer(tx) };
+      //
+      // `clinicaDental` se lee DESPUÉS del UPDATE y dentro de la misma
+      // transacción, así que ya cuenta la especialidad recién guardada: el
+      // médico que se marca como odontólogo en Ajustes ve aparecer los
+      // presupuestos con esa misma respuesta, sin recargar.
+      return {
+        ...actualizado,
+        asistenteIaActivo: await this.asistenteIa.leer(tx),
+        clinicaDental: await this.clinicaDental.leer(tx),
+      };
     });
   }
 }

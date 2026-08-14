@@ -4,11 +4,11 @@ import type { Tx } from '../../../db/drizzle';
 /**
  * El perfil tal como vive en la tabla `users`.
  *
- * `asistenteIaActivo` queda fuera a propósito: es del TENANT, no del usuario.
- * El caso de uso lo compone antes de responder; el repositorio no tiene por
- * qué saber que existe.
+ * `asistenteIaActivo` y `clinicaDental` quedan fuera a propósito: son del
+ * TENANT, no del usuario. El caso de uso los compone antes de responder; el
+ * repositorio no tiene por qué saber que existen.
  */
-export type PerfilPersistido = Omit<UserProfile, 'asistenteIaActivo'>;
+export type PerfilPersistido = Omit<UserProfile, 'asistenteIaActivo' | 'clinicaDental'>;
 
 export interface UpdatePerfilInput {
   especialidadKey: string;

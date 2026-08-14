@@ -403,6 +403,17 @@ export interface UserProfile {
    * extra al servidor.
    */
   asistenteIaActivo: boolean;
+  /**
+   * Si la clínica ejerce odontología: hay al menos un usuario con
+   * `especialidad_key = 'odontologia'`. Enciende lo que solo tiene sentido en
+   * un consultorio dental —presupuestos por piezas, odontograma— y lo apaga
+   * para el resto de las especialidades, que lo veían sin poder usarlo.
+   *
+   * Es del TENANT y no del usuario que mira a propósito: quien cobra suele ser
+   * la asistente, cuyo `especialidad_key` es 'general'. Colgarlo del usuario le
+   * escondería los presupuestos justo a quien los usa todo el día.
+   */
+  clinicaDental: boolean;
 }
 
 /**

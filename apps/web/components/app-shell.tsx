@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
+import { useClinicaDental } from '../lib/use-clinica-dental';
 import { BannerSuscripcion } from './banner-suscripcion';
 import { NotificationsBell } from './notifications-bell';
 import { UserMenu } from './user-menu';
@@ -18,21 +19,32 @@ import {
   IconWaiting,
 } from './icons';
 
-/** `roles` limita el item a esos roles; sin `roles`, lo ven todos. */
+/**
+ * `roles` limita el item a esos roles; sin `roles`, lo ven todos.
+ * `soloDental` lo limita además a las clínicas que ejercen odontología.
+ */
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: IconDashboard },
   { href: '/calendario', label: 'Calendario', icon: IconCalendar },
   { href: '/sala-de-espera', label: 'Sala de espera', icon: IconWaiting },
   { href: '/pacientes', label: 'Expedientes', icon: IconRecords },
-  // Todos los roles pueden leer presupuestos (el asistente cobra, el médico
-  // cotiza): sin `roles`, igual que Dashboard/Calendario.
-  { href: '/presupuestos', label: 'Presupuestos', icon: IconBudget },
+  // Todos los ROLES pueden leer presupuestos (el asistente cobra, el médico
+  // cotiza), pero solo en un consultorio dental: el módulo cotiza por pieza
+  // (notación FDI) y nace del odontograma, y a un pediatra o un podólogo no
+  // le sirve de nada. Por eso `soloDental` y no `roles`.
+  { href: '/presupuestos', label: 'Presupuestos', icon: IconBudget, soloDental: true },
   { href: '/reportes', label: 'Reportes', icon: IconReports },
   { href: '/finanzas', label: 'Finanzas', icon: IconFinance, roles: ['medico', 'admin'] },
   // Autoservicio sobre el propio registro: cualquier rol puede ajustar su
   // especialidad, sin restricción por `roles`.
   { href: '/ajustes', label: 'Ajustes', icon: IconSettings },
-] as { href: string; label: string; icon: () => React.JSX.Element; roles?: string[] }[];
+] as {
+  href: string;
+  label: string;
+  icon: () => React.JSX.Element;
+  roles?: string[];
+  soloDental?: boolean;
+}[];
 
 /**
  * Layout base de la app autenticada: sidebar fija + área de contenido.
@@ -42,6 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { token, user, ready } = useAuth();
+  const clinicaDental = useClinicaDental();
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -67,7 +80,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-2">
-          {NAV.filter(({ roles }) => !roles || roles.includes(user.rol)).map(({ href, label, icon: Icon }) => {
+          {NAV.filter(
+            ({ roles, soloDental }) =>
+              (!roles || roles.includes(user.rol)) && (!soloDental || clinicaDental === true),
+          ).map(({ href, label, icon: Icon }) => {
             const active = pathname === href || (href === '/pacientes' && pathname.startsWith('/pacientes'));
             return (
               <Link

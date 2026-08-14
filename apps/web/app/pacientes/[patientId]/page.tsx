@@ -10,6 +10,7 @@ import type {
 } from '@healthflow/shared-types';
 import { useAuth } from '../../../lib/auth';
 import { api, ApiError } from '../../../lib/api';
+import { useClinicaDental } from '../../../lib/use-clinica-dental';
 import { AppShell } from '../../../components/app-shell';
 import { AlertaAlergias } from '../../../components/alerta-alergias';
 import { EditorHistorial } from '../../../components/editor-historial';
@@ -29,6 +30,7 @@ export default function ExpedientePage({
   const { patientId } = use(params);
   const router = useRouter();
   const { token, user, ready } = useAuth();
+  const clinicaDental = useClinicaDental();
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -127,11 +129,17 @@ export default function ExpedientePage({
             )}
 
             {/* Cotización y cobranza. Va antes de las notas porque es lo que
-                se consulta a diario: cuánto debe el paciente. */}
-            <section className="mb-6">
-              <h2 className="mb-3 font-semibold">Presupuestos</h2>
-              <PresupuestoPanel token={token} patientId={patientId} />
-            </section>
+                se consulta a diario: cuánto debe el paciente.
+
+                Solo en clínicas dentales: el panel cotiza por pieza y sale del
+                odontograma, así que en cualquier otra especialidad era una
+                sección vacía con campos que no aplican. */}
+            {clinicaDental && (
+              <section className="mb-6">
+                <h2 className="mb-3 font-semibold">Presupuestos</h2>
+                <PresupuestoPanel token={token} patientId={patientId} />
+              </section>
+            )}
 
             <section className="mb-6">
               <h2 className="mb-3 font-semibold">Consentimientos</h2>

@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EstatusPresupuesto } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
+import { useClinicaDental } from '../../lib/use-clinica-dental';
 import { AppShell } from '../../components/app-shell';
 import { COLOR_ESTATUS, ETIQUETA_ESTATUS, pesos } from '../../components/presupuesto-panel';
 import { NuevoPresupuestoModal } from '../../components/nuevo-presupuesto-modal';
@@ -40,10 +41,20 @@ export default function PresupuestosPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { token, user, ready } = useAuth();
+  const clinicaDental = useClinicaDental();
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
   }, [ready, token, router]);
+
+  /**
+   * El item ya no aparece en el menú para clínicas no dentales, pero la ruta
+   * sigue siendo alcanzable por marcador o por la URL escrita a mano. Se manda
+   * al dashboard en vez de dibujar un tablero vacío que no se puede llenar.
+   */
+  useEffect(() => {
+    if (clinicaDental === false) router.replace('/dashboard');
+  }, [clinicaDental, router]);
 
   const [vista, setVista] = useState<(typeof VISTAS)[number]['id']>('activos');
   const [busqueda, setBusqueda] = useState('');
@@ -72,7 +83,9 @@ export default function PresupuestosPage() {
     );
   }, [lista.data, busqueda]);
 
-  if (!ready || !token || !user) return null;
+  // `undefined` = todavía no se sabe si es dental; no se pinta el tablero hasta
+  // saberlo, para no enseñar un instante lo que el efecto de arriba va a cerrar.
+  if (!ready || !token || !user || !clinicaDental) return null;
 
   const puedeCrear = user.rol === 'medico' || user.rol === 'admin';
 
