@@ -65,8 +65,16 @@ export class CaslAbilityFactory {
         break;
       case 'asistente':
         // El asistente agenda/cancela citas, gestiona llegadas (check-in) y da
-        // de alta pacientes, pero NO accede al contenido clínico (Consultation).
+        // de alta pacientes. Sobre 'Consultation' SOLO tiene 'start': puede
+        // pasar la cita de "en espera" a "en consulta" en la sala de espera
+        // (avisarle al médico que ya puede pasar al paciente), pero no
+        // 'read'/'write'/'finish' — no puede abrir, leer ni editar la nota
+        // clínica. Esa distinción vive también en el frontend: al asistente
+        // el botón de "pasar a consulta" NO lo manda a la pantalla de la
+        // nota (ver sala-de-espera/page.tsx), porque ahí se toparía con un
+        // 403 en cuanto intentara leerla.
         can('checkin', 'Appointment');
+        can('start', 'Consultation');
         can('create', 'Appointment');
         can('cancel', 'Appointment');
         can('create', 'Patient');

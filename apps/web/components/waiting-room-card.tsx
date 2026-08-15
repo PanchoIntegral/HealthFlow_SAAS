@@ -33,7 +33,8 @@ function hora(iso: string): string {
 export function WaitingRoomCard({
   entry,
   canCheckIn,
-  canConsult,
+  canAdvanceToConsulta,
+  puedeAbrirNota,
   onCheckIn,
   onStartConsultation,
   pending,
@@ -42,7 +43,10 @@ export function WaitingRoomCard({
 }: {
   entry: WaitingRoomEntry;
   canCheckIn: boolean;
-  canConsult: boolean;
+  /** Puede mover la tarjeta de "En espera" a "En consulta" (incluye asistente: es agenda). */
+  canAdvanceToConsulta: boolean;
+  /** Puede abrir la pantalla de la nota — solo médico/admin, es contenido clínico. */
+  puedeAbrirNota: boolean;
   onCheckIn: (id: string) => void;
   onStartConsultation: (id: string) => void;
   pending: boolean;
@@ -114,17 +118,20 @@ export function WaitingRoomCard({
         </button>
       )}
 
-      {entry.estatus === 'en_espera' && canConsult && (
+      {entry.estatus === 'en_espera' && canAdvanceToConsulta && (
         <button
           onClick={() => onStartConsultation(entry.appointmentId)}
           disabled={pending}
           className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green py-2 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
         >
-          {pending ? 'Abriendo…' : 'Iniciar consulta'}
+          {pending ? 'Abriendo…' : puedeAbrirNota ? 'Iniciar consulta' : 'Pasar a consulta'}
         </button>
       )}
 
-      {entry.estatus === 'en_consulta' && canConsult && (
+      {/* "Continuar consulta" abre la pantalla de la nota — solo médico/admin.
+          El asistente ya movió la tarjeta al pasarla a "En consulta"; de ahí
+          en adelante no hay nada más que pueda hacer desde aquí. */}
+      {entry.estatus === 'en_consulta' && puedeAbrirNota && (
         <button
           onClick={() => onStartConsultation(entry.appointmentId)}
           className="rounded-lg border border-brand-blue py-2 text-sm font-semibold text-brand-blue transition hover:bg-brand-blue/5"

@@ -26,9 +26,14 @@ import { NoteContentDto } from './dto/note-content.dto';
 import { ClinicalRecordQueryDto } from './dto/clinical-record-query.dto';
 
 /**
- * Endpoints de la consulta y el expediente. Todos exigen JWT + política CASL
- * de `Consultation` (solo médico/admin — el asistente NO accede a contenido
- * clínico, requisito de RBAC del prompt).
+ * Endpoints de la consulta y el expediente. Todos exigen JWT.
+ *
+ * El contenido clínico (leer/editar/cerrar la nota) sigue detrás de la
+ * política `Consultation` — solo médico/admin, requisito de RBAC del prompt.
+ * `start` es la única acción de `Consultation` que el asistente también tiene:
+ * mueve la cita a "en consulta" (trabajo de recepción/agenda) sin abrir la
+ * nota. El expediente (`record`, abajo) usa `Patient` y no `Consultation` a
+ * propósito — ver su comentario.
  */
 @Controller()
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -81,9 +86,17 @@ export class ConsultationsController {
   /**
    * Expediente de un paciente, con el historial paginado por cursor (de la
    * nota más reciente hacia atrás). Sin parámetros devuelve la primera página.
+   *
+   * Gateado con `read Patient` (que ya tiene cualquier rol autenticado) y NO
+   * con `read Consultation`: abrir la ficha del paciente es trabajo de
+   * recepción (alergias, documentos, presupuestos), y el asistente lo
+   * necesita. El contenido clínico de cada nota (diagnósticos, tratamiento,
+   * signos vitales) sigue vedado para ese rol — se redacta DENTRO del caso de
+   * uso (`GetClinicalRecordUseCase`), no aquí: la barrera real está en qué
+   * datos vienen en la respuesta, no en si la petición pasa el guard.
    */
   @Get('patients/:patientId/clinical-record')
-  @RequirePolicy('read', 'Consultation')
+  @RequirePolicy('read', 'Patient')
   record(
     @Param('patientId', ParseUUIDPipe) patientId: string,
     @Query() query: ClinicalRecordQueryDto,

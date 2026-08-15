@@ -53,26 +53,39 @@ export default function SalaDeEsperaPage() {
   const startConsultation = useMutation({
     mutationFn: (appointmentId: string) => api.startConsultation(token!, appointmentId),
     onSuccess: (res) => {
-      router.push(`/consulta/${res.appointmentId}?patientId=${res.patientId}`);
+      // El asistente SÍ puede disparar esta transición (mueve la cita a "en
+      // consulta"), pero no tiene 'read'/'write' sobre Consultation — mandarlo
+      // a /consulta se toparía con un 403 en cuanto la pantalla intentara leer
+      // la nota. Se queda en la sala de espera; la tarjeta se actualiza sola
+      // vía el WebSocket que ya escucha `useWaitingRoom` (mismo evento que
+      // reciben los demás clientes conectados).
+      if (puedeAbrirNota) {
+        router.push(`/consulta/${res.appointmentId}?patientId=${res.patientId}`);
+      }
     },
     onError: (err) => {
-      alert(err instanceof ApiError ? err.message : 'Error al iniciar la consulta');
+      alert(err instanceof ApiError ? err.message : 'Error al pasar a consulta');
     },
   });
 
   if (!ready || !token || !user) return null;
 
   const canCheckIn = ['asistente', 'medico', 'admin'].includes(user.rol);
-  const canConsult = ['medico', 'admin'].includes(user.rol);
+  // Mover la tarjeta de "En espera" a "En consulta": el asistente sí puede,
+  // es agenda/recepción (avisarle al médico que ya puede pasar al paciente).
+  const canAdvanceToConsulta = ['asistente', 'medico', 'admin'].includes(user.rol);
+  // Abrir la pantalla de la nota (y "continuar consulta" ya en curso): eso sí
+  // sigue siendo solo médico/admin — es contenido clínico, no agenda.
+  const puedeAbrirNota = ['medico', 'admin'].includes(user.rol);
 
   // Drag-and-drop: mismos procesos que ya existen como botones (marcar
-  // llegada, iniciar consulta), solo que arrastrando la tarjeta a la columna
+  // llegada, pasar a consulta), solo que arrastrando la tarjeta a la columna
   // siguiente. Cada columna solo acepta el estatus que legítimamente puede
   // avanzar hacia ella (y solo si el rol del usuario puede hacer esa acción).
   const acceptsFrom: Record<string, AppointmentStatus[]> = {
     agendada: [],
     en_espera: canCheckIn ? ['agendada'] : [],
-    en_consulta: canConsult ? ['en_espera'] : [],
+    en_consulta: canAdvanceToConsulta ? ['en_espera'] : [],
     finalizada: [],
   };
 
@@ -102,7 +115,7 @@ export default function SalaDeEsperaPage() {
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-8 py-4">
           <div>
             <h1 className="text-xl font-bold">Sala de espera</h1>
-            {(canCheckIn || canConsult) && (
+            {(canCheckIn || canAdvanceToConsulta) && (
               <p className="text-sm text-slate-500">Arrastra una tarjeta a la siguiente columna para avanzarla.</p>
             )}
           </div>
@@ -143,7 +156,8 @@ export default function SalaDeEsperaPage() {
                         key={entry.appointmentId}
                         entry={entry}
                         canCheckIn={canCheckIn}
-                        canConsult={canConsult}
+                        canAdvanceToConsulta={canAdvanceToConsulta}
+                        puedeAbrirNota={puedeAbrirNota}
                         onCheckIn={(id) => checkIn.mutate(id)}
                         onStartConsultation={(id) => startConsultation.mutate(id)}
                         pending={
@@ -152,7 +166,7 @@ export default function SalaDeEsperaPage() {
                         }
                         draggable={
                           (entry.estatus === 'agendada' && canCheckIn) ||
-                          (entry.estatus === 'en_espera' && canConsult)
+                          (entry.estatus === 'en_espera' && canAdvanceToConsulta)
                         }
                         onDragStatusChange={setDraggingStatus}
                       />
