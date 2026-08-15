@@ -6,8 +6,11 @@ import { PoliciesGuard, RequirePolicy } from '../../auth/casl/policies.guard';
 import { ListarCuentasUseCase } from '../application/listar-cuentas.use-case';
 import { CrearCuentaUseCase } from '../application/crear-cuenta.use-case';
 import { CambiarEstadoCuentaUseCase } from '../application/cambiar-estado-cuenta.use-case';
+import { ActualizarDatosClinicaUseCase } from '../application/actualizar-datos-clinica.use-case';
+import type { DatosClinica } from '../application/datos-clinica.reader';
 import { CrearCuentaDto } from './dto/crear-cuenta.dto';
 import { ActualizarCuentaDto } from './dto/actualizar-cuenta.dto';
+import { ActualizarDatosClinicaDto } from './dto/actualizar-datos-clinica.dto';
 
 /**
  * Cuentas del equipo. Todo el controller exige `manage` sobre 'Cuenta', que
@@ -21,6 +24,7 @@ export class AccountsController {
     private readonly listarCuentas: ListarCuentasUseCase,
     private readonly crearCuenta: CrearCuentaUseCase,
     private readonly cambiarEstado: CambiarEstadoCuentaUseCase,
+    private readonly actualizarDatosClinica: ActualizarDatosClinicaUseCase,
   ) {}
 
   /** Cuentas + cupos del plan (lo que pinta la pantalla de Cuentas). */
@@ -42,6 +46,18 @@ export class AccountsController {
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   create(@Body() dto: CrearCuentaDto): Promise<CuentaView> {
     return this.crearCuenta.execute(dto);
+  }
+
+  /**
+   * Dirección y teléfono de la clínica (membrete de documentos impresos).
+   * Ruta ESTÁTICA declarada ANTES de `:id`: Nest resuelve por orden de
+   * declaración, y `:id` es un comodín que capturaría "clinica" como si fuera
+   * el id de una cuenta si quedara primero.
+   */
+  @Patch('clinica')
+  @RequirePolicy('manage', 'Cuenta')
+  actualizarClinica(@Body() dto: ActualizarDatosClinicaDto): Promise<DatosClinica> {
+    return this.actualizarDatosClinica.execute(dto);
   }
 
   /** Desactiva (o vuelve a habilitar) una cuenta. */

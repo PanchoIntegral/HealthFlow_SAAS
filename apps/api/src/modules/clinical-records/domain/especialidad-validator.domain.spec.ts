@@ -167,6 +167,63 @@ describe('EspecialidadValidator', () => {
     });
   });
 
+  describe('podología', () => {
+    it('exige el riesgo de pie diabético para cerrar', () => {
+      const nota = notaBaseCompleta({ especialidad: 'podologia' });
+      expect(EspecialidadValidator.validar(nota)).toEqual([
+        'extension.pod_riesgo_pie_diabetico',
+      ]);
+    });
+
+    it('cierra cuando el cribado está concluido', () => {
+      const nota = notaBaseCompleta({
+        especialidad: 'podologia',
+        extension: { pod_riesgo_pie_diabetico: 'Moderado' },
+      });
+      expect(EspecialidadValidator.validar(nota)).toEqual([]);
+    });
+
+    it('el podograma NO es obligatorio: un pie sano son cero marcas', () => {
+      const nota = notaBaseCompleta({
+        especialidad: 'podologia',
+        extension: { pod_riesgo_pie_diabetico: 'Bajo' },
+        podograma: { marcas: [] },
+      });
+      expect(EspecialidadValidator.validar(nota)).toEqual([]);
+    });
+  });
+
+  describe('campos de solo primera visita', () => {
+    // El riesgo real de `soloHistoriaClinica` es exigir un campo que la
+    // pantalla no muestra: la nota quedaría imposible de cerrar y el médico no
+    // vería dónde está el problema. Estas pruebas cubren justo eso.
+    it('un campo oculto en la subsecuente no puede bloquear el cierre', () => {
+      const nota = notaBaseCompleta({
+        tipoNota: 'nota_evolucion',
+        especialidad: 'podologia',
+        extension: { pod_riesgo_pie_diabetico: 'Bajo' },
+      });
+      const faltantes = EspecialidadValidator.validar(nota);
+      expect(faltantes.some((c) => c.startsWith('extension.pod_ocupacion'))).toBe(false);
+      expect(faltantes).toEqual([]);
+    });
+
+    it('los campos de primera visita no son obligatorios ni en la historia clínica', () => {
+      // Ninguno de los campos de identificación de podología lleva
+      // `obligatorio`: se preguntan, no se imponen. Lo único que bloquea el
+      // cierre es el cribado.
+      const nota = notaBaseCompleta({
+        tipoNota: 'historia_clinica',
+        especialidad: 'podologia',
+        antecedentesHeredofamiliares: 'Padre con DM2',
+        antecedentesPersonalesPatologicos: 'DM2 de 10 años',
+        antecedentesPersonalesNoPatologicos: 'Camina descalzo en alberca',
+        extension: { pod_riesgo_pie_diabetico: 'Alto' },
+      });
+      expect(EspecialidadValidator.validar(nota)).toEqual([]);
+    });
+  });
+
   describe('degradado seguro', () => {
     // Estas son las que importan de verdad: ninguna configuración puede dejar
     // a un médico sin poder firmar una nota que ya empezó.

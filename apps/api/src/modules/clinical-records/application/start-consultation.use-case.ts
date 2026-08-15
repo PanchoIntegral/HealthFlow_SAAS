@@ -69,6 +69,7 @@ export class StartConsultationUseCase {
             : 'historia_clinica',
           especialidad: await this.records.getDoctorEspecialidad(tx, state.doctorId),
           odontograma: (await this.records.getUltimoOdontograma(tx, recordId)) ?? undefined,
+          podograma: (await this.records.getUltimoPodograma(tx, recordId)) ?? undefined,
         }));
 
       await this.audit.record(tx, {

@@ -91,7 +91,7 @@ export default function AjustesPage() {
               <p className="text-sm text-slate-500">{actual.descripcion}</p>
             </div>
 
-            {actual.key === 'perfil' && <PerfilSeccion token={token} />}
+            {actual.key === 'perfil' && <PerfilSeccion token={token} esTitular={esTitular} />}
             {actual.key === 'seguridad' && <SeguridadSeccion token={token} />}
             {actual.key === 'facturacion' && <FacturacionSeccion token={token} />}
           </div>
@@ -114,12 +114,13 @@ function Tarjeta({ children }: { children: React.ReactNode }) {
 
 // ── Perfil ────────────────────────────────────────────────────────
 
-function PerfilSeccion({ token }: { token: string }) {
+function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean }) {
   const [especialidadKey, setEspecialidadKey] = useState<EspecialidadKey>('general');
   const [especialidad, setEspecialidad] = useState('');
   const [cedula, setCedula] = useState('');
   /** Cédula tal como está GUARDADA. Dispara el aviso, no lo que se va tecleando. */
   const [cedulaGuardada, setCedulaGuardada] = useState<string | null>(null);
+  const [cedulaEspecialidad, setCedulaEspecialidad] = useState('');
   const [rol, setRol] = useState<string>('medico');
   /**
    * Solo true si el perfil se leyó BIEN. `loading` no basta: baja a false
@@ -140,6 +141,7 @@ function PerfilSeccion({ token }: { token: string }) {
         setEspecialidad(profile.especialidad ?? '');
         setCedula(profile.cedulaProfesional ?? '');
         setCedulaGuardada(profile.cedulaProfesional);
+        setCedulaEspecialidad(profile.cedulaEspecialidad ?? '');
         setRol(profile.rol);
         setPerfilCargado(true);
       })
@@ -160,6 +162,7 @@ function PerfilSeccion({ token }: { token: string }) {
         // cédula guardada, en vez de dejarla ahí sin forma de corregir un error
         // de captura.
         cedulaProfesional: cedula.trim(),
+        cedulaEspecialidad: cedulaEspecialidad.trim(),
       });
       setCedulaGuardada(perfil.cedulaProfesional);
       setGuardado(true);
@@ -188,7 +191,7 @@ function PerfilSeccion({ token }: { token: string }) {
 
       <Tarjeta>
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm sm:col-span-2">
+          <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-600">Cédula profesional</span>
             <input
               value={cedula}
@@ -201,6 +204,23 @@ function PerfilSeccion({ token }: { token: string }) {
             />
             <span className="mt-1 block text-xs text-slate-400">
               Se estampa en la firma de cada nota que cierres, junto con tu nombre y la fecha.
+            </span>
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">Cédula de especialidad</span>
+            <input
+              value={cedulaEspecialidad}
+              onChange={(e) => setCedulaEspecialidad(e.target.value)}
+              disabled={loading}
+              placeholder="12348705"
+              inputMode="text"
+              maxLength={40}
+              className={CAMPO}
+            />
+            <span className="mt-1 block text-xs text-slate-400">
+              Distinta de la profesional. Opcional — hoy solo se usa en el membrete de documentos
+              impresos (la orden de plantillas ortopédicas).
             </span>
           </label>
 
@@ -252,7 +272,93 @@ function PerfilSeccion({ token }: { token: string }) {
           </div>
         </form>
       </Tarjeta>
+
+      {/* Del TENANT, no del médico: solo el titular la edita, mismo criterio
+          que el resto de /cuentas. Cualquier otro médico la vería sin poder
+          tocarla, así que mejor no ofrecerla. */}
+      {esTitular && <DatosClinicaSeccion token={token} />}
     </div>
+  );
+}
+
+// ── Datos de la clínica (membrete de documentos impresos) ──────────
+
+function DatosClinicaSeccion({ token }: { token: string }) {
+  const [direccion, setDireccion] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [guardado, setGuardado] = useState(false);
+
+  useEffect(() => {
+    api
+      .getMyProfile(token)
+      .then((profile) => {
+        setDireccion(profile.direccionClinica ?? '');
+        setTelefono(profile.telefonoClinica ?? '');
+      })
+      .catch(() => setError('No se pudieron cargar los datos de la clínica'))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setGuardado(false);
+    setSaving(true);
+    try {
+      await api.actualizarDatosClinica(token, {
+        direccion: direccion.trim(),
+        telefono: telefono.trim(),
+      });
+      setGuardado(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Error de conexión');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Tarjeta>
+      <h2 className="mb-1 font-semibold">Datos de la clínica</h2>
+      <p className="mb-4 text-sm text-slate-500">
+        Dirección y teléfono para el membrete de documentos impresos, como la orden de plantillas
+        ortopédicas.
+      </p>
+      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-sm sm:col-span-2">
+          <span className="mb-1 block font-medium text-slate-600">Dirección</span>
+          <input
+            value={direccion}
+            onChange={(e) => setDireccion(e.target.value)}
+            disabled={loading}
+            placeholder="Av. Francisco I. Madero #1327, Col. Segunda Sección"
+            maxLength={200}
+            className={CAMPO}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">Teléfono</span>
+          <input
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            disabled={loading}
+            placeholder="686 554-19-20"
+            maxLength={40}
+            className={CAMPO}
+          />
+        </label>
+        <div className="sm:col-span-2">
+          {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+          {guardado && <p className="mt-1 text-sm text-emerald-600">Cambios guardados.</p>}
+          <button type="submit" disabled={loading || saving} className={`mt-3 ${BOTON}`}>
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </div>
+      </form>
+    </Tarjeta>
   );
 }
 

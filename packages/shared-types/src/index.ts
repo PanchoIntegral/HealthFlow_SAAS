@@ -270,6 +270,244 @@ export function piezasDeCuadrante(cuadrante: number): string[] {
   return Array.from({ length: total }, (_, i) => `${cuadrante}${i + 1}`);
 }
 
+// ── Podograma (mapa podológico) ──────────────────────────────────
+//
+// El equivalente podológico del odontograma: dónde está cada lesión, en qué
+// pie y en qué vista. Sustituye la silueta de pies que la podóloga marca a
+// mano e imprime para engrapar al expediente.
+//
+// Mismas dos decisiones que allá, y por las mismas razones:
+//   1. Es una LISTA DE MARCAS y no una matriz zona×hallazgo. Un pie sano son
+//      cero marcas y la consulta típica son dos o tres; una matriz de 30 zonas
+//      × 2 pies guardaría 60 casillas vacías en cada nota.
+//   2. Las claves de zona y de hallazgo son ESTABLES y no se renombran nunca:
+//      quedan escritas en el jsonb de notas ya firmadas, que por NOM-004 son
+//      inmutables y deben poder leerse para siempre.
+
+export const VISTAS_PIE = ['plantar', 'dorsal'] as const;
+export type VistaPie = (typeof VISTAS_PIE)[number];
+
+export const ETIQUETA_VISTA: Record<VistaPie, string> = {
+  plantar: 'Planta',
+  dorsal: 'Dorso',
+};
+
+export type LadoPie = 'izquierdo' | 'derecho';
+
+export const ETIQUETA_LADO: Record<LadoPie, string> = {
+  izquierdo: 'Izquierdo',
+  derecho: 'Derecho',
+};
+
+/**
+ * Familias de hallazgo. Solo agrupan la paleta en pantalla: 32 botones en fila
+ * son inusables, y el podólogo busca por familia ("algo de uñas") antes que
+ * por nombre exacto.
+ */
+export const CATEGORIAS_HALLAZGO = ['ungueal', 'cutaneo', 'estructural', 'vascular'] as const;
+export type CategoriaHallazgo = (typeof CATEGORIAS_HALLAZGO)[number];
+
+export const ETIQUETA_CATEGORIA: Record<CategoriaHallazgo, string> = {
+  ungueal: 'Uñas',
+  cutaneo: 'Piel',
+  estructural: 'Estructura',
+  vascular: 'Vascular y color',
+};
+
+export interface HallazgoPodologico {
+  key: string;
+  label: string;
+  categoria: CategoriaHallazgo;
+  /** Color de relleno en el mapa. */
+  color: string;
+  /**
+   * Solo puede marcarse sobre una lámina ungueal. Es el análogo exacto de
+   * `piezaCompleta` en el odontograma: impide registrar una onicomicosis en el
+   * talón, que no es un dato raro sino un dato imposible.
+   */
+  soloUngueal?: boolean;
+}
+
+/**
+ * Catálogo de hallazgos, tomado de la lista de EXPLORACIÓN FÍSICA VISUAL de la
+ * historia clínica en papel. "Sano" no está a propósito: es la ausencia de
+ * marca, igual que en el odontograma.
+ */
+export const HALLAZGOS_PODOLOGICOS: readonly HallazgoPodologico[] = [
+  // ── Uñas ──
+  { key: 'onicomicosis', label: 'Onicomicosis', categoria: 'ungueal', color: '#a16207', soloUngueal: true },
+  { key: 'onicocriptosis', label: 'Onicocriptosis (uña encarnada)', categoria: 'ungueal', color: '#dc2626', soloUngueal: true },
+  { key: 'onicogrifosis', label: 'Onicogrifosis', categoria: 'ungueal', color: '#92400e', soloUngueal: true },
+  { key: 'onicolisis', label: 'Onicólisis', categoria: 'ungueal', color: '#b45309', soloUngueal: true },
+  { key: 'onicomadesis', label: 'Onicomadesis', categoria: 'ungueal', color: '#c2410c', soloUngueal: true },
+  { key: 'onicodistrofia', label: 'Onicodistrofia', categoria: 'ungueal', color: '#78350f', soloUngueal: true },
+  { key: 'onicoquizia', label: 'Onicoquizia', categoria: 'ungueal', color: '#a3620d', soloUngueal: true },
+  { key: 'paroniquia', label: 'Paroniquia', categoria: 'ungueal', color: '#e11d48', soloUngueal: true },
+  { key: 'oniquia', label: 'Oniquia', categoria: 'ungueal', color: '#9f1239', soloUngueal: true },
+  { key: 'leuconiquia', label: 'Leuconiquia', categoria: 'ungueal', color: '#64748b', soloUngueal: true },
+  { key: 'melanoniquia', label: 'Melanoniquia', categoria: 'ungueal', color: '#1e293b', soloUngueal: true },
+  { key: 'coiloniquia', label: 'Coiloniquia', categoria: 'ungueal', color: '#0369a1', soloUngueal: true },
+  { key: 'una_dedal', label: 'Uña de dedal', categoria: 'ungueal', color: '#0e7490', soloUngueal: true },
+  { key: 'una_mitad_mitad', label: 'Uña de mitad y mitad', categoria: 'ungueal', color: '#155e75', soloUngueal: true },
+  { key: 'unas_hipocraticas', label: 'Uñas hipocráticas', categoria: 'ungueal', color: '#7e22ce', soloUngueal: true },
+
+  // ── Piel ──
+  { key: 'hiperqueratosis', label: 'Hiperqueratosis', categoria: 'cutaneo', color: '#f59e0b' },
+  { key: 'heloma', label: 'Heloma (callo)', categoria: 'cutaneo', color: '#d97706' },
+  { key: 'ulcera', label: 'Úlcera', categoria: 'cutaneo', color: '#b91c1c' },
+  { key: 'micosis_plantar', label: 'Micosis plantar', categoria: 'cutaneo', color: '#65a30d' },
+  { key: 'micosis_interdigital', label: 'Micosis interdigital', categoria: 'cutaneo', color: '#4d7c0f' },
+  { key: 'verruga', label: 'Verruga plantar', categoria: 'cutaneo', color: '#16a34a' },
+  { key: 'dermatitis', label: 'Dermatitis', categoria: 'cutaneo', color: '#ec4899' },
+  { key: 'descamacion', label: 'Descamación', categoria: 'cutaneo', color: '#f472b6' },
+  { key: 'fisura', label: 'Fisura / grieta', categoria: 'cutaneo', color: '#be123c' },
+  { key: 'tatuaje', label: 'Tatuaje', categoria: 'cutaneo', color: '#334155' },
+
+  // ── Estructura ──
+  { key: 'hallux_valgus', label: 'Hallux valgus (juanete)', categoria: 'estructural', color: '#7c3aed' },
+  { key: 'juanete_sastre', label: 'Juanete de sastre (quintovaro)', categoria: 'estructural', color: '#6d28d9' },
+  { key: 'dedo_garra', label: 'Dedo en garra / martillo', categoria: 'estructural', color: '#5b21b6' },
+  { key: 'alteracion_osea', label: 'Alteración ósea', categoria: 'estructural', color: '#4c1d95' },
+  { key: 'polidactilia', label: 'Polidactilia', categoria: 'estructural', color: '#8b5cf6' },
+  { key: 'sindactilia', label: 'Sindactilia', categoria: 'estructural', color: '#a78bfa' },
+  { key: 'espolon', label: 'Espolón calcáneo', categoria: 'estructural', color: '#4338ca' },
+
+  // ── Vascular y color ──
+  { key: 'palidez', label: 'Palidez', categoria: 'vascular', color: '#cbd5e1' },
+  { key: 'eritema', label: 'Eritema', categoria: 'vascular', color: '#ef4444' },
+  { key: 'hematoma', label: 'Hematoma', categoria: 'vascular', color: '#6b21a8' },
+  { key: 'cianosis', label: 'Cianosis', categoria: 'vascular', color: '#2563eb' },
+  { key: 'edema', label: 'Edema', categoria: 'vascular', color: '#38bdf8' },
+] as const;
+
+export function hallazgoPodologicoPorKey(key: string): HallazgoPodologico | undefined {
+  return HALLAZGOS_PODOLOGICOS.find((h) => h.key === key);
+}
+
+/**
+ * Zona anatómica marcable.
+ *
+ * Todas las zonas son elipses en un lienzo de 100×250 que representa UN pie
+ * con el hallux a la IZQUIERDA del lienzo. El componente refleja ese dibujo
+ * según pie y vista, así que la geometría se escribe una sola vez.
+ */
+export interface ZonaPie {
+  key: string;
+  label: string;
+  vista: VistaPie;
+  /** Lámina ungueal: solo admite hallazgos con `soloUngueal`. */
+  ungueal?: boolean;
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+}
+
+/**
+ * Mapa de zonas. Las claves llevan prefijo de vista (`p_` / `d_`) porque el
+ * mismo dedo se marca distinto por la planta que por el dorso: una
+ * hiperqueratosis pulpejo-plantar y una onicomicosis dorsal del mismo hallux
+ * son dos hallazgos, no uno.
+ */
+export const ZONAS_PIE: readonly ZonaPie[] = [
+  // ── Vista plantar ──
+  { key: 'p_dedo_1', label: 'Pulpejo 1.º dedo (hallux)', vista: 'plantar', cx: 20, cy: 36, rx: 13, ry: 16 },
+  { key: 'p_dedo_2', label: 'Pulpejo 2.º dedo', vista: 'plantar', cx: 42, cy: 30, rx: 8, ry: 12 },
+  { key: 'p_dedo_3', label: 'Pulpejo 3.er dedo', vista: 'plantar', cx: 57, cy: 33, rx: 7.5, ry: 11 },
+  { key: 'p_dedo_4', label: 'Pulpejo 4.º dedo', vista: 'plantar', cx: 70, cy: 39, rx: 7, ry: 10 },
+  { key: 'p_dedo_5', label: 'Pulpejo 5.º dedo', vista: 'plantar', cx: 82, cy: 48, rx: 6.5, ry: 9 },
+
+  { key: 'p_interdigital_1', label: '1.er espacio interdigital', vista: 'plantar', cx: 31, cy: 54, rx: 5, ry: 6 },
+  { key: 'p_interdigital_2', label: '2.º espacio interdigital', vista: 'plantar', cx: 50, cy: 50, rx: 4.5, ry: 6 },
+  { key: 'p_interdigital_3', label: '3.er espacio interdigital', vista: 'plantar', cx: 64, cy: 54, rx: 4.5, ry: 6 },
+  { key: 'p_interdigital_4', label: '4.º espacio interdigital', vista: 'plantar', cx: 77, cy: 62, rx: 4.5, ry: 6 },
+
+  { key: 'p_meta_1', label: '1.ª cabeza metatarsal', vista: 'plantar', cx: 24, cy: 78, rx: 12, ry: 12 },
+  { key: 'p_meta_2', label: '2.ª cabeza metatarsal', vista: 'plantar', cx: 45, cy: 72, rx: 9, ry: 11 },
+  { key: 'p_meta_3', label: '3.ª cabeza metatarsal', vista: 'plantar', cx: 59, cy: 74, rx: 9, ry: 11 },
+  { key: 'p_meta_4', label: '4.ª cabeza metatarsal', vista: 'plantar', cx: 71, cy: 79, rx: 9, ry: 11 },
+  { key: 'p_meta_5', label: '5.ª cabeza metatarsal', vista: 'plantar', cx: 83, cy: 88, rx: 9, ry: 11 },
+
+  { key: 'p_arco', label: 'Arco medial (bóveda plantar)', vista: 'plantar', cx: 34, cy: 136, rx: 17, ry: 30 },
+  { key: 'p_borde_lateral', label: 'Borde lateral', vista: 'plantar', cx: 73, cy: 136, rx: 13, ry: 30 },
+  { key: 'p_talon', label: 'Talón (calcáneo)', vista: 'plantar', cx: 52, cy: 198, rx: 26, ry: 31 },
+
+  // ── Vista dorsal: uñas + dorso ──
+  { key: 'd_una_1', label: 'Uña 1.er dedo (hallux)', vista: 'dorsal', ungueal: true, cx: 20, cy: 30, rx: 9, ry: 10 },
+  { key: 'd_una_2', label: 'Uña 2.º dedo', vista: 'dorsal', ungueal: true, cx: 42, cy: 25, rx: 5.5, ry: 6.5 },
+  { key: 'd_una_3', label: 'Uña 3.er dedo', vista: 'dorsal', ungueal: true, cx: 57, cy: 28, rx: 5, ry: 6 },
+  { key: 'd_una_4', label: 'Uña 4.º dedo', vista: 'dorsal', ungueal: true, cx: 70, cy: 34, rx: 4.5, ry: 5.5 },
+  { key: 'd_una_5', label: 'Uña 5.º dedo', vista: 'dorsal', ungueal: true, cx: 82, cy: 43, rx: 4, ry: 5 },
+
+  { key: 'd_dedo_1', label: 'Dorso 1.er dedo', vista: 'dorsal', cx: 20, cy: 47, rx: 11, ry: 7 },
+  { key: 'd_dedo_2', label: 'Dorso 2.º dedo', vista: 'dorsal', cx: 42, cy: 38, rx: 7, ry: 6 },
+  { key: 'd_dedo_3', label: 'Dorso 3.er dedo', vista: 'dorsal', cx: 57, cy: 41, rx: 6.5, ry: 5.5 },
+  { key: 'd_dedo_4', label: 'Dorso 4.º dedo', vista: 'dorsal', cx: 70, cy: 46, rx: 6, ry: 5 },
+  { key: 'd_dedo_5', label: 'Dorso 5.º dedo', vista: 'dorsal', cx: 82, cy: 53, rx: 5.5, ry: 5 },
+
+  { key: 'd_primera_afm', label: '1.ª articulación metatarsofalángica', vista: 'dorsal', cx: 24, cy: 80, rx: 13, ry: 13 },
+  { key: 'd_quinta_afm', label: '5.ª articulación metatarsofalángica', vista: 'dorsal', cx: 83, cy: 90, rx: 11, ry: 12 },
+  { key: 'd_dorso', label: 'Dorso del pie', vista: 'dorsal', cx: 54, cy: 140, rx: 26, ry: 40 },
+  { key: 'd_tobillo', label: 'Tobillo y maléolos', vista: 'dorsal', cx: 52, cy: 202, rx: 25, ry: 26 },
+] as const;
+
+export function zonaPiePorKey(key: string): ZonaPie | undefined {
+  return ZONAS_PIE.find((z) => z.key === key);
+}
+
+/** Marca sobre una zona de un pie. */
+export interface MarcaPodologica {
+  pie: LadoPie;
+  /** Clave de ZONAS_PIE. La vista va implícita en la zona. */
+  zona: string;
+  /** Clave de HALLAZGOS_PODOLOGICOS. */
+  hallazgo: string;
+  nota?: string;
+}
+
+export interface Podograma {
+  marcas: MarcaPodologica[];
+}
+
+export const PODOGRAMA_VACIO: Podograma = { marcas: [] };
+
+/**
+ * True si el hallazgo puede registrarse en esa zona.
+ *
+ * La regla es una sola y va en un lado: un hallazgo ungueal solo cabe en una
+ * lámina ungueal. Vive aquí y no en el componente para que la API valide lo
+ * mismo que la pantalla dibuja — si solo lo cuidara el frontend, una nota
+ * llegada por la IA o por otro cliente podría guardar un imposible.
+ */
+export function hallazgoAplicaEnZona(hallazgoKey: string, zonaKey: string): boolean {
+  const hallazgo = hallazgoPodologicoPorKey(hallazgoKey);
+  const zona = zonaPiePorKey(zonaKey);
+  if (!hallazgo || !zona) return false;
+  return hallazgo.soloUngueal === true ? zona.ungueal === true : true;
+}
+
+/**
+ * Resumen legible del podograma, agrupado por hallazgo.
+ *
+ * Existe para que la nota impresa y el timeline del paciente puedan mostrar lo
+ * marcado SIN depender del dibujo: un expediente exportado a PDF o leído desde
+ * otro sistema tiene que poder decir qué se encontró y dónde.
+ */
+export function resumirPodograma(podograma: Podograma): string[] {
+  const porHallazgo = new Map<string, MarcaPodologica[]>();
+  for (const m of podograma.marcas) {
+    porHallazgo.set(m.hallazgo, [...(porHallazgo.get(m.hallazgo) ?? []), m]);
+  }
+
+  return [...porHallazgo].map(([key, marcas]) => {
+    const label = hallazgoPodologicoPorKey(key)?.label ?? key;
+    const sitios = marcas
+      .map((m) => `${zonaPiePorKey(m.zona)?.label ?? m.zona} (${ETIQUETA_LADO[m.pie].toLowerCase()})`)
+      .join(', ');
+    return `${label}: ${sitios}`;
+  });
+}
+
 export interface AntecedentesPaciente {
   /** Claves de BANDERAS_CLINICAS activas en este paciente. */
   banderas: string[];
@@ -397,6 +635,14 @@ export interface UserProfile {
    */
   cedulaProfesional: string | null;
   /**
+   * Cédula de ESPECIALIDAD, distinta de la profesional: certifica la
+   * especialidad concreta (podiatría, cardiología…), no el ejercicio general
+   * de la medicina. Un médico puede tener la profesional sin esta. Solo se usa
+   * hoy para el membrete de documentos impresos (orden de plantillas); NOM-004
+   * no la exige para firmar, así que no participa en esa validación.
+   */
+  cedulaEspecialidad: string | null;
+  /**
    * Si la clínica tiene contratado el asistente de transcripción con IA. Viaja
    * con el perfil —y no en una petición aparte— porque la pantalla de consulta
    * ya lee el perfil al montar, y así el botón de grabar aparece sin un viaje
@@ -414,6 +660,14 @@ export interface UserProfile {
    * escondería los presupuestos justo a quien los usa todo el día.
    */
   clinicaDental: boolean;
+  /**
+   * Dirección y teléfono de la clínica, para el membrete de documentos
+   * impresos. Del TENANT, no del usuario — mismo criterio que `clinicaDental`:
+   * viaja con el perfil porque es donde ya se lee al montar cualquier
+   * pantalla, y así se evita una petición aparte solo para esto.
+   */
+  direccionClinica: string | null;
+  telefonoClinica: string | null;
 }
 
 /**
@@ -530,10 +784,23 @@ export interface UpdatePerfilRequest {
   especialidad?: string;
   /** Cadena vacía = borrar la cédula guardada. */
   cedulaProfesional?: string;
+  /** Cadena vacía = borrar la cédula guardada. */
+  cedulaEspecialidad?: string;
 }
 
 /** @deprecated Usa UpdatePerfilRequest — mismo cuerpo, más la cédula. */
 export type UpdateEspecialidadRequest = UpdatePerfilRequest;
+
+/**
+ * PATCH /cuentas/clinica — dirección y teléfono para el membrete de
+ * documentos impresos. Del titular ('admin') únicamente, mismo criterio que
+ * el resto de `/cuentas`: es configuración de la clínica, no del médico que
+ * mira. Cadena vacía = borrar el dato guardado, igual que las cédulas.
+ */
+export interface ActualizarDatosClinicaRequest {
+  direccion?: string;
+  telefono?: string;
+}
 
 // ── Suscripciones (Stripe) / onboarding self-serve ────────────────
 export const SELF_SERVE_PLANS = ['individual', 'consultorio'] as const;
@@ -1148,6 +1415,17 @@ export interface NotaEvolucionContent {
    */
   odontograma?: Odontograma;
   /**
+   * Mapa podológico de ESTA consulta. Mismo criterio que el odontograma: vive
+   * en la nota y no en el paciente para que quede congelado con la firma, de
+   * modo que el expediente muestre cómo estaba el pie en cada visita.
+   *
+   * Se precarga con el de la última nota cerrada al abrir una consulta nueva:
+   * las lesiones del pie evolucionan lento, y volver a marcar de cero una
+   * úlcera que lleva meses es trabajo tirado. El podólogo solo ajusta lo que
+   * cambió.
+   */
+  podograma?: Podograma;
+  /**
    * Antecedentes de la HISTORIA CLÍNICA inicial (NOM-004), presentes solo
    * cuando `tipoNota === 'historia_clinica'`. Viven como campos planos en la
    * misma interfaz, no en un tipo aparte: igual que `extension` arriba, una
@@ -1472,6 +1750,7 @@ export const ESPECIALIDADES = [
   'psiquiatria',
   'endocrinologia',
   'nutricion',
+  'podologia',
 ] as const;
 
 export type EspecialidadKey = (typeof ESPECIALIDADES)[number];
@@ -1486,12 +1765,48 @@ export interface CampoExtra {
    */
   key: string;
   label: string;
-  tipo: 'texto' | 'texto-rico' | 'numero' | 'seleccion';
+  /**
+   * 'multi-seleccion' = casillas de verificación (varias a la vez), como el
+   * checklist de antecedentes patológicos en papel. Se guarda como STRING
+   * —las opciones marcadas, unidas por coma— y no como arreglo, para no
+   * cambiar la forma de `extension` (`Record<string, string | number | null>`)
+   * solo por un tipo de campo. Vacío = ninguna marcada, igual que 'sano' en el
+   * odontograma: la ausencia de marca no se guarda como ruido.
+   */
+  tipo: 'texto' | 'texto-rico' | 'numero' | 'seleccion' | 'multi-seleccion';
   opciones?: readonly string[];
   unidad?: string;
   /** Si es true, el cierre de la nota lo exige (además de la base NOM-004). */
   obligatorio?: boolean;
   ayuda?: string;
+  /**
+   * Solo se pregunta en la HISTORIA CLÍNICA (primera visita).
+   *
+   * Existe porque una historia clínica completa —ocupación, cómo inició el
+   * padecimiento, circunstancia desencadenante— se levanta UNA vez, y repetir
+   * esos campos en cada consulta de seguimiento convierte una nota de control
+   * de tres minutos en un formulario de treinta campos. El dato ya está en el
+   * expediente; volver a pedirlo no lo mejora, solo hace que se llene peor.
+   *
+   * Con `obligatorio`, la exigencia también se levanta en las subsecuentes: un
+   * campo que no se muestra no puede bloquear el cierre de la nota.
+   */
+  soloHistoriaClinica?: boolean;
+}
+
+/**
+ * Campos que aplican al tipo de nota dado. Es la ÚNICA función que decide si un
+ * campo de primera visita se muestra, y la comparten la pantalla y el validador
+ * — si cada uno lo resolviera por su cuenta, un campo oculto podría acabar
+ * impidiendo cerrar la nota, que es el peor resultado posible.
+ */
+export function camposDeNota(
+  campos: readonly CampoExtra[],
+  tipoNota: ClinicalNoteType,
+): readonly CampoExtra[] {
+  return tipoNota === 'historia_clinica'
+    ? campos
+    : campos.filter((c) => c.soloHistoriaClinica !== true);
 }
 
 export interface RangoCie10 {
@@ -1833,6 +2148,441 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       { key: 'nut_objetivo', label: 'Objetivo del paciente', tipo: 'texto' },
     ],
   },
+
+  /**
+   * Podología. El perfil sale de la historia clínica que usa hoy la Dra. en
+   * papel, y su columna vertebral es el CRIBADO DE PIE DIABÉTICO: monofilamento
+   * de Semmes-Weinstein y pulsos distales, por pie y por separado.
+   *
+   * Que vayan por pie —y no un campo "pulsos: normal"— no es burocracia: la
+   * neuropatía y la arteriopatía son casi siempre ASIMÉTRICAS, y perder el
+   * monofilamento en un solo pie es exactamente el hallazgo que decide si ese
+   * paciente entra a vigilancia estrecha. Colapsar los dos pies en un campo
+   * borraría el dato que justifica la consulta.
+   *
+   * Lo visual de esta especialidad —marcar lesiones sobre el mapa del pie y la
+   * orden de plantillas— NO cabe en `camposExtra`, que es un mapa plano de
+   * escalares. Va como instrumento estructurado aparte, igual que el
+   * odontograma. Ver docs/adr/0001-instrumentos-graficos-especialidad.md.
+   */
+  podologia: {
+    key: 'podologia',
+    // Rótulo visible: la Dra. se anuncia como "Médico Podiatra", así que en
+    // pantalla dice "Podiatría". La CLAVE se queda como 'podologia' a
+    // propósito — va escrita en el jsonb de cada nota firmada y renombrarla
+    // rompería expedientes históricos. Nombre y clave no tienen por qué
+    // coincidir; solo el nombre se lee.
+    nombre: 'Podiatría',
+    rangosCie10: [
+      // Deformidades del pie (hallux valgus M20.1, pie plano/cavo M21.4-M21.6).
+      { desde: 'M20', hasta: 'M21' },
+      // Tejidos blandos: fascitis plantar M72.2, espolón calcáneo M77.3.
+      { desde: 'M70', hasta: 'M79' },
+      // Onicopatías: uña encarnada L60.0, onicólisis L60.1, onicogrifosis L60.2.
+      { desde: 'L60', hasta: 'L60' },
+      // Heloma y callosidades.
+      { desde: 'L84', hasta: 'L84' },
+      // Micosis: onicomicosis B35.1, tiña del pie B35.3.
+      { desde: 'B35', hasta: 'B35' },
+      // Úlcera de miembro inferior — el desenlace que todo el cribado busca evitar.
+      { desde: 'L97', hasta: 'L98' },
+    ],
+    signosVitales: VITALES_COMPLETOS,
+    etiquetas: {
+      padecimientoActual: {
+        label: 'Motivo de consulta y padecimiento actual',
+        placeholder:
+          'Fecha del primer síntoma, localización, cómo inició, circunstancia desencadenante, tipo y frecuencia del dolor (diurno, nocturno, intermitente)…',
+      },
+      hallazgos: {
+        label: 'Exploración podológica',
+        placeholder:
+          'Piel y anexos, uñas, estructura ósea, marcha, huella plantar, estado vascular y neurológico…',
+      },
+      planTerapeutico: {
+        label: 'Tratamiento e indicaciones',
+        placeholder:
+          'Procedimiento realizado, curaciones, ortesis o plantillas indicadas, calzado recomendado y cuidados en casa.',
+      },
+    },
+    camposExtra: [
+      // ── Ficha de identificación (hoja 1). Solo primera visita. ──
+      {
+        key: 'pod_ocupacion_actual',
+        label: 'Ocupación actual',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+        ayuda: 'Cuántas horas de pie: es factor de carga directo sobre el pie.',
+      },
+      {
+        key: 'pod_ocupacion_anterior',
+        label: 'Ocupación anterior',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+
+      // ── Padecimiento actual (hoja 1). Se levanta una vez. ──
+      {
+        key: 'pod_fecha_primer_sintoma',
+        label: 'Fecha del 1.er síntoma',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_localizacion',
+        label: 'Localización',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_como_inicio',
+        label: 'Cómo inició',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_circunstancia',
+        label: 'Circunstancia desencadenante o que lo modifica',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_tipo_dolor',
+        label: 'Tipo de dolor',
+        tipo: 'texto',
+        ayuda: 'Punzante, ardoroso, opresivo… El dolor cambia entre consultas.',
+      },
+      {
+        key: 'pod_frecuencia_dolor',
+        label: 'Frecuencia del dolor',
+        tipo: 'seleccion',
+        opciones: ['Diurno', 'Nocturno', 'Intermitente'],
+      },
+
+      // ── Antecedentes familiares (hoja 1). Sobre la FAMILIA del paciente,
+      // no sobre él: la hoja de papel repite la misma batería de hábitos bajo
+      // los dos encabezados —familiares y personales— y aquí se respeta esa
+      // misma duplicación, con prefijo `fam_` para no confundir las llaves.
+      {
+        key: 'pod_fam_fuma',
+        label: 'Familiares: fuma',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_fam_alcohol',
+        label: 'Familiares: consume bebidas alcohólicas',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_fam_medicamentos_drogas',
+        label: 'Familiares: medicamentos y/o drogas',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_fam_actividad_fisica',
+        label: 'Familiares: realiza actividad física',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_fam_actividad_fisica_detalle',
+        label: 'Familiares: cuál y con qué frecuencia',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_fam_comparte_calzado',
+        label: 'Familiares: comparte calzado',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_fam_descalzo_publico',
+        label: 'Familiares: frecuenta lugares públicos descalzo',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+
+      // ── Antecedentes personales no patológicos (hoja 1). Los hábitos del
+      // paciente mismo. `pod_comparte_calzado` y `pod_descalzo_publico` no
+      // llevan prefijo: son las versiones "personales" de esas dos preguntas,
+      // las que de verdad condicionan el riesgo podológico del propio pie.
+      {
+        key: 'pod_fuma',
+        label: 'Fuma',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_alcohol',
+        label: 'Consume bebidas alcohólicas',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_medicamentos_drogas',
+        label: 'Medicamentos y/o drogas',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_actividad_fisica',
+        label: 'Realiza actividad física',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_actividad_fisica_detalle',
+        label: 'Cuál y con qué frecuencia',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_comparte_calzado',
+        label: 'Comparte calzado',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_descalzo_publico',
+        label: 'Anda descalzo en lugares públicos',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí'],
+        soloHistoriaClinica: true,
+        ayuda: 'Vía de contagio habitual de micosis y verruga plantar.',
+      },
+
+      // ── Antecedentes personales patológicos (hoja 1): el checklist de la
+      // esquina inferior. Una casilla marcada aquí es un antecedente que el
+      // pie carga toda la vida (diabetes, VIH, cáncer…), así que se pregunta
+      // UNA vez en la historia clínica — no en cada nota de control.
+      //
+      // Se solapa a propósito con BANDERAS_CLINICAS (que ya tiene 'diabetes' y
+      // 'embarazo'): son cosas DISTINTAS y no un descuido. BANDERAS_CLINICAS
+      // vive en el PACIENTE, dispara el banner de alerta al abrir cualquier
+      // consulta y trae una `conducta` clínica accionable. Esto vive en la
+      // NOTA, es la transcripción fiel del checklist de papel de esta
+      // especialidad, y no dispara ninguna alerta por sí solo. Si algún día se
+      // decide que 'Diabetes mellitus' aquí debería encender la bandera del
+      // paciente automáticamente, ese es un cambio de comportamiento nuevo —
+      // no una limpieza de "duplicado".
+      {
+        key: 'pod_antecedentes_patologicos',
+        label: 'Antecedentes personales patológicos',
+        tipo: 'multi-seleccion',
+        soloHistoriaClinica: true,
+        opciones: [
+          'Cirugías ortopédicas',
+          'Circulación',
+          'Cardiopatías',
+          'Embarazo',
+          'Alergias',
+          'Diabetes mellitus',
+          'Presión arterial',
+          'Enfermedad renal',
+          'Lactando',
+          'Artritis',
+          'Hipoglucemiantes',
+          'Traumatismo',
+          'V.I.H.',
+          'Aspirina',
+          'Gota',
+          'Enfermedades dermatológicas',
+          'Inmunológicas',
+          'Cáncer',
+          'Varices',
+          'Analgésico',
+        ],
+      },
+      {
+        key: 'pod_antecedentes_patologicos_otras',
+        label: 'Otras',
+        tipo: 'texto',
+        soloHistoriaClinica: true,
+      },
+
+      {
+        key: 'pod_numero_calzado',
+        label: 'Número de calzado',
+        tipo: 'texto',
+        ayuda: 'Un calzado mal medido es causa de lesión por sí solo.',
+      },
+      {
+        key: 'pod_tipo_pie',
+        label: 'Tipo de pie (fórmula digital)',
+        tipo: 'seleccion',
+        opciones: ['Egipcio', 'Griego', 'Polinesio (cuadrado)'],
+        soloHistoriaClinica: true,
+      },
+      {
+        key: 'pod_huella_plantar',
+        label: 'Huella plantar',
+        tipo: 'seleccion',
+        opciones: [
+          'Normal',
+          'Pie plano',
+          'Pie plano valgo',
+          'Pie plano valgo pronado grave',
+          'Pie cavo',
+          'Pie cavo en garra',
+          'Pie calcáneo elevado',
+        ],
+      },
+      // ── Exploración manual e instrumentada (hoja 2) ──
+      //
+      // Todo va por pie y en pares izq/der consecutivos: la rejilla los pinta
+      // a dos columnas, así que el par queda lado a lado y se lee como la
+      // tabla del papel. El orden de este arreglo ES el de la pantalla.
+      {
+        key: 'pod_estructura_osea_izq',
+        label: 'Estructura ósea · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Anormal'],
+      },
+      {
+        key: 'pod_estructura_osea_der',
+        label: 'Estructura ósea · derecho',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Anormal'],
+      },
+      {
+        key: 'pod_temperatura_izq',
+        label: 'Temperatura · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Aumentada', 'Disminuida'],
+      },
+      {
+        key: 'pod_temperatura_der',
+        label: 'Temperatura · derecho',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Aumentada', 'Disminuida'],
+      },
+      {
+        key: 'pod_llenado_capilar_izq',
+        label: 'Llenado capilar · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Normal (< 3 s)', 'Retardado (> 3 s)'],
+      },
+      {
+        key: 'pod_llenado_capilar_der',
+        label: 'Llenado capilar · derecho',
+        tipo: 'seleccion',
+        opciones: ['Normal (< 3 s)', 'Retardado (> 3 s)'],
+      },
+
+      // ── Cribado de pie diabético. Por pie: la asimetría ES el hallazgo. ──
+      {
+        key: 'pod_monofilamento_izq',
+        label: 'Monofilamento · pie izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuida', 'Ausente', 'No valorada'],
+        ayuda: 'Semmes-Weinstein 10 g. La sensibilidad ausente es pie de riesgo.',
+      },
+      {
+        key: 'pod_monofilamento_der',
+        label: 'Monofilamento · pie derecho',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuida', 'Ausente', 'No valorada'],
+      },
+      {
+        key: 'pod_pulso_pedio_izq',
+        label: 'Pulso pedio · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Presente', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_pulso_pedio_der',
+        label: 'Pulso pedio · derecho',
+        tipo: 'seleccion',
+        opciones: ['Presente', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_pulso_tibial_izq',
+        label: 'Pulso tibial posterior · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Presente', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_pulso_tibial_der',
+        label: 'Pulso tibial posterior · derecho',
+        tipo: 'seleccion',
+        opciones: ['Presente', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_reflejo_rotuliano_izq',
+        label: 'Reflejo rotuliano · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_reflejo_rotuliano_der',
+        label: 'Reflejo rotuliano · derecho',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_reflejo_aquileo_izq',
+        label: 'Reflejo aquíleo · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_reflejo_aquileo_der',
+        label: 'Reflejo aquíleo · derecho',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuido', 'Ausente'],
+      },
+      {
+        key: 'pod_diapason_izq',
+        label: 'Diapasón · izquierdo',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuida', 'Ausente'],
+        ayuda: 'Sensibilidad vibratoria, 128 Hz.',
+      },
+      {
+        key: 'pod_diapason_der',
+        label: 'Diapasón · derecho',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Disminuida', 'Ausente'],
+      },
+      {
+        key: 'pod_riesgo_pie_diabetico',
+        label: 'Riesgo de pie diabético',
+        tipo: 'seleccion',
+        opciones: ['No aplica', 'Bajo', 'Moderado', 'Alto'],
+        obligatorio: true,
+        ayuda:
+          'Obligatorio: es la conclusión del cribado y la que fija cada cuándo debe volver el paciente.',
+      },
+      {
+        key: 'pod_calzado_habitual',
+        label: 'Tipo de calzado habitual',
+        tipo: 'texto',
+        ayuda: 'Puntera estrecha, tacón, calzado deportivo, de seguridad…',
+      },
+      {
+        key: 'pod_exploracion_visual',
+        label: 'Notas de la exploración visual',
+        tipo: 'texto-rico',
+        ayuda:
+          'Lo que el mapa podológico no alcanza a expresar: evolución de una lesión, medidas, coloración, olor.',
+      },
+    ],
+  },
 };
 
 /** True si `value` es una clave de especialidad conocida. */
@@ -1855,4 +2605,330 @@ export function perfilDe(key: string | null | undefined): PerfilEspecialidad {
 /** Opciones para poblar un `<select>`, con 'general' siempre primero. */
 export function opcionesEspecialidad(): { key: EspecialidadKey; nombre: string }[] {
   return ESPECIALIDADES.map((key) => ({ key, nombre: PERFILES[key].nombre }));
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ * Orden de plantillas ortopédicas (laboratorio "Microrthopedic Solutions").
+ *
+ * Es la hoja de pedido que el podólogo llena para mandar fabricar la órtesis
+ * de un paciente. Se digitaliza tal cual el formato del laboratorio —incluidos
+ * sus nombres en inglés— porque es lo que se le envía sin traducir.
+ *
+ * VIVE FUERA de la nota clínica a propósito (ver docs/adr/0001). Una nota
+ * firmada es inmutable por NOM-004; esta orden no lo es: el laboratorio puede
+ * pedir corregir una medida días después de que la consulta ya se cerró, y una
+ * nota firmada no puede reabrirse para eso. Es un documento hermano de
+ * `presupuestos`/`radiografias` — cuelga del paciente y de la cita que lo
+ * originó, con su propio ciclo de vida.
+ *
+ * El catálogo de casillas se modela como DATOS, con el mismo criterio que
+ * `PERFILES`/`ESTADOS_DENTALES`/`HALLAZGOS_PODOLOGICOS`: si el laboratorio
+ * cambia su formato, se edita esta lista y no hay nada que migrar.
+ * ═══════════════════════════════════════════════════════════════════
+ */
+
+export const GRUPOS_PLANTILLA = [
+  'corrective_line',
+  'sport_line',
+  'formal_wear_line',
+  'accommodative_line',
+  'casting_modifications',
+  'positing_instructions',
+  'forefoot_posting',
+  'shell_modification',
+  'covering_extension_material',
+  'covering_top_material',
+  'top_cover_materials',
+  'accommodations',
+  'arch_reinforcement_material',
+  'examination_hallux_dorsiflexion',
+  'examination_first_ray_position',
+  'examination_arch_appearance',
+  'examination_subtalar_joint',
+  'examination_rested_calcaneal',
+] as const;
+export type GrupoPlantilla = (typeof GRUPOS_PLANTILLA)[number];
+
+/** Encabezados de sección, en el orden en que aparecen en la hoja del laboratorio. */
+export const ETIQUETA_GRUPO_PLANTILLA: Record<GrupoPlantilla, string> = {
+  corrective_line: 'Corrective Line',
+  sport_line: 'Sport Line',
+  formal_wear_line: 'Formal Wear Line',
+  accommodative_line: 'Accommodative Line',
+  casting_modifications: 'Casting Modifications',
+  positing_instructions: 'Positing Instructions',
+  forefoot_posting: 'Forefoot Posting',
+  shell_modification: 'Shell Modification',
+  covering_extension_material: 'Covering · Extension Material (PPT/Plastazote/EVA)',
+  covering_top_material: 'Covering · Top Cover Material (PPT/Plastazote/EVA)',
+  top_cover_materials: 'Top Cover Materials',
+  accommodations: 'Accommodations',
+  arch_reinforcement_material: 'Arch Reinforcement',
+  examination_hallux_dorsiflexion: 'Examination Findings · Hallux Dorsiflexion',
+  examination_first_ray_position: 'Examination Findings · 1st Ray Position',
+  examination_arch_appearance: 'Examination Findings · Arch Appearance (Weight Bearing)',
+  examination_subtalar_joint: 'Examination Findings · Subtalar Joint',
+  examination_rested_calcaneal: 'Examination Findings · Rested Calcaneal Forefoot',
+};
+
+export interface OpcionPlantilla {
+  key: string;
+  label: string;
+  grupo: GrupoPlantilla;
+  /**
+   * true = la casilla se marca por separado para cada pie (columnas R/L de la
+   * hoja de papel). false = una sola casilla, aplica a la orden completa.
+   */
+  porLado: boolean;
+}
+
+export const OPCIONES_PLANTILLA: readonly OpcionPlantilla[] = [
+  // ── Corrective Line ──
+  { key: 'micro_heel_pain', label: 'Micro Heel Pain', grupo: 'corrective_line', porLado: false },
+  { key: 'micro_ucbl', label: 'Micro UCBL', grupo: 'corrective_line', porLado: false },
+  { key: 'micro_gait_plate', label: 'Micro Gait Plate (in toeing, out toeing)', grupo: 'corrective_line', porLado: false },
+  { key: 'micro_unit', label: 'Micro Unit', grupo: 'corrective_line', porLado: false },
+  { key: 'micro_biomechanical', label: 'Micro Biomechanical', grupo: 'corrective_line', porLado: false },
+  { key: 'micro_cork_leather', label: 'Micro Cork and Leather', grupo: 'corrective_line', porLado: false },
+
+  // ── Sport Line ──
+  { key: 'micro_carbo_sport', label: 'Micro Carbo Sport', grupo: 'sport_line', porLado: false },
+  { key: 'micro_sport', label: 'Micro Sport', grupo: 'sport_line', porLado: false },
+  { key: 'micro_all_sport', label: 'Micro All Sport', grupo: 'sport_line', porLado: false },
+  { key: 'micro_sumbarobic', label: 'Micro Sumbarobic', grupo: 'sport_line', porLado: false },
+  { key: 'micro_basketball', label: 'Micro Basketball', grupo: 'sport_line', porLado: false },
+  { key: 'micro_tennis', label: 'Micro Tennis', grupo: 'sport_line', porLado: false },
+  { key: 'micro_soccer', label: 'Micro Soccer', grupo: 'sport_line', porLado: false },
+  { key: 'micro_runners', label: 'Micro Runners', grupo: 'sport_line', porLado: false },
+  { key: 'micro_football', label: 'Micro Foot Ball', grupo: 'sport_line', porLado: false },
+  { key: 'micro_ski', label: 'Micro Ski', grupo: 'sport_line', porLado: false },
+  { key: 'micro_golf', label: 'Micro Golf', grupo: 'sport_line', porLado: false },
+  { key: 'micro_marathoner', label: 'Micro Marathoner', grupo: 'sport_line', porLado: false },
+
+  // ── Formal Wear Line ──
+  { key: 'micro_fashion', label: 'Micro Fashion', grupo: 'formal_wear_line', porLado: false },
+  { key: 'micro_dress', label: 'Micro Dress', grupo: 'formal_wear_line', porLado: false },
+  { key: 'micro_carbo_dress', label: 'Micro Carbo Dress', grupo: 'formal_wear_line', porLado: false },
+  { key: 'micro_cobra_wing', label: 'Micro Cobra or Wing', grupo: 'formal_wear_line', porLado: false },
+  { key: 'micro_lite', label: 'Micro Lite', grupo: 'formal_wear_line', porLado: false },
+  { key: 'micro_high_heel_fit', label: 'Micro High Heel Fit', grupo: 'formal_wear_line', porLado: false },
+
+  // ── Accommodative Line ──
+  { key: 'micro_accommodative', label: 'Micro Accommodative', grupo: 'accommodative_line', porLado: false },
+  { key: 'micro_light_blue_diabetic', label: 'Micro Light Blue Diabetic', grupo: 'accommodative_line', porLado: false },
+  { key: 'micro_semi_rigid_diabetic', label: 'Micro Semi Rigid Diabetic', grupo: 'accommodative_line', porLado: false },
+  { key: 'micro_rigid_diabetic', label: 'Micro Rigid Diabetic', grupo: 'accommodative_line', porLado: false },
+  { key: 'fit_to_shoe', label: 'Fit to Shoe', grupo: 'accommodative_line', porLado: false },
+  { key: 'shoe_enclosed', label: 'Shoe Enclosed', grupo: 'accommodative_line', porLado: false },
+  { key: 'positive_cast_enclosed', label: 'Positive Cast Enclosed', grupo: 'accommodative_line', porLado: false },
+  { key: 'orthotics_enclosed', label: 'Orthotics Enclosed', grupo: 'accommodative_line', porLado: false },
+
+  // ── Casting Modifications ──
+  { key: 'do_not_lower_la', label: 'Do Not Lower LA', grupo: 'casting_modifications', porLado: false },
+  { key: 'raise_la', label: 'Raise LA', grupo: 'casting_modifications', porLado: false },
+  { key: 'medial_arch_platform', label: 'Medial Arch Platform', grupo: 'casting_modifications', porLado: false },
+  { key: 'medial_heel_skive', label: 'Medial Heel Skive', grupo: 'casting_modifications', porLado: false },
+  { key: 'pf_groove', label: 'PF Groove', grupo: 'casting_modifications', porLado: false },
+  { key: 'button_out_area_casting', label: 'Button Out Area', grupo: 'casting_modifications', porLado: false },
+
+  // ── Positing Instructions (rearfoot post) ──
+  { key: 'neutral_shell', label: 'Neutral Shell', grupo: 'positing_instructions', porLado: false },
+
+  // ── Forefoot Posting ──
+  { key: 'ff_post_to_sulcus', label: 'FF Post To Sulcus', grupo: 'forefoot_posting', porLado: false },
+  { key: 'tip_post', label: 'Tip Post', grupo: 'forefoot_posting', porLado: true },
+  { key: 'bar_1_5', label: '1-5 Bar', grupo: 'forefoot_posting', porLado: true },
+  { key: 'bar_2_5', label: '2-5 Bar', grupo: 'forefoot_posting', porLado: true },
+
+  // ── Shell Modification ──
+  { key: 'deep_heel_seat', label: 'Deep Heel Seat', grupo: 'shell_modification', porLado: true },
+  { key: 'shallow_heel_seat', label: 'Shallow Heel Seat', grupo: 'shell_modification', porLado: true },
+  { key: 'widen_orthotics', label: 'Widen Orthotics', grupo: 'shell_modification', porLado: true },
+  { key: 'narrow_orthotics', label: 'Narrow Orthotics', grupo: 'shell_modification', porLado: true },
+  { key: 'medial_flange', label: 'Medial Flange', grupo: 'shell_modification', porLado: true },
+  { key: 'lateral_flange', label: 'Lateral Flange', grupo: 'shell_modification', porLado: true },
+  { key: 'first_ray_cut_out', label: '1st Ray Cut Out', grupo: 'shell_modification', porLado: true },
+  { key: 'fifth_ray_cut_out', label: '5th Ray Cut Out', grupo: 'shell_modification', porLado: true },
+  { key: 'heel_punch_out', label: 'Heel Punch Out', grupo: 'shell_modification', porLado: true },
+  { key: 'rigid_mortons_ext', label: "Rigid Morton's Ext", grupo: 'shell_modification', porLado: true },
+  { key: 'button_out_area_shell', label: 'Button Out Area', grupo: 'shell_modification', porLado: true },
+
+  // ── Covering: materiales de la extensión y del top cover ──
+  { key: 'covering_ext_ppt', label: 'PPT', grupo: 'covering_extension_material', porLado: false },
+  { key: 'covering_ext_plastazote', label: 'Plastazote', grupo: 'covering_extension_material', porLado: false },
+  { key: 'covering_ext_eva', label: 'EVA', grupo: 'covering_extension_material', porLado: false },
+  { key: 'covering_top_ppt', label: 'PPT', grupo: 'covering_top_material', porLado: false },
+  { key: 'covering_top_plastazote', label: 'Plastazote', grupo: 'covering_top_material', porLado: false },
+  { key: 'covering_top_eva', label: 'EVA', grupo: 'covering_top_material', porLado: false },
+
+  // ── Top Cover Materials (columna derecha de la hoja) ──
+  { key: 'suede', label: 'Suede', grupo: 'top_cover_materials', porLado: false },
+  { key: 'glove_leather', label: 'Glove Leather', grupo: 'top_cover_materials', porLado: false },
+  { key: 'black_leather', label: 'Black Leather', grupo: 'top_cover_materials', porLado: false },
+  { key: 'ppt_plastazote', label: 'PPT/Plastazote', grupo: 'top_cover_materials', porLado: false },
+  { key: 'black_spenco', label: 'Black Spenco', grupo: 'top_cover_materials', porLado: false },
+  { key: 'black_eva', label: 'Black Eva', grupo: 'top_cover_materials', porLado: false },
+  { key: 'ucolite', label: 'Ucolite', grupo: 'top_cover_materials', porLado: false },
+  { key: 'multicolor_eva', label: 'Multicolor Eva', grupo: 'top_cover_materials', porLado: false },
+  { key: 'black_gray_swirl', label: 'Black/Gray Swirl', grupo: 'top_cover_materials', porLado: false },
+
+  // ── Accommodations ──
+  { key: 'heel_spur_pad', label: 'Heel Spur Pad', grupo: 'accommodations', porLado: true },
+  { key: 'heel_cushion', label: 'Heel Cushion', grupo: 'accommodations', porLado: true },
+  { key: 'met_pad', label: 'Met Pad', grupo: 'accommodations', porLado: true },
+  { key: 'met_bar', label: 'Met Bar', grupo: 'accommodations', porLado: true },
+  { key: 'dancers_pad', label: 'Dancers Pad', grupo: 'accommodations', porLado: true },
+  { key: 'reverse_mortons', label: "Reverse Morton's", grupo: 'accommodations', porLado: true },
+  { key: 'scaphoid_pad', label: 'Scaphoid Pad', grupo: 'accommodations', porLado: true },
+  { key: 'neuroma_pad', label: 'Neuroma Pad', grupo: 'accommodations', porLado: true },
+  { key: 'neuroma_plug', label: 'Neuroma Plug', grupo: 'accommodations', porLado: true },
+  { key: 'mortons_ext', label: "Morton's Ext", grupo: 'accommodations', porLado: true },
+  { key: 'cuboid_pad', label: 'Cuboid Pad', grupo: 'accommodations', porLado: true },
+  { key: 'navicular_flap', label: 'Navicular Flap', grupo: 'accommodations', porLado: true },
+  { key: 'toe_filler', label: 'Toe Filler', grupo: 'accommodations', porLado: true },
+
+  // ── Arch Reinforcement (materiales, sin lado) ──
+  { key: 'arch_ppt', label: 'PPT', grupo: 'arch_reinforcement_material', porLado: false },
+  { key: 'arch_eva', label: 'EVA', grupo: 'arch_reinforcement_material', porLado: false },
+  { key: 'arch_cork', label: 'Cork', grupo: 'arch_reinforcement_material', porLado: false },
+
+  // ── Examination Findings ──
+  { key: 'hallux_rigid', label: 'Rigid', grupo: 'examination_hallux_dorsiflexion', porLado: true },
+  { key: 'hallux_semi_rigid', label: 'Semi-Rigid', grupo: 'examination_hallux_dorsiflexion', porLado: true },
+  { key: 'hallux_normal', label: 'Normal', grupo: 'examination_hallux_dorsiflexion', porLado: true },
+
+  { key: 'first_ray_plantarflexed', label: 'Plantarflexed', grupo: 'examination_first_ray_position', porLado: true },
+  { key: 'first_ray_dorsiflexed', label: 'Dorsiflexed', grupo: 'examination_first_ray_position', porLado: true },
+  { key: 'first_ray_normal', label: 'Normal', grupo: 'examination_first_ray_position', porLado: true },
+
+  { key: 'arch_high', label: 'High Arch', grupo: 'examination_arch_appearance', porLado: true },
+  { key: 'arch_medium', label: 'Medium Arch', grupo: 'examination_arch_appearance', porLado: true },
+  { key: 'arch_low', label: 'Low Arch', grupo: 'examination_arch_appearance', porLado: true },
+
+  { key: 'subtalar_inversion', label: 'Inversion', grupo: 'examination_subtalar_joint', porLado: true },
+  { key: 'subtalar_eversion', label: 'Eversion', grupo: 'examination_subtalar_joint', porLado: true },
+  { key: 'subtalar_neutral', label: 'Neutral', grupo: 'examination_subtalar_joint', porLado: true },
+
+  { key: 'calcaneal_varus', label: 'Varus', grupo: 'examination_rested_calcaneal', porLado: true },
+  { key: 'calcaneal_valgus', label: 'Valgus', grupo: 'examination_rested_calcaneal', porLado: true },
+] as const;
+
+export function opcionPlantillaPorKey(key: string): OpcionPlantilla | undefined {
+  return OPCIONES_PLANTILLA.find((o) => o.key === key);
+}
+
+export function opcionesPlantillaDeGrupo(grupo: GrupoPlantilla): OpcionPlantilla[] {
+  return OPCIONES_PLANTILLA.filter((o) => o.grupo === grupo);
+}
+
+/** Marca de una casilla `porLado: true`, para un pie específico. */
+export interface MarcaPlantilla {
+  /** Clave de OPCIONES_PLANTILLA. */
+  opcion: string;
+  lado: LadoPie;
+}
+
+/**
+ * Campos de valor libre (grados de posting, espesores, hasta dónde llega la
+ * cobertura…) que en la hoja de papel son una línea en blanco, no una casilla.
+ * Mismo criterio que `CampoExtra`: se declaran como datos para que agregar o
+ * quitar uno sea editar esta lista.
+ */
+export interface ValorPlantilla {
+  key: string;
+  label: string;
+  tipo: 'texto' | 'seleccion';
+  opciones?: readonly string[];
+}
+
+export const VALORES_PLANTILLA: readonly ValorPlantilla[] = [
+  { key: 'rearfoot_post_tipo', label: 'Rearfoot post', tipo: 'seleccion', opciones: ['Intrinsic', 'Extrinsic'] },
+  { key: 'rearfoot_varus_derecho', label: 'Rearfoot varus · derecho', tipo: 'texto' },
+  { key: 'rearfoot_valgus_derecho', label: 'Rearfoot valgus · derecho', tipo: 'texto' },
+  { key: 'rearfoot_varus_izquierdo', label: 'Rearfoot varus · izquierdo', tipo: 'texto' },
+  { key: 'rearfoot_valgus_izquierdo', label: 'Rearfoot valgus · izquierdo', tipo: 'texto' },
+  { key: 'forefoot_post_tipo', label: 'Forefoot post', tipo: 'seleccion', opciones: ['Intrinsic', 'Extrinsic'] },
+  { key: 'forefoot_varus_derecho', label: 'Forefoot varus · derecho', tipo: 'texto' },
+  { key: 'forefoot_valgus_derecho', label: 'Forefoot valgus · derecho', tipo: 'texto' },
+  { key: 'forefoot_varus_izquierdo', label: 'Forefoot varus · izquierdo', tipo: 'texto' },
+  { key: 'forefoot_valgus_izquierdo', label: 'Forefoot valgus · izquierdo', tipo: 'texto' },
+  { key: 'covering_ext_hasta', label: 'Covering · extension: hasta', tipo: 'seleccion', opciones: ['Sulcus', 'Toes'] },
+  { key: 'covering_ext_grosor', label: 'Covering · extension: espesor', tipo: 'seleccion', opciones: ['1/16', '1/8', '3/16'] },
+  { key: 'covering_top_hasta', label: 'Covering · top cover: hasta', tipo: 'seleccion', opciones: ['Mets', 'Sulcus', 'Toes'] },
+  { key: 'covering_top_grosor', label: 'Covering · top cover: espesor', tipo: 'seleccion', opciones: ['1/16', '1/8', '3/16'] },
+  { key: 'covering_bottom', label: 'Bottom cover', tipo: 'seleccion', opciones: ['Suede', 'Vinyl'] },
+  { key: 'top_cover_vinyl_color', label: 'Vinyl color', tipo: 'seleccion', opciones: ['Black', 'White'] },
+  { key: 'tibial_varum_derecho', label: 'Tibial varum · derecho', tipo: 'texto' },
+  { key: 'tibial_varum_izquierdo', label: 'Tibial varum · izquierdo', tipo: 'texto' },
+] as const;
+
+export function valorPlantillaPorKey(key: string): ValorPlantilla | undefined {
+  return VALORES_PLANTILLA.find((v) => v.key === key);
+}
+
+/**
+ * 'completada' y no 'enviada' a propósito: HealthFlow no manda nada al
+ * laboratorio por su cuenta (no hay integración real con Microrthopedic
+ * Solutions). La marca solo dice que el médico terminó de llenarla — enviarla
+ * de verdad sigue siendo imprimirla y entregarla/faxearla fuera del sistema.
+ */
+export type EstatusOrdenPlantillas = 'borrador' | 'completada' | 'cancelada';
+
+/** Contenido editable de la orden (todo lo que no es metadata de auditoría). */
+export interface OrdenPlantillasContent {
+  practitionerName?: string;
+  accountNumber?: string;
+  shoeSize?: string;
+  shoeType?: string;
+  weight?: string;
+  diagnosis?: string;
+  /** ISO date. */
+  dateRequired?: string;
+  returnCastToDr?: boolean;
+  mailToPatient?: boolean;
+
+  /** Claves de OPCIONES_PLANTILLA con `porLado: false` que están marcadas. */
+  opciones: string[];
+  /** Casillas `porLado: true`, una entrada por pie marcado. */
+  marcas: MarcaPlantilla[];
+  /** Claves de VALORES_PLANTILLA con su valor capturado. */
+  valores: Record<string, string>;
+
+  specialInstructions?: string;
+}
+
+export const ORDEN_PLANTILLAS_VACIA: OrdenPlantillasContent = {
+  opciones: [],
+  marcas: [],
+  valores: {},
+};
+
+/** Vista de la orden tal como la consume la UI. Fechas en ISO. */
+export interface OrdenPlantillasView {
+  id: string;
+  patientId: string;
+  appointmentId: string | null;
+  doctorId: string;
+  estatus: EstatusOrdenPlantillas;
+  contenido: OrdenPlantillasContent;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * `OrdenPlantillasView` + los nombres para imprimir. Se separan del `View`
+ * base porque el modal de la consulta (que ya sabe quién es el paciente y el
+ * médico por el contexto de la pantalla) no necesita pagar el JOIN extra en
+ * cada autosave — solo lo pide la vista de impresión y el listado del
+ * expediente, que si parten de cero.
+ */
+export interface OrdenPlantillasDetalle extends OrdenPlantillasView {
+  patientNombre: string;
+  doctorNombre: string;
+  doctorCedula: string | null;
+  doctorCedulaEspecialidad: string | null;
+  nombreClinica: string;
+  direccionClinica: string | null;
+  telefonoClinica: string | null;
 }

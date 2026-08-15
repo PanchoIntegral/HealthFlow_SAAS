@@ -176,3 +176,12 @@ body {
 .hf-calendar .rbc-button-link:hover {
   color: theme('colors.brand.blue');
 }
+
+/* Vista de impresión de la orden de plantillas: lo que lleva `.no-print`
+   (el botón "Volver", el de "Imprimir") no debe salir en la hoja que termina
+   en manos del laboratorio. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

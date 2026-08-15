@@ -6,7 +6,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "tsc --noEmit"
+    "lint": "eslint . && tsc --noEmit"
   },
   "dependencies": {
     "@healthflow/shared-types": "workspace:*",
@@ -23,11 +23,14 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-big-calendar": "^1.16.3",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.23",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"

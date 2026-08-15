@@ -61,6 +61,9 @@ export const tenants = pgTable('tenants', {
    * el audio de una consulta a un tercero es una decisión de cada clínica.
    */
   asistenteIaActivo: boolean('asistente_ia_activo').notNull().default(false),
+  /** Membrete para documentos impresos (ver 0024_datos_clinica.sql). */
+  direccion: text('direccion'),
+  telefono: text('telefono'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -80,6 +83,8 @@ export const users = pgTable('users', {
    */
   esMedico: boolean('es_medico').notNull().default(false),
   cedulaProfesional: text('cedula_profesional'),
+  /** Distinta de la profesional: certifica la especialidad, no el ejercicio general. */
+  cedulaEspecialidad: text('cedula_especialidad'),
   /** Etiqueta editable que se muestra en el selector de agenda. */
   especialidad: text('especialidad'),
   /**
@@ -358,6 +363,24 @@ export const radiografias = pgTable('radiografias', {
   mimeType: text('mime_type').notNull(),
   subidoPor: uuid('subido_por').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Orden de plantillas ortopédicas al laboratorio (ver 0023_orden_plantillas.sql).
+ * Vive FUERA de `clinical_notes` a propósito: la nota firmada es inmutable por
+ * NOM-004, y esta orden no lo es — el laboratorio puede pedir una corrección
+ * días después de cerrada la consulta.
+ */
+export const ordenesPlantillas = pgTable('ordenes_plantillas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  patientId: uuid('patient_id').notNull(),
+  doctorId: uuid('doctor_id').notNull(),
+  appointmentId: uuid('appointment_id'),
+  estatus: text('estatus').notNull().default('borrador'), // 'borrador' | 'completada' | 'cancelada'
+  contenido: jsonb('contenido').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 /**

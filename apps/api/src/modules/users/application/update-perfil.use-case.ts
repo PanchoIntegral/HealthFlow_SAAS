@@ -4,6 +4,7 @@ import { TenantDbService } from '../../../common/tenant-context/tenant-db.servic
 import { AuditService } from '../../../common/audit/audit.service';
 import { AsistenteIaActivoReader } from '../../ai-scribe/application/asistente-ia-activo.reader';
 import { ClinicaDentalReader } from '../../presupuestos/application/clinica-dental.reader';
+import { DatosClinicaReader } from '../../accounts/application/datos-clinica.reader';
 import { USER_PROFILE_REPOSITORY, type UserProfileRepository } from '../domain/user-profile.repository';
 
 /**
@@ -27,6 +28,7 @@ export class UpdatePerfilUseCase {
     private readonly audit: AuditService,
     private readonly asistenteIa: AsistenteIaActivoReader,
     private readonly clinicaDental: ClinicaDentalReader,
+    private readonly datosClinica: DatosClinicaReader,
     @Inject(USER_PROFILE_REPOSITORY) private readonly users: UserProfileRepository,
   ) {}
 
@@ -49,6 +51,7 @@ export class UpdatePerfilUseCase {
         especialidadKey: input.especialidadKey,
         especialidad: conservar(input.especialidad, anterior.especialidad),
         cedulaProfesional: conservar(input.cedulaProfesional, anterior.cedulaProfesional),
+        cedulaEspecialidad: conservar(input.cedulaEspecialidad, anterior.cedulaEspecialidad),
       });
       if (!actualizado) throw new NotFoundException('Usuario no encontrado');
 
@@ -73,10 +76,13 @@ export class UpdatePerfilUseCase {
       // transacción, así que ya cuenta la especialidad recién guardada: el
       // médico que se marca como odontólogo en Ajustes ve aparecer los
       // presupuestos con esa misma respuesta, sin recargar.
+      const clinica = await this.datosClinica.leer(tx);
       return {
         ...actualizado,
         asistenteIaActivo: await this.asistenteIa.leer(tx),
         clinicaDental: await this.clinicaDental.leer(tx),
+        direccionClinica: clinica.direccion,
+        telefonoClinica: clinica.telefono,
       };
     });
   }

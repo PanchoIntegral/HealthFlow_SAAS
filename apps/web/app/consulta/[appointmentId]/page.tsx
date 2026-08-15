@@ -6,13 +6,17 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   EMPTY_NOTA_EVOLUCION,
   ODONTOGRAMA_VACIO,
+  PODOGRAMA_VACIO,
+  camposDeNota,
   partidasDesdeOdontograma,
   perfilDe,
   type CampoBaseKey,
   type CampoSugeribleIa,
   type Odontograma as OdontogramaData,
+  type Podograma as PodogramaData,
   type DiagnosticoCie10,
   type EspecialidadKey,
+  type HistorialPaciente,
   type SugerenciaNotaIa,
   type NotaEvolucionContent,
   type PerfilEspecialidad,
@@ -24,7 +28,11 @@ import { api, ApiError } from '../../../lib/api';
 import { RichTextEditor } from '../../../components/rich-text-editor';
 import { CamposEspecialidad } from '../../../components/campos-especialidad';
 import { AlertaAlergias } from '../../../components/alerta-alergias';
+import { EditorHistorial } from '../../../components/editor-historial';
+import { OrdenPlantillasModal } from '../../../components/orden-plantillas-modal';
+import { IconClipboardList } from '../../../components/icons';
 import { Odontograma } from '../../../components/odontograma';
+import { Podograma } from '../../../components/podograma';
 import { NuevoPresupuestoModal } from '../../../components/nuevo-presupuesto-modal';
 import { Modal } from '../../../components/modal';
 import { GrabadorIa } from '../../../components/grabador-ia';
@@ -71,12 +79,39 @@ function normaDe(perfil: PerfilEspecialidad): string {
     : 'NOM-004-SSA3-2012';
 }
 
+/**
+ * Envoltura delgada: su ÚNICO trabajo es forzar un remount completo cuando
+ * cambia `appointmentId`.
+ *
+ * Next.js App Router NO desmonta el componente de página al navegar entre dos
+ * URLs de la MISMA ruta dinámica (`/consulta/A` → `/consulta/B`): reutiliza la
+ * instancia y solo le pasa params nuevos. Sin este `key`, todo el estado de
+ * React de abajo —el contenido de la nota, el `hydrated` que decide si ya se
+ * cargó— sobrevive el cambio de paciente. El efecto de hidratación es
+ * "cárgalo UNA vez"; si la instancia no se renueva, esa vez ya pasó, y el
+ * borrador de un paciente se queda pintado (y AUTOGUARDADO, vía el timer de
+ * `saveDraft`) en la consulta de otro. Es la causa real de las notas
+ * cruzadas: nunca fue una fuga en la base de datos ni en el backend — RLS
+ * separa por cuenta correctamente — sino un remount que no ocurría.
+ *
+ * `key={appointmentId}` es la forma correcta de pedirle a React que trate cada
+ * cita como una identidad distinta: al cambiar la key, desmonta la instancia
+ * vieja entera (con su `content`, sus refs, sus timers pendientes) y monta una
+ * limpia. Ninguna cantidad de `useEffect` adicional es tan confiable como
+ * esto, porque no depende de acordarse de resetear cada pieza de estado una
+ * por una — y la próxima persona que agregue un `useState` a esta pantalla no
+ * tiene que saber de este problema para no reintroducirlo.
+ */
 export default function ConsultaPage({
   params,
 }: {
   params: Promise<{ appointmentId: string }>;
 }) {
   const { appointmentId } = use(params);
+  return <ConsultaPageInner key={appointmentId} appointmentId={appointmentId} />;
+}
+
+function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const patientId = searchParams.get('patientId');
@@ -93,6 +128,21 @@ export default function ConsultaPage({
 
   /** Se pide la cédula justo antes de firmar, si el médico aún no la tiene. */
   const [modalCedula, setModalCedula] = useState(false);
+
+  /**
+   * Captura de alergias y antecedentes, EN MODAL sobre la propia consulta.
+   *
+   * Antes mandaba al médico a /pacientes/{id} a mitad de escribir la nota —
+   * salir de la pantalla para anotar una alergia y tener que regresar rompe el
+   * flujo justo en el momento en que más urge tener el dato a la vista. El
+   * editor es el mismo (`EditorHistorial`) que usa el expediente; aquí solo
+   * cambia dónde se monta.
+   */
+  const [modalHistorial, setModalHistorial] = useState(false);
+
+  /** Orden de plantillas ortopédicas (solo podología). Se monta al abrir el modal
+   * y se desmonta al cerrarlo — nunca vive de fondo, así hidrata limpio cada vez. */
+  const [modalPlantillas, setModalPlantillas] = useState(false);
 
   /**
    * Qué campos vienen de la IA y siguen sin revisar. Vive en el estado de la
@@ -153,6 +203,16 @@ export default function ConsultaPage({
   }, [note.data]);
 
   const readOnly = note.data?.estatus === 'cerrada';
+
+  const guardarHistorial = useMutation({
+    mutationFn: (h: HistorialPaciente) => api.updateHistorial(token!, patientId!, h),
+    onSuccess: () => {
+      // Refetch y no invalidate: la consulta necesita el dato fresco YA, en
+      // esta misma pantalla, no en el próximo montaje.
+      void record.refetch();
+      setModalHistorial(false);
+    },
+  });
 
   const saveDraft = useMutation({
     mutationFn: (c: NotaEvolucionContent) => api.saveNoteDraft(token!, appointmentId, c),
@@ -307,6 +367,20 @@ export default function ConsultaPage({
    */
   const perfil = useMemo(() => perfilDe(content.especialidad), [content.especialidad]);
   const progress = useMemo(() => computeProgress(content, perfil), [content, perfil]);
+  /**
+   * Los campos de primera visita solo se muestran en la historia clínica. La
+   * regla la resuelve `camposDeNota`, la MISMA que usa el validador de la API:
+   * si difirieran, un campo oculto podría exigirse al cerrar y dejar la nota
+   * atorada sin que el médico pueda ver dónde está el problema.
+   *
+   * Va aquí ARRIBA, junto a los demás hooks: abajo hay un `return null`
+   * mientras carga la sesión, y un hook después de él se saltaría en esos
+   * renders y rompería el orden de hooks.
+   */
+  const camposVisibles = useMemo(
+    () => camposDeNota(perfil.camposExtra, content.tipoNota),
+    [perfil.camposExtra, content.tipoNota],
+  );
   /** La bandera sola no basta: la especialidad tiene que permitirlo. */
   const omitidos = perfil.permiteOmitirSignosVitales === true && content.signosVitalesOmitidos === true;
 
@@ -346,6 +420,10 @@ export default function ConsultaPage({
   /** Actualización funcional: no pierde marcas si llegan varios clics seguidos. */
   const setOdontograma = (actualizar: (previo: OdontogramaData) => OdontogramaData) =>
     setContent((c) => ({ ...c, odontograma: actualizar(c.odontograma ?? ODONTOGRAMA_VACIO) }));
+
+  /** Igual que el odontograma, y por lo mismo: marcar rápido no puede perder marcas. */
+  const setPodograma = (actualizar: (previo: PodogramaData) => PodogramaData) =>
+    setContent((c) => ({ ...c, podograma: actualizar(c.podograma ?? PODOGRAMA_VACIO) }));
 
   /** Al desmarcar se limpia el motivo: no debe quedar huérfano en la nota. */
   const setOmision = (activo: boolean) =>
@@ -406,7 +484,7 @@ export default function ConsultaPage({
           {record.data && (
             <AlertaAlergias
               historial={record.data.historial}
-              onCapturar={patientId ? () => router.push(`/pacientes/${patientId}`) : undefined}
+              onCapturar={patientId ? () => setModalHistorial(true) : undefined}
             />
           )}
 
@@ -598,13 +676,23 @@ export default function ConsultaPage({
             </Section>
           )}
 
-          {perfil.camposExtra.length > 0 && (
+          {perfil.key === 'podologia' && (
+            <Section title="Mapa podológico">
+              <Podograma
+                valor={content.podograma ?? PODOGRAMA_VACIO}
+                onChange={setPodograma}
+                readOnly={readOnly}
+              />
+            </Section>
+          )}
+
+          {camposVisibles.length > 0 && (
             <Section
               title={perfil.nombre}
               missing={missing.some((m) => m.startsWith('extension.'))}
             >
               <CamposEspecialidad
-                campos={perfil.camposExtra}
+                campos={camposVisibles}
                 valores={content.extension ?? {}}
                 onChange={setCampoExtra}
                 readOnly={readOnly}
@@ -651,6 +739,22 @@ export default function ConsultaPage({
                 <p className="font-medium">Firmada</p>
                 <p className="text-xs">{note.data.contenido.firma.medicoNombre} · céd. {note.data.contenido.firma.cedula ?? '—'}</p>
               </div>
+            )}
+
+            {/* Solo podología: la orden de plantillas es una hoja de pedido a
+                un laboratorio, no un instrumento de la nota (ver docs/adr/0001).
+                Va al costado de Progreso porque es lo que el médico va
+                llenando a lo largo de TODA la consulta, no una sección más
+                del formulario. */}
+            {perfil.key === 'podologia' && (
+              <button
+                type="button"
+                onClick={() => setModalPlantillas(true)}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                <IconClipboardList size={14} />
+                Orden de plantillas ortopédicas
+              </button>
             )}
           </div>
 
@@ -720,6 +824,35 @@ export default function ConsultaPage({
           paciente={{ id: patientId, nombre: record.data?.patientNombre ?? 'Paciente' }}
           onClose={() => setModalPresupuesto(false)}
           onCreado={(p) => setPresupuestoCreado(p)}
+        />
+      )}
+
+      {modalHistorial && record.data && (
+        <Modal
+          titulo="Alergias y antecedentes"
+          subtitulo={record.data.patientNombre}
+          onClose={() => setModalHistorial(false)}
+          ancho="max-w-2xl"
+        >
+          <EditorHistorial
+            inicial={record.data.historial}
+            guardando={guardarHistorial.isPending}
+            onGuardar={(h) => guardarHistorial.mutate(h)}
+            onCancelar={() => setModalHistorial(false)}
+          />
+          {guardarHistorial.isError && (
+            <p className="mt-3 text-sm text-red-600">
+              No se pudo guardar. Revisa tu conexión e intenta de nuevo.
+            </p>
+          )}
+        </Modal>
+      )}
+
+      {modalPlantillas && (
+        <OrdenPlantillasModal
+          token={token}
+          appointmentId={appointmentId}
+          onClose={() => setModalPlantillas(false)}
         />
       )}
 

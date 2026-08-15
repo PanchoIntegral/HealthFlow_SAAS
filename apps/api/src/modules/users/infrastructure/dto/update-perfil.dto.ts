@@ -28,4 +28,13 @@ export class UpdatePerfilDto {
     message: 'La cédula profesional solo puede tener letras, números y guiones',
   })
   cedulaProfesional?: string;
+
+  /** Cédula de ESPECIALIDAD, distinta de la profesional. Misma validación de forma. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  @Matches(/^[A-Za-z0-9-]*$/, {
+    message: 'La cédula de especialidad solo puede tener letras, números y guiones',
+  })
+  cedulaEspecialidad?: string;
 }

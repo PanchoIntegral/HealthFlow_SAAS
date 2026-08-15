@@ -1,4 +1,9 @@
-import { perfilDe, type NotaEvolucionContent, type PerfilEspecialidad } from '@healthflow/shared-types';
+import {
+  camposDeNota,
+  perfilDe,
+  type NotaEvolucionContent,
+  type PerfilEspecialidad,
+} from '@healthflow/shared-types';
 import { NOM004Validator, hasText } from './nom004-validator';
 
 /** Campos de antecedentes obligatorios SOLO en la historia clínica inicial. */
@@ -47,7 +52,9 @@ export class EspecialidadValidator {
       (campo) => !(omiteVitales && campo === 'signosVitales.ta'),
     );
 
-    const faltantesEspecialidad = perfil.camposExtra
+    // Solo se exige lo que la nota REALMENTE muestra: un campo de primera
+    // visita oculto en una subsecuente no puede bloquear el cierre.
+    const faltantesEspecialidad = camposDeNota(perfil.camposExtra, content.tipoNota)
       .filter((campo) => campo.obligatorio && !tieneValor(extension[campo.key]))
       // Se prefija con `extension.` para que el frontend pueda resaltar el
       // campo exacto sin que choque con los nombres de los campos base.

@@ -3,6 +3,7 @@ import type {
   ClinicalRecordView,
   EspecialidadKey,
   Odontograma,
+  Podograma,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { ClinicalNote } from './clinical-note.entity';
@@ -21,6 +22,8 @@ export interface CreateDraftNoteInput {
   especialidad: EspecialidadKey;
   /** Estado dental heredado de la última nota cerrada; ausente en la primera visita. */
   odontograma?: Odontograma;
+  /** Mapa podológico heredado de la última nota cerrada; ausente en la primera visita. */
+  podograma?: Podograma;
 }
 
 /**
@@ -52,6 +55,13 @@ export interface ClinicalRecordRepository {
    * estado dental a la consulta nueva. null si no hay ninguna.
    */
   getUltimoOdontograma(tx: Tx, clinicalRecordId: string): Promise<Odontograma | null>;
+
+  /**
+   * Podograma de la última nota CERRADA del expediente. Mismo criterio que el
+   * odontograma: las lesiones del pie evolucionan lento y el podólogo ajusta
+   * lo que cambió en vez de volver a marcarlo todo.
+   */
+  getUltimoPodograma(tx: Tx, clinicalRecordId: string): Promise<Podograma | null>;
 
   /**
    * Expediente de un paciente con UNA PÁGINA de su historial, de la nota más

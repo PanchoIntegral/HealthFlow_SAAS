@@ -33,7 +33,9 @@ export function CamposEspecialidad({
         const falta = faltantes.includes(`extension.${campo.key}`);
         // Los campos largos ocupan el ancho completo; los cortos van en dos
         // columnas para que la nota no se convierta en un formulario infinito.
-        const anchoCompleto = campo.tipo === 'texto-rico';
+        // El checklist también, por lo mismo que el texto rico: una rejilla de
+        // 20 casillas apretada a media columna se vuelve ilegible.
+        const anchoCompleto = campo.tipo === 'texto-rico' || campo.tipo === 'multi-seleccion';
 
         return (
           <div key={campo.key} className={anchoCompleto ? 'sm:col-span-2' : undefined}>
@@ -103,6 +105,40 @@ function CampoControl({
           </option>
         ))}
       </select>
+    );
+  }
+
+  if (campo.tipo === 'multi-seleccion') {
+    // El valor vive como string —las opciones marcadas, unidas por coma— para
+    // no cambiar la forma de `extension` (que es Record<string, string |
+    // number | null>) solo por este tipo de campo. Se parte y se reconstruye
+    // aquí, en el único lugar que necesita saber que es una lista.
+    const marcadas = typeof valor === 'string' && valor.length > 0 ? valor.split(',') : [];
+
+    const alternar = (opcion: string) => {
+      const siguiente = marcadas.includes(opcion)
+        ? marcadas.filter((o) => o !== opcion)
+        : [...marcadas, opcion];
+      onChange(siguiente.length > 0 ? siguiente.join(',') : null);
+    };
+
+    return (
+      <div
+        className={`grid gap-x-4 gap-y-1.5 rounded-lg border px-3 py-2 sm:grid-cols-3 ${falta ? 'border-red-300' : 'border-slate-200'}`}
+      >
+        {(campo.opciones ?? []).map((o) => (
+          <label key={o} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={marcadas.includes(o)}
+              disabled={readOnly}
+              onChange={() => alternar(o)}
+              className="shrink-0"
+            />
+            {o}
+          </label>
+        ))}
+      </div>
     );
   }
 

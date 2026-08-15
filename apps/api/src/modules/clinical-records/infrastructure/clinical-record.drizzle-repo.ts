@@ -13,6 +13,7 @@ import {
   type EspecialidadKey,
   type NotaEvolucionContent,
   type Odontograma,
+  type Podograma,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import { ClinicalNote } from '../domain/clinical-note.entity';
@@ -86,6 +87,9 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       // Arrastra el estado dental de la visita anterior: el dentista marca lo
       // que CAMBIÓ, no vuelve a dibujar la boca entera cada vez.
       ...(input.odontograma ? { odontograma: input.odontograma } : {}),
+      // Mismo criterio para el pie: una úlcera que lleva meses no se vuelve a
+      // marcar de cero en cada consulta.
+      ...(input.podograma ? { podograma: input.podograma } : {}),
     } satisfies NotaEvolucionContent);
     const result = await tx.execute(sql`
       INSERT INTO clinical_notes (clinical_record_id, appointment_id, doctor_id, tipo_nota, contenido_nom004, estatus)
@@ -158,18 +162,38 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
   }
 
   async getUltimoOdontograma(tx: Tx, clinicalRecordId: string): Promise<Odontograma | null> {
-    // Solo notas CERRADAS: un borrador a medias no es un estado dental
-    // confiable del que partir.
+    return this.ultimoInstrumento<Odontograma>(tx, clinicalRecordId, 'odontograma');
+  }
+
+  async getUltimoPodograma(tx: Tx, clinicalRecordId: string): Promise<Podograma | null> {
+    return this.ultimoInstrumento<Podograma>(tx, clinicalRecordId, 'podograma');
+  }
+
+  /**
+   * Último valor cerrado de un instrumento gráfico del expediente.
+   *
+   * Solo notas CERRADAS: un borrador a medias no es un estado del que se pueda
+   * partir con confianza.
+   *
+   * `llave` NO viene del usuario — la fijan los métodos de arriba con literales
+   * — pero aun así va parametrizada y no interpolada en el SQL: es el tipo de
+   * atajo que sobrevive al refactor que sí la expone.
+   */
+  private async ultimoInstrumento<T>(
+    tx: Tx,
+    clinicalRecordId: string,
+    llave: 'odontograma' | 'podograma',
+  ): Promise<T | null> {
     const result = await tx.execute(sql`
-      SELECT contenido_nom004->'odontograma' AS odontograma
+      SELECT contenido_nom004->${llave} AS valor
         FROM clinical_notes
        WHERE clinical_record_id = ${clinicalRecordId}
          AND estatus = 'cerrada'
-         AND contenido_nom004 ? 'odontograma'
+         AND contenido_nom004 ? ${llave}
        ORDER BY cerrado_en DESC
        LIMIT 1
     `);
-    return (result.rows as unknown as { odontograma: Odontograma | null }[])[0]?.odontograma ?? null;
+    return (result.rows as unknown as { valor: T | null }[])[0]?.valor ?? null;
   }
 
   async getRecordView(

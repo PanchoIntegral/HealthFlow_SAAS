@@ -17,17 +17,35 @@ import { EditorHistorial } from '../../../components/editor-historial';
 import { PresupuestoPanel } from '../../../components/presupuesto-panel';
 import { ConsentimientoPanel } from '../../../components/consentimiento-panel';
 import { RadiografiaPanel } from '../../../components/radiografia-panel';
+import { OrdenesPlantillasPanel } from '../../../components/ordenes-plantillas-panel';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
 
 /** Expediente clínico completo de un paciente: todas sus notas, la más reciente primero. */
+/**
+ * Envoltura delgada que fuerza un remount completo al cambiar de paciente.
+ *
+ * Esta pantalla en particular no tiene hoy ningún estado que se "hidrate una
+ * sola vez" (todo sale reactivo de `useInfiniteQuery`, cuya key ya incluye
+ * `patientId`), así que no hay bug actual aquí. Pero Next.js App Router
+ * reutiliza la instancia del componente de página al navegar entre dos URLs
+ * de la misma ruta dinámica — ver el comentario largo en
+ * `consulta/[appointmentId]/page.tsx`, donde ESE patrón sí causaba que la nota
+ * de un paciente se guardara sobre la de otro. Mismo blindaje aquí, barato y
+ * preventivo: que la próxima persona que agregue un `useState` a esta pantalla
+ * no tenga que redescubrir el problema para no reintroducirlo.
+ */
 export default function ExpedientePage({
   params,
 }: {
   params: Promise<{ patientId: string }>;
 }) {
   const { patientId } = use(params);
+  return <ExpedientePageInner key={patientId} patientId={patientId} />;
+}
+
+function ExpedientePageInner({ patientId }: { patientId: string }) {
   const router = useRouter();
   const { token, user, ready } = useAuth();
   const clinicaDental = useClinicaDental();
@@ -154,6 +172,8 @@ export default function ExpedientePage({
                 puedeEliminar={user.rol === 'medico' || user.rol === 'admin'}
               />
             </section>
+
+            <OrdenesPlantillasPanel token={token} patientId={patientId} />
 
             {notas.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-400">

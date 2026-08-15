@@ -4,17 +4,23 @@ import type { Tx } from '../../../db/drizzle';
 /**
  * El perfil tal como vive en la tabla `users`.
  *
- * `asistenteIaActivo` y `clinicaDental` quedan fuera a propósito: son del
- * TENANT, no del usuario. El caso de uso los compone antes de responder; el
- * repositorio no tiene por qué saber que existen.
+ * `asistenteIaActivo`, `clinicaDental`, `direccionClinica` y `telefonoClinica`
+ * quedan fuera a propósito: son del TENANT, no del usuario. El caso de uso
+ * los compone antes de responder; el repositorio no tiene por qué saber que
+ * existen.
  */
-export type PerfilPersistido = Omit<UserProfile, 'asistenteIaActivo' | 'clinicaDental'>;
+export type PerfilPersistido = Omit<
+  UserProfile,
+  'asistenteIaActivo' | 'clinicaDental' | 'direccionClinica' | 'telefonoClinica'
+>;
 
 export interface UpdatePerfilInput {
   especialidadKey: string;
   especialidad: string | null;
   /** null = borrar la cédula guardada. */
   cedulaProfesional: string | null;
+  /** null = borrar la cédula guardada. */
+  cedulaEspecialidad: string | null;
 }
 
 /**

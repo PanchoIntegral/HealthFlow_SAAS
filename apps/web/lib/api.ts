@@ -17,6 +17,7 @@ import type {
   UpdateHistorialRequest,
   AbrirCajaRequest,
   ActualizarCuentaRequest,
+  ActualizarDatosClinicaRequest,
   ActualizarMovimientoCajaRequest,
   CerrarCajaRequest,
   RegistrarMovimientoCajaRequest,
@@ -43,6 +44,9 @@ import type {
   LoginResponse,
   NotaEvolucionContent,
   NotificationView,
+  OrdenPlantillasContent,
+  OrdenPlantillasDetalle,
+  OrdenPlantillasView,
   PatientSummary,
   ReportsStats,
   StartConsultationResponse,
@@ -197,6 +201,35 @@ export const api = {
       method: 'POST',
       token,
       body: JSON.stringify({ contenido }),
+    }),
+
+  /** Abre (o CREA) la orden de plantillas de esta consulta. Solo esta llamada necesita el appointmentId. */
+  getOrCreateOrdenPlantillas: (token: string, appointmentId: string) =>
+    request<OrdenPlantillasView>(`/consultations/${appointmentId}/orden-plantillas`, { token }),
+
+  /** Todas las órdenes de plantillas de un paciente, para el expediente. */
+  listarOrdenesPlantillas: (token: string, patientId: string) =>
+    request<OrdenPlantillasView[]>(`/ordenes-plantillas?patientId=${patientId}`, { token }),
+
+  /** Detalle con nombres (paciente, médico, clínica), para la vista de impresión. */
+  getOrdenPlantillasDetalle: (token: string, id: string) =>
+    request<OrdenPlantillasDetalle>(`/ordenes-plantillas/${id}`, { token }),
+
+  /**
+   * Autosave por el id de la orden — funciona igual se haya abierto desde la
+   * consulta o desde el expediente del paciente, una vez que se conoce el id.
+   */
+  saveOrdenPlantillasDraft: (token: string, ordenId: string, contenido: OrdenPlantillasContent) =>
+    request<{ ok: true }>(`/ordenes-plantillas/${ordenId}`, {
+      method: 'PUT',
+      token,
+      body: JSON.stringify({ contenido }),
+    }),
+
+  marcarOrdenPlantillasCompletada: (token: string, ordenId: string) =>
+    request<{ ok: true }>(`/ordenes-plantillas/${ordenId}/marcar-completada`, {
+      method: 'POST',
+      token,
     }),
 
   /**
@@ -384,6 +417,14 @@ export const api = {
 
   cambiarEstadoCuenta: (token: string, cuentaId: string, body: ActualizarCuentaRequest) =>
     request<CuentaView>(`/cuentas/${cuentaId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  /** Dirección y teléfono de la clínica, para el membrete de documentos impresos. Solo titular. */
+  actualizarDatosClinica: (token: string, body: ActualizarDatosClinicaRequest) =>
+    request<{ direccion: string | null; telefono: string | null }>('/cuentas/clinica', {
       method: 'PATCH',
       token,
       body: JSON.stringify(body),
