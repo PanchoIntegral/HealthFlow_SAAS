@@ -19,6 +19,58 @@ body {
   pointer-events: none;
 }
 
+/**
+ * Texto enriquecido de la nota clínica: el editor (.ProseMirror) y la lectura
+ * del expediente (.hf-nota), que comparten el mismo HTML de TipTap.
+ *
+ * Estos estilos NO son decorativos, son los que hacen visible la lista: el
+ * preflight de Tailwind pone `list-style: none` en ul/ol, así que sin esto el
+ * botón de viñetas crea la lista en el documento y en pantalla no cambia nada.
+ * Se escriben a mano en vez de instalar @tailwindcss/typography porque una
+ * nota clínica solo necesita párrafos y listas; el plugin traería estilos para
+ * encabezados, tablas y citas que aquí nadie usa.
+ */
+.ProseMirror ul,
+.hf-nota ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror ol,
+.hf-nota ol {
+  list-style: decimal;
+  padding-left: 1.35rem;
+  margin: 0.5rem 0;
+}
+
+.ProseMirror li,
+.hf-nota li {
+  margin: 0.15rem 0;
+}
+
+/* TipTap envuelve el contenido de cada viñeta en un <p>; sin esto cada punto
+   arrastra el margen de párrafo y la lista queda con huecos enormes. */
+.ProseMirror li > p,
+.hf-nota li > p {
+  margin: 0;
+}
+
+.ProseMirror p,
+.hf-nota p {
+  margin: 0.4rem 0;
+}
+
+.ProseMirror > :first-child,
+.hf-nota > :first-child {
+  margin-top: 0;
+}
+
+.ProseMirror > :last-child,
+.hf-nota > :last-child {
+  margin-bottom: 0;
+}
+
 /* Calendario (react-big-calendar): overrides para alinear con la identidad visual de HealthFlow. */
 .hf-calendar .rbc-time-view,
 .hf-calendar .rbc-month-view {

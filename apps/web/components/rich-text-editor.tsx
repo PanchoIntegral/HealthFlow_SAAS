@@ -4,6 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect } from 'react';
+import { IconList } from './icons';
 
 /**
  * Editor de texto enriquecido (TipTap/ProseMirror) para las secciones de texto
@@ -30,8 +31,11 @@ export function RichTextEditor({
     immediatelyRender: false, // evita mismatch de hidratación en Next.js
     editorProps: {
       attributes: {
+        // Sin `prose`: esas clases son de @tailwindcss/typography, que no está
+        // instalado, así que no hacían nada. Las viñetas y los márgenes salen
+        // de las reglas .ProseMirror de globals.css.
         class:
-          'prose prose-sm max-w-none min-h-[120px] rounded-b-lg border border-t-0 border-slate-300 px-3 py-2 focus:outline-none',
+          'min-h-[120px] rounded-b-lg border border-t-0 border-slate-300 px-3 py-2 text-sm focus:outline-none',
       },
     },
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
@@ -63,7 +67,7 @@ export function RichTextEditor({
             <em>i</em>
           </ToolbarButton>
           <ToolbarButton active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
-            ⋮≡
+            <IconList />
           </ToolbarButton>
         </div>
       )}
@@ -85,7 +89,7 @@ function ToolbarButton({
     <button
       type="button"
       onClick={onClick}
-      className={`h-7 w-8 rounded text-sm ${active ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-600 hover:bg-slate-200'}`}
+      className={`grid h-7 w-8 place-items-center rounded text-sm ${active ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-600 hover:bg-slate-200'}`}
     >
       {children}
     </button>

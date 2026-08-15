@@ -241,7 +241,7 @@ function NotaCard({ nota }: { nota: ClinicalNoteView }) {
         <Section title="Padecimiento actual">
           {/* HTML generado por TipTap dentro de la propia app */}
           <div
-            className="prose prose-sm max-w-none text-slate-700"
+            className="hf-nota text-sm text-slate-700"
             dangerouslySetInnerHTML={{ __html: c.padecimientoActual }}
           />
         </Section>

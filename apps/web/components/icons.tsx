@@ -94,6 +94,18 @@ export function IconBudget() {
   );
 }
 
+/** Lista con viñetas, para la barra del editor de la nota. */
+export function IconList({ size = 16 }: { size?: number } = {}) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <circle cx="4.5" cy="6" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 /** Micrófono: dictar la nota con el asistente de IA. */
 export function IconMic({ size = 16 }: { size?: number } = {}) {
   return (
