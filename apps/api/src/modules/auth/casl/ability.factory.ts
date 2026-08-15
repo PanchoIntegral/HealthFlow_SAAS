@@ -52,12 +52,13 @@ export class CaslAbilityFactory {
   createForUser(user: AuthenticatedUser): AppAbility {
     const { can, build } = new AbilityBuilder<AppAbility>(createMongoAbility);
 
-    // Todos los roles ven la sala de espera, el directorio de pacientes y el dashboard.
+    // Todos los roles ven la sala de espera, el directorio de pacientes y el
+    // dashboard. 'Reports' NO va aquí a propósito: es de médico/admin
+    // solamente (ver el `case` de cada rol) — el asistente no ve reportes.
     can('read', 'WaitingRoom');
     can('read', 'Appointment');
     can('read', 'Patient');
     can('read', 'Dashboard');
-    can('read', 'Reports');
 
     switch (user.rol) {
       case 'admin':
@@ -92,13 +93,10 @@ export class CaslAbilityFactory {
         // cambiar precios — eso es una decisión clínica y comercial del médico.
         can('read', 'Presupuesto');
         can('abonar', 'Presupuesto');
-        // La caja ES el trabajo de recepción: abre el turno en la mañana,
-        // cobra durante el día y hace el corte al cerrar. Lo único que NO
-        // puede es cancelar un movimiento ya registrado — ese es el control
-        // interno que hace que el corte signifique algo.
-        can('read', 'Caja');
-        can('create', 'Caja');
-        can('write', 'Caja');
+        // Caja y Reportes: NADA. Decisión explícita del titular — a
+        // diferencia de facturar/cobrar un presupuesto (que sí quedan
+        // arriba), el corte de caja y los reportes del consultorio no son
+        // trabajo de recepción en esta clínica.
         // Documentar riesgos/alternativas es juicio clínico del médico; el
         // asistente puede consultarlos, no crearlos (mismo criterio que Presupuesto).
         can('read', 'Consentimiento');
@@ -143,6 +141,7 @@ export class CaslAbilityFactory {
         // Finanzas (ingresos del consultorio): SOLO médico (y admin vía manage
         // all). El asistente factura pero no ve las ganancias.
         can('read', 'Finanzas');
+        can('read', 'Reports');
         break;
     }
 

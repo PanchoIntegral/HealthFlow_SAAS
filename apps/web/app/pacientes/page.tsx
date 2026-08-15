@@ -7,7 +7,7 @@ import type { CreatePatientRequest } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
-import { IconLock, IconPhone, IconRecords, IconSearch } from '../../components/icons';
+import { IconPhone, IconRecords, IconSearch } from '../../components/icons';
 
 const AVATAR_COLORS = [
   'bg-blue-100 text-blue-700',
@@ -56,9 +56,6 @@ export default function PacientesPage() {
   if (!ready || !token || !user) return null;
 
   const canCreate = ['asistente', 'medico', 'admin'].includes(user.rol);
-  // El contenido clínico es solo para médico/admin (RBAC): el asistente ve el
-  // directorio pero no puede abrir el expediente.
-  const canOpenRecord = ['medico', 'admin'].includes(user.rol);
 
   return (
     <AppShell>
@@ -112,11 +109,8 @@ export default function PacientesPage() {
               {results.data.map((p) => (
                 <li key={p.id}>
                   <button
-                    onClick={() => canOpenRecord && router.push(`/pacientes/${p.id}`)}
-                    disabled={!canOpenRecord}
-                    className={`group flex w-full items-center gap-4 px-5 py-4 text-left transition ${
-                      canOpenRecord ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default'
-                    }`}
+                    onClick={() => router.push(`/pacientes/${p.id}`)}
+                    className="group flex w-full cursor-pointer items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50"
                   >
                     <div
                       className={`grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-semibold ${avatarColor(p.id)}`}
@@ -143,16 +137,9 @@ export default function PacientesPage() {
                       </span>
                     )}
 
-                    {canOpenRecord ? (
-                      <span className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-brand-blue transition group-hover:border-brand-blue">
-                        Ver expediente →
-                      </span>
-                    ) : (
-                      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-400">
-                        <IconLock size={13} />
-                        Sin acceso
-                      </span>
-                    )}
+                    <span className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-brand-blue transition group-hover:border-brand-blue">
+                      Ver expediente →
+                    </span>
                   </button>
                 </li>
               ))}

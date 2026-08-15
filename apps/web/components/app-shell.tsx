@@ -34,10 +34,11 @@ const NAV = [
   // (notación FDI) y nace del odontograma, y a un pediatra o un podólogo no
   // le sirve de nada. Por eso `soloDental` y no `roles`.
   { href: '/presupuestos', label: 'Presupuestos', icon: IconBudget, soloDental: true },
-  // Caja: sin `roles` a propósito. Abrir el turno, cobrar y hacer el corte es
-  // trabajo de recepción tanto como del médico que atiende solo.
-  { href: '/caja', label: 'Caja', icon: IconCash },
-  { href: '/reportes', label: 'Reportes', icon: IconReports },
+  // Caja y Reportes: solo médico/admin. Decisión explícita del titular — el
+  // asistente sí agenda, cobra facturas y abona presupuestos, pero no abre el
+  // corte de caja ni ve los reportes del consultorio.
+  { href: '/caja', label: 'Caja', icon: IconCash, roles: ['medico', 'admin'] },
+  { href: '/reportes', label: 'Reportes', icon: IconReports, roles: ['medico', 'admin'] },
   // Finanzas: oculto temporalmente del menú a petición del usuario. La ruta
   // /finanzas y su permiso siguen existiendo; para volver a mostrarlo basta
   // con descomentar esta línea.
