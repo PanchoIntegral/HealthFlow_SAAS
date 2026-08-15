@@ -28,12 +28,18 @@ import { ClinicalRecordQueryDto } from './dto/clinical-record-query.dto';
 /**
  * Endpoints de la consulta y el expediente. Todos exigen JWT.
  *
- * El contenido clínico (leer/editar/cerrar la nota) sigue detrás de la
- * política `Consultation` — solo médico/admin, requisito de RBAC del prompt.
- * `start` es la única acción de `Consultation` que el asistente también tiene:
- * mueve la cita a "en consulta" (trabajo de recepción/agenda) sin abrir la
- * nota. El expediente (`record`, abajo) usa `Patient` y no `Consultation` a
- * propósito — ver su comentario.
+ * Editar la nota EN VIVO (abrir el editor de una consulta en curso, guardar
+ * el borrador, firmar y cerrar) sigue detrás de la política `Consultation` —
+ * solo médico/admin. `start` es la única acción de `Consultation` que el
+ * asistente también tiene: mueve la cita a "en consulta" (trabajo de
+ * recepción/agenda) sin abrir la nota.
+ *
+ * El EXPEDIENTE (`record`, abajo) es distinto a propósito: usa `Patient` y no
+ * `Consultation`, y el asistente tiene acceso completo —incluido el
+ * contenido de cada nota ya cerrada— por decisión explícita del titular de
+ * la cuenta. No es una incoherencia con lo anterior: una cosa es escribir en
+ * una consulta que está pasando ahora mismo, y otra es consultar el
+ * historial ya cerrado de un paciente.
  */
 @Controller()
 @UseGuards(JwtAuthGuard, PoliciesGuard)
@@ -88,12 +94,8 @@ export class ConsultationsController {
    * nota más reciente hacia atrás). Sin parámetros devuelve la primera página.
    *
    * Gateado con `read Patient` (que ya tiene cualquier rol autenticado) y NO
-   * con `read Consultation`: abrir la ficha del paciente es trabajo de
-   * recepción (alergias, documentos, presupuestos), y el asistente lo
-   * necesita. El contenido clínico de cada nota (diagnósticos, tratamiento,
-   * signos vitales) sigue vedado para ese rol — se redacta DENTRO del caso de
-   * uso (`GetClinicalRecordUseCase`), no aquí: la barrera real está en qué
-   * datos vienen en la respuesta, no en si la petición pasa el guard.
+   * con `read Consultation`: el asistente tiene acceso completo, contenido
+   * clínico de cada nota incluido.
    */
   @Get('patients/:patientId/clinical-record')
   @RequirePolicy('read', 'Patient')

@@ -734,7 +734,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             <div className="h-2 overflow-hidden rounded-full bg-slate-100">
               <div className="h-full bg-gradient-to-r from-brand-blue to-brand-green" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
             </div>
-            {readOnly && note.data?.contenido?.firma && (
+            {readOnly && note.data?.contenido.firma && (
               <div className="mt-4 rounded-lg bg-emerald-50 p-3 text-emerald-800">
                 <p className="font-medium">Firmada</p>
                 <p className="text-xs">{note.data.contenido.firma.medicoNombre} · céd. {note.data.contenido.firma.cedula ?? '—'}</p>
@@ -771,7 +771,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
                         {n.cerradoEn ? new Date(n.cerradoEn).toLocaleDateString('es-MX') : ''}
                       </p>
                       <p className="text-xs">
-                        {(n.contenido?.diagnosticos ?? []).map((d) => d.cie10).join(', ') || 'Sin diagnósticos'}
+                        {(n.contenido.diagnosticos ?? []).map((d) => d.cie10).join(', ') || 'Sin diagnósticos'}
                       </p>
                     </li>
                   ))}

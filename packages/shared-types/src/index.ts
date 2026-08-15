@@ -1464,14 +1464,7 @@ export interface ClinicalNoteView {
   doctorId: string;
   tipoNota: ClinicalNoteType;
   estatus: ClinicalNoteStatus;
-  /**
-   * Ausente ⇒ el rol de quien pidió el expediente no tiene acceso al
-   * contenido clínico (hoy: el asistente). `GetClinicalRecordUseCase` lo
-   * quita de la respuesta en vez de mandarlo vacío — así el frontend puede
-   * distinguir "sin datos" de "no autorizado a verlos" y pintar la tarjeta
-   * de la nota sin fingir que no hay nada que contar.
-   */
-  contenido?: NotaEvolucionContent;
+  contenido: NotaEvolucionContent;
   cerradoEn: string | null;
   createdAt: string;
 }

@@ -18,7 +18,6 @@ import { PresupuestoPanel } from '../../../components/presupuesto-panel';
 import { ConsentimientoPanel } from '../../../components/consentimiento-panel';
 import { RadiografiaPanel } from '../../../components/radiografia-panel';
 import { OrdenesPlantillasPanel } from '../../../components/ordenes-plantillas-panel';
-import { IconLock } from '../../../components/icons';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -210,44 +209,23 @@ function NotaCard({ nota }: { nota: ClinicalNoteView }) {
   const c = nota.contenido;
   const cerrada = nota.estatus === 'cerrada';
 
-  const encabezado = (
-    <header className={c ? 'mb-3 flex items-center justify-between' : 'flex items-center justify-between'}>
-      <div>
-        <p className="font-semibold">
-          {nota.tipoNota === 'historia_clinica' ? 'Historia clínica' : 'Nota de evolución'}
-        </p>
-        <p className="text-xs text-slate-500">{fecha(nota.cerradoEn ?? nota.createdAt)}</p>
-      </div>
-      <span
-        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-          cerrada ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-        }`}
-      >
-        {cerrada ? 'Cerrada' : 'Borrador'}
-      </span>
-    </header>
-  );
-
-  // `contenido` ausente = el rol de quien mira (hoy: asistente) no tiene
-  // acceso al contenido clínico — lo redactó el servidor, no es que la nota
-  // esté vacía. Se muestra la existencia de la nota (fecha, tipo, estatus)
-  // sin fingir que no hay nada que contar, y sin intentar pintar diagnósticos
-  // o plan terapéutico que nunca llegaron.
-  if (!c) {
-    return (
-      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        {encabezado}
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
-          <IconLock size={13} />
-          Contenido clínico visible solo para el médico.
-        </p>
-      </article>
-    );
-  }
-
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      {encabezado}
+      <header className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="font-semibold">
+            {nota.tipoNota === 'historia_clinica' ? 'Historia clínica' : 'Nota de evolución'}
+          </p>
+          <p className="text-xs text-slate-500">{fecha(nota.cerradoEn ?? nota.createdAt)}</p>
+        </div>
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+            cerrada ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          }`}
+        >
+          {cerrada ? 'Cerrada' : 'Borrador'}
+        </span>
+      </header>
 
       {c.diagnosticos.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5">

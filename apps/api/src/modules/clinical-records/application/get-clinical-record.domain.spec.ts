@@ -1,16 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
 import type { Tx } from '../../../db/drizzle';
-import type { RequestContextService } from '../../../common/tenant-context/request-context';
 import type { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import type { ClinicalRecordView } from '@healthflow/shared-types';
 import type { ClinicalRecordRepository, PaginaNotas } from '../domain/clinical-record.repository';
 import { GetClinicalRecordUseCase } from './get-clinical-record.use-case';
 
 const fakeTenantDb = { run: <T>(fn: (tx: Tx) => Promise<T>) => fn({} as Tx) } as TenantDbService;
-
-function fakeCtx(rol: 'asistente' | 'medico' | 'admin') {
-  return { get: () => ({ tenantId: 't', userId: 'u', rol }) } as RequestContextService;
-}
 
 function vistaConDosNotas(): ClinicalRecordView {
   return {
@@ -76,52 +71,62 @@ function comoRepositorio(fake: FakeClinicalRecordRepository): ClinicalRecordRepo
 }
 
 /**
- * `GetClinicalRecordUseCase` es la barrera real de "el asistente no ve
- * contenido clínico" — el endpoint HTTP quedó abierto a cualquier rol
- * (`RequirePolicy('read', 'Patient')`) a propósito, porque abrir la ficha del
- * paciente es trabajo de recepción. La redacción vive AQUÍ, y si esta prueba
- * se rompiera sin querer, un asistente empezaría a recibir diagnósticos y
- * planes de tratamiento completos sin que nadie lo decidiera.
+ * `GetClinicalRecordUseCase` sirve el expediente TAL CUAL lo devuelve el
+ * repositorio, sin distinguir por rol — decisión explícita del titular de la
+ * cuenta: el asistente tiene acceso completo al expediente (contenido de las
+ * notas incluido), distinto de otras secciones (Cuenta, Finanzas) que siguen
+ * detrás de `Consultation`/`manage`. Quien controla QUIÉN puede llegar aquí
+ * es el guard del controller (`RequirePolicy('read', 'Patient')`), no este
+ * caso de uso. Esta prueba existe para que, si alguien reintroduce una
+ * redacción por rol más adelante, sea una decisión consciente y no un efecto
+ * secundario de otro cambio.
  */
 describe('GetClinicalRecordUseCase', () => {
-  it('el asistente recibe el expediente SIN el contenido de las notas', async () => {
+  it('devuelve el expediente completo, notas y contenido incluidos', async () => {
     const repo = new FakeClinicalRecordRepository(vistaConDosNotas());
-    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, fakeCtx('asistente'), comoRepositorio(repo));
-
-    const vista = await useCase.execute('pac-1');
-
-    expect(vista.notas).toHaveLength(2);
-    for (const nota of vista.notas) {
-      expect(nota.contenido).toBeUndefined();
-    }
-  });
-
-  it('el asistente SÍ recibe el resto del expediente intacto (alergias, fechas, estatus)', async () => {
-    const repo = new FakeClinicalRecordRepository(vistaConDosNotas());
-    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, fakeCtx('asistente'), comoRepositorio(repo));
+    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, comoRepositorio(repo));
 
     const vista = await useCase.execute('pac-1');
 
     expect(vista.patientNombre).toBe('Ana');
     expect(vista.totalNotas).toBe(2);
     expect(vista.historial).toEqual({ sinAlergiasConocidas: true, alergias: [], antecedentes: { banderas: [] } });
-    expect(vista.notas[0]).toMatchObject({ id: 'nota-1', estatus: 'cerrada', tipoNota: 'nota_evolucion' });
+    expect(vista.notas[0]?.contenido.diagnosticos).toEqual([{ cie10: 'R51', descripcion: 'Cefalea' }]);
+    expect(vista.notas[0]?.contenido.planTerapeutico).toBe('Paracetamol 500mg cada 8h');
     expect(vista.notas[1]).toMatchObject({ id: 'nota-2', estatus: 'borrador' });
   });
 
-  it.each(['medico', 'admin'] as const)('%s SÍ recibe el contenido completo de cada nota', async (rol) => {
+  it('respeta el límite y el cursor que le pasen', async () => {
     const repo = new FakeClinicalRecordRepository(vistaConDosNotas());
-    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, fakeCtx(rol), comoRepositorio(repo));
+    let recibido: PaginaNotas | undefined;
+    repo.getRecordView = async (_tx, _patientId, page) => {
+      recibido = page;
+      return vistaConDosNotas();
+    };
+    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, comoRepositorio(repo));
 
-    const vista = await useCase.execute('pac-1');
+    await useCase.execute('pac-1', { limit: 5, cursor: 'cursor-abc' });
 
-    expect(vista.notas[0]?.contenido?.diagnosticos).toEqual([{ cie10: 'R51', descripcion: 'Cefalea' }]);
-    expect(vista.notas[0]?.contenido?.planTerapeutico).toBe('Paracetamol 500mg cada 8h');
+    expect(recibido).toEqual({ limit: 5, cursor: 'cursor-abc' });
   });
 
-  it('404 si el paciente aún no tiene expediente, para cualquier rol', async () => {
+  it('topa el límite pedido al máximo permitido', async () => {
+    const repo = new FakeClinicalRecordRepository(vistaConDosNotas());
+    let recibido: PaginaNotas | undefined;
+    repo.getRecordView = async (_tx, _patientId, page) => {
+      recibido = page;
+      return vistaConDosNotas();
+    };
+    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, comoRepositorio(repo));
+
+    await useCase.execute('pac-1', { limit: 9999 });
+
+    expect(recibido?.limit).toBeLessThanOrEqual(50);
+  });
+
+  it('404 si el paciente aún no tiene expediente', async () => {
     const repo = new FakeClinicalRecordRepository(null);
-    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, fakeCtx('asistente'), comoRepositorio(repo));
+    const useCase = new GetClinicalRecordUseCase(fakeTenantDb, comoRepositorio(repo));
 
     await expect(useCase.execute('pac-sin-expediente')).rejects.toThrow(NotFoundException);
   });
