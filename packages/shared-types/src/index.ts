@@ -2895,6 +2895,17 @@ export interface OrdenPlantillasContent {
   /** Claves de VALORES_PLANTILLA con su valor capturado. */
   valores: Record<string, string>;
 
+  /**
+   * Mapa de pies de ESTA orden — mismo componente e igual catálogo de
+   * hallazgos/zonas que el podograma de la nota clínica (`ZONAS_PIE` /
+   * `HALLAZGOS_PODOLOGICOS`), pero con sus PROPIAS marcas. No se comparte el
+   * arreglo con la nota a propósito: la orden es un documento independiente,
+   * con su propio ciclo de vida (se puede seguir editando después de que la
+   * nota ya se firmó), y mutar en silencio el podograma clínico desde aquí
+   * sería tocar un expediente cerrado por la puerta de atrás.
+   */
+  podograma: Podograma;
+
   specialInstructions?: string;
 }
 
@@ -2902,6 +2913,7 @@ export const ORDEN_PLANTILLAS_VACIA: OrdenPlantillasContent = {
   opciones: [],
   marcas: [],
   valores: {},
+  podograma: PODOGRAMA_VACIO,
 };
 
 /** Vista de la orden tal como la consume la UI. Fechas en ISO. */

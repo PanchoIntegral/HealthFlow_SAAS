@@ -6,16 +6,19 @@ import {
   ETIQUETA_GRUPO_PLANTILLA,
   GRUPOS_PLANTILLA,
   ORDEN_PLANTILLAS_VACIA,
+  PODOGRAMA_VACIO,
   VALORES_PLANTILLA,
   opcionesPlantillaDeGrupo,
   type GrupoPlantilla,
   type LadoPie,
   type MarcaPlantilla,
   type OrdenPlantillasContent,
+  type Podograma as PodogramaData,
 } from '@healthflow/shared-types';
 import { api } from '../lib/api';
 import { Modal } from './modal';
 import { IconPrinter } from './icons';
+import { Podograma } from './podograma';
 
 /**
  * Orden de plantillas ortopédicas (formato del laboratorio "Microrthopedic
@@ -128,6 +131,13 @@ export function OrdenPlantillasModal({
       else delete valores[key];
       return { ...c, valores };
     });
+  };
+
+  /** Mismo criterio que el resto de la orden: actualización funcional, no
+   * pierde marcas si el médico toca varias zonas seguidas. */
+  const setPodograma = (actualizar: (previo: PodogramaData) => PodogramaData) => {
+    if (readOnly) return;
+    setContent((c) => ({ ...c, podograma: actualizar(c.podograma ?? PODOGRAMA_VACIO) }));
   };
 
   const setCampo = <K extends keyof OrdenPlantillasContent>(campo: K, valor: OrdenPlantillasContent[K]) => {
@@ -291,6 +301,20 @@ export function OrdenPlantillasModal({
                 </Campo>
               ))}
             </div>
+          </section>
+
+          {/* Mapa de pies: el mismo lugar donde la hoja de papel trae la
+              ilustración de los pies, junto a "Special instructions". Aquí sí
+              se puede marcar directamente —igual que en la nota clínica—
+              porque es justo lo que el laboratorio necesita saber: dónde va
+              cada refuerzo o acomodación. */}
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-700">Mapa de pies</h3>
+            <Podograma
+              valor={content.podograma ?? PODOGRAMA_VACIO}
+              onChange={setPodograma}
+              readOnly={readOnly}
+            />
           </section>
 
           <Campo label="Special instructions and diagnostic">

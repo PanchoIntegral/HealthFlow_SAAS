@@ -7,6 +7,7 @@ import {
   ETIQUETA_GRUPO_PLANTILLA,
   ETIQUETA_LADO,
   GRUPOS_PLANTILLA,
+  PODOGRAMA_VACIO,
   opcionPlantillaPorKey,
   opcionesPlantillaDeGrupo,
   valorPlantillaPorKey,
@@ -16,6 +17,7 @@ import {
 import { useAuth } from '../../../lib/auth';
 import { api, ApiError } from '../../../lib/api';
 import { IconPrinter } from '../../../components/icons';
+import { Podograma } from '../../../components/podograma';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -139,6 +141,18 @@ function HojaOrden({ orden }: { orden: OrdenPlantillasDetalle }) {
       </div>
 
       <ValoresImpresos orden={orden} />
+
+      {/* Mismo criterio que el resto de la hoja: solo se imprime si hay algo
+          marcado. `modoImpresion` fuerza planta Y dorso a la vez —en papel no
+          hay forma de "voltear" para ver la otra vista. */}
+      {c.podograma && c.podograma.marcas.length > 0 && (
+        <section className="mt-6 border-t border-slate-200 pt-4 break-inside-avoid">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Mapa de pies
+          </p>
+          <Podograma valor={c.podograma ?? PODOGRAMA_VACIO} onChange={() => {}} readOnly modoImpresion />
+        </section>
+      )}
 
       {c.specialInstructions && (
         <section className="mt-6 border-t border-slate-200 pt-4">

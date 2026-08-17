@@ -36,6 +36,7 @@ export function Podograma({
   valor,
   onChange,
   readOnly,
+  modoImpresion,
 }: {
   valor: PodogramaData;
   /**
@@ -47,6 +48,14 @@ export function Podograma({
    */
   onChange: (actualizar: (previo: PodogramaData) => PodogramaData) => void;
   readOnly?: boolean;
+  /**
+   * Muestra planta Y dorso a la vez, sin selector ni herramientas de marcado.
+   * En pantalla alternar de vista con un clic no cuesta nada; en papel no hay
+   * forma de "voltear" la hoja, así que si solo se imprimiera la vista activa
+   * las marcas de la otra —típicamente las ungueales, que son SOLO dorsales—
+   * desaparecerían de la orden sin que nadie lo note.
+   */
+  modoImpresion?: boolean;
 }) {
   const [vista, setVista] = useState<VistaPie>('plantar');
   const [categoria, setCategoria] = useState<CategoriaHallazgo>('cutaneo');
@@ -93,6 +102,37 @@ export function Podograma({
    * por qué no pasa nada, se avisa y se ofrece el cambio de vista.
    */
   const sinDondeMarcar = hallazgo?.soloUngueal === true && vista === 'plantar';
+
+  if (modoImpresion) {
+    return (
+      <div>
+        <div className="flex flex-wrap gap-6">
+          {VISTAS_PIE.map((v) => (
+            <div key={v}>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                {ETIQUETA_VISTA[v]}
+              </p>
+              <div className="flex w-fit gap-4">
+                {(['derecho', 'izquierdo'] as const).map((pie) => (
+                  <Pie
+                    key={pie}
+                    pie={pie}
+                    vista={v}
+                    zonas={ZONAS_PIE.filter((z) => z.vista === v)}
+                    marcasDe={marcasDe}
+                    onTocar={() => {}}
+                    readOnly
+                    hallazgoActivo={hallazgoActivo}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <ResumenPodograma marcas={valor.marcas} />
+      </div>
+    );
+  }
 
   return (
     <div>
