@@ -52,6 +52,7 @@ export class UpdatePerfilUseCase {
         especialidad: conservar(input.especialidad, anterior.especialidad),
         cedulaProfesional: conservar(input.cedulaProfesional, anterior.cedulaProfesional),
         cedulaEspecialidad: conservar(input.cedulaEspecialidad, anterior.cedulaEspecialidad),
+        institucionTitulo: conservar(input.institucionTitulo, anterior.institucionTitulo),
       });
       if (!actualizado) throw new NotFoundException('Usuario no encontrado');
 

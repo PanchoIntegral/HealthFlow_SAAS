@@ -14,6 +14,7 @@ import {
   type NotaEvolucionContent,
   type Odontograma,
   type Podograma,
+  type SexoPaciente,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import { ClinicalNote } from '../domain/clinical-note.entity';
@@ -203,7 +204,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
   ): Promise<ClinicalRecordView | null> {
     const recordRes = await tx.execute(sql`
       SELECT cr.id AS record_id, cr.patient_id, cr.abierto_en, p.nombre AS patient_nombre,
-             p.sin_alergias_conocidas, p.alergias, p.antecedentes
+             p.sin_alergias_conocidas, p.alergias, p.antecedentes, p.sexo, p.telefono
         FROM clinical_records cr
         JOIN patients p ON p.id = cr.patient_id
        WHERE cr.patient_id = ${patientId}
@@ -215,7 +216,9 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         patient_id: string;
         abierto_en: Date;
         patient_nombre: string;
+        telefono: string | null;
         sin_alergias_conocidas: boolean;
+        sexo: SexoPaciente | null;
         alergias: Alergia[] | null;
         antecedentes: AntecedentesPaciente | null;
       }[]
@@ -264,6 +267,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       recordId: record.record_id,
       patientId: record.patient_id,
       patientNombre: record.patient_nombre,
+      patientTelefono: record.telefono,
       abiertoEn: new Date(record.abierto_en).toISOString(),
       nextCursor: hayMas && ultima ? codificarCursor(ultima) : null,
       totalNotas,
@@ -283,6 +287,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         // cualquier fila con el jsonb en NULL: la alerta nunca debe reventar.
         alergias: record.alergias ?? [],
         antecedentes: record.antecedentes ?? ANTECEDENTES_VACIOS,
+        sexo: record.sexo,
       },
     };
   }

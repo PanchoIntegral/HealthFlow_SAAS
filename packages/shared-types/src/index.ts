@@ -28,11 +28,30 @@ export const APPOINTMENT_STATUSES = [
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
 // ── Entidades ────────────────────────────────────────────────────
+/**
+ * Sexo del paciente (RIS art. 65: va en el recetario junto con nombre y edad).
+ *
+ * `null` en la columna y 'no_especificado' NO son lo mismo, y la diferencia es
+ * la que hace útil al dato: null = nunca se preguntó, y es el caso que la UI
+ * persigue antes de emitir una receta; 'no_especificado' = se preguntó y el
+ * paciente decidió no declararlo, y sí permite emitir. Mismo criterio que
+ * `sinAlergiasConocidas`, que existe para separar "no tiene" de "no sabemos".
+ */
+export const SEXOS_PACIENTE = ['masculino', 'femenino', 'no_especificado'] as const;
+export type SexoPaciente = (typeof SEXOS_PACIENTE)[number];
+
+export const ETIQUETAS_SEXO: Record<SexoPaciente, string> = {
+  masculino: 'Masculino',
+  femenino: 'Femenino',
+  no_especificado: 'No especificado',
+};
+
 export interface Patient {
   id: string;
   tenantId: string;
   nombre: string;
   fechaNacimiento: string; // ISO date (YYYY-MM-DD)
+  sexo: SexoPaciente | null;
   curp: string | null;
   telefono: string | null;
 }
@@ -41,6 +60,7 @@ export interface Patient {
 export interface CreatePatientRequest {
   nombre: string;
   fechaNacimiento: string; // ISO date (YYYY-MM-DD)
+  sexo?: SexoPaciente | null;
   curp?: string | null;
   telefono?: string | null;
 }
@@ -529,10 +549,56 @@ export interface HistorialPaciente {
   sinAlergiasConocidas: boolean;
   alergias: Alergia[];
   antecedentes: AntecedentesPaciente;
+  /**
+   * Viaja con el historial, y no en una petición aparte, por la misma razón
+   * que las alergias: es un dato PERMANENTE del paciente que la pantalla de
+   * consulta necesita en el momento de prescribir (RIS art. 65), y ya se lee
+   * aquí. null = nunca se capturó; es lo que el modal de receta pide antes de
+   * emitir.
+   */
+  sexo: SexoPaciente | null;
 }
 
 export function banderaPorKey(key: string): BanderaClinica | undefined {
   return BANDERAS_CLINICAS.find((b) => b.key === key);
+}
+
+/**
+ * Corrección de los datos de identificación del paciente.
+ *
+ * Deliberadamente NO incluye fecha de nacimiento ni CURP: la primera cambia la
+ * edad impresa en cada receta ya emitida (que es un snapshot, no un JOIN) y la
+ * segunda tiene control de duplicados propio. Corregir esos dos es un caso de
+ * uso distinto, con sus reglas.
+ */
+export interface UpdatePatientRequest {
+  nombre?: string;
+  /** Cadena vacía = borrar el teléfono guardado, igual que las cédulas. */
+  telefono?: string;
+}
+
+/**
+ * Por qué un paciente no se puede borrar. Lo devuelve el intento de borrado
+ * cuando hay actividad clínica, para que la UI pueda decir exactamente qué
+ * existe en vez de un "no se puede" sin explicación.
+ */
+export interface ActividadClinicaPaciente {
+  notas: number;
+  recetas: number;
+  consentimientos: number;
+  radiografias: number;
+  presupuestos: number;
+  facturas: number;
+  citasAtendidas: number;
+  ordenesPlantillas: number;
+  /**
+   * Receptor fiscal (RFC y razón social) capturado para facturarle. Cuenta
+   * como actividad por dos razones: quien capturó datos fiscales no creó un
+   * duplicado por error, y además `receptores_fiscales` referencia al paciente
+   * con ON DELETE NO ACTION — sin contarlo, el borrado reventaría con un error
+   * de llave foránea en vez de una explicación.
+   */
+  datosFiscales: number;
 }
 
 /** Resultado del buscador de pacientes. */
@@ -540,6 +606,7 @@ export interface PatientSummary {
   id: string;
   nombre: string;
   edad: number;
+  sexo: SexoPaciente | null;
   curp: string | null;
   telefono: string | null;
 }
@@ -642,6 +709,15 @@ export interface UserProfile {
    * no la exige para firmar, así que no participa en esa validación.
    */
   cedulaEspecialidad: string | null;
+  /**
+   * Institución que expidió el título profesional (RIS art. 64). Del MÉDICO y
+   * no de la clínica —dos médicos del mismo consultorio pueden venir de
+   * universidades distintas—, a diferencia de `direccionClinica`. Sin este
+   * dato una receta impresa queda incompleta frente al artículo, así que
+   * `RecetaValidator` lo exige al emitir; NOM-004 no lo pide para firmar una
+   * nota, de modo que no participa en esa validación.
+   */
+  institucionTitulo: string | null;
   /**
    * Si la clínica tiene contratado el asistente de transcripción con IA. Viaja
    * con el perfil —y no en una petición aparte— porque la pantalla de consulta
@@ -786,6 +862,8 @@ export interface UpdatePerfilRequest {
   cedulaProfesional?: string;
   /** Cadena vacía = borrar la cédula guardada. */
   cedulaEspecialidad?: string;
+  /** RIS art. 64. Cadena vacía = borrar el dato guardado, igual que las cédulas. */
+  institucionTitulo?: string;
 }
 
 /** @deprecated Usa UpdatePerfilRequest — mismo cuerpo, más la cédula. */
@@ -1477,6 +1555,8 @@ export interface ClinicalRecordView {
   recordId: string;
   patientId: string;
   patientNombre: string;
+  /** Viaja con el expediente para poder corregirlo sin una petición aparte. */
+  patientTelefono: string | null;
   abiertoEn: string;
   /** Una PÁGINA de notas, de la más reciente a la más antigua. */
   notas: ClinicalNoteView[];
@@ -1506,6 +1586,12 @@ export interface UpdateHistorialRequest {
   sinAlergiasConocidas: boolean;
   alergias: Alergia[];
   antecedentes: AntecedentesPaciente;
+  /**
+   * Opcional a diferencia del resto: omitirlo deja el valor guardado como
+   * está. Es lo que permite que el modal de receta capture SOLO el sexo, sin
+   * tener que reenviar alergias y antecedentes que no está editando.
+   */
+  sexo?: SexoPaciente | null;
 }
 
 // ── DTOs de consulta ─────────────────────────────────────────────
@@ -2944,3 +3030,198 @@ export interface OrdenPlantillasDetalle extends OrdenPlantillasView {
   direccionClinica: string | null;
   telefonoClinica: string | null;
 }
+
+// ── Receta médica ────────────────────────────────────────────────
+// Marco: Ley General de Salud art. 226 (fracciones de medicamentos) y
+// Reglamento de Insumos para la Salud arts. 28, 29, 64 y 65 (datos que debe
+// llevar la receta). La receta es un documento HERMANO de la nota, no parte de
+// ella: una nota cerrada es inmutable por NOM-004, pero una receta puede
+// necesitar reemitirse después de que la consulta terminó — mismo criterio
+// que `ordenes_plantillas`.
+
+/**
+ * Fracciones del art. 226 LGS que exigen recetario especial con código de
+ * barras expedido por COFEPRIS a nombre del médico. HealthFlow no imprime ese
+ * formato, así que no puede emitirlas: ver `MedicamentoControladoNoEmisible`.
+ */
+export const FRACCIONES_NO_EMISIBLES = [1, 2] as const;
+
+export function esFraccionEmisible(fraccion: number | null): boolean {
+  return fraccion === null || !(FRACCIONES_NO_EMISIBLES as readonly number[]).includes(fraccion);
+}
+
+/** Cómo se surte cada fracción, para explicárselo al médico en la UI. */
+export const ETIQUETAS_FRACCION: Record<number, string> = {
+  1: 'Estupefaciente — requiere recetario especial de COFEPRIS',
+  2: 'Psicotrópico grupo II — requiere recetario especial de COFEPRIS',
+  3: 'Psicotrópico grupo III — la receta se retiene, hasta 2 resurtidos',
+  4: 'La receta se retiene en la farmacia',
+  5: 'Requiere receta; no se retiene',
+  6: 'Libre venta',
+};
+
+/** Una fila del catálogo de medicamentos (tabla global `medicamentos`). */
+export interface MedicamentoCatalogo {
+  clave: string;
+  denominacionGenerica: string;
+  formaFarmaceutica: string;
+  presentacion: string;
+  viaSugerida: string;
+  grupoTerapeutico: string;
+  /** Fracción del art. 226 LGS. Ver FRACCIONES_NO_EMISIBLES. */
+  fraccion: number;
+}
+
+export const VIAS_ADMINISTRACION = [
+  'Oral',
+  'Sublingual',
+  'Bucal',
+  'Tópica',
+  'Transdérmica',
+  'Oftálmica',
+  'Ótica',
+  'Nasal',
+  'Rectal',
+  'Vaginal',
+  'Inhalada',
+  'Intramuscular',
+  'Intravenosa',
+  'Subcutánea',
+  'Infiltración',
+] as const;
+export type ViaAdministracion = (typeof VIAS_ADMINISTRACION)[number];
+
+/**
+ * Datos del emisor congelados al momento de emitir (RIS art. 64 y 65).
+ *
+ * Tipo PROPIO y no una extensión de `FirmaMedica`: aquélla ya está persistida
+ * con exactamente tres campos dentro del jsonb de cada nota cerrada, y una
+ * nota cerrada es inmutable, así que agregarle campos obligatorios volvería
+ * ilegibles los expedientes históricos. Son además dos cosas distintas:
+ * `FirmaMedica` dice QUIÉN cerró una nota; esto es el membrete legal de un
+ * documento que sale del consultorio en manos del paciente.
+ */
+export interface EmisorReceta {
+  medicoNombre: string;
+  cedulaProfesional: string;
+  /** Null si el médico no tiene especialidad certificada: el art. 65 solo la pide a especialistas. */
+  cedulaEspecialidad: string | null;
+  especialidad: string | null;
+  /** RIS art. 64: institución que expidió el título. */
+  institucionTitulo: string;
+  nombreClinica: string;
+  /** RIS art. 64: domicilio del establecimiento. */
+  domicilioEstablecimiento: string;
+  telefonoClinica: string | null;
+}
+
+/**
+ * RIS art. 65. La edad se congela en vez de recalcularse al imprimir: dentro
+ * de un año ya no sería la misma, y la reimpresión debe mostrar lo que decía
+ * el papel que se entregó.
+ */
+export interface PacienteReceta {
+  nombre: string;
+  edad: number;
+  sexo: SexoPaciente;
+}
+
+/**
+ * Un medicamento prescrito. Los datos del RIS art. 29 son campos SEPARADOS y
+ * no un texto libre: es lo que permite validarlos uno por uno y decirle al
+ * médico exactamente cuál le falta, en vez de aceptar un párrafo que puede o
+ * no traerlos.
+ */
+export interface MedicamentoRecetado {
+  /** Clave del catálogo, o null si se capturó a mano (escape hatch). */
+  clave: string | null;
+  /** Obligatoria — la sustancia activa (RIS art. 28). */
+  denominacionGenerica: string;
+  /**
+   * Marca comercial. Opcional por diseño de la norma: si se escribe, el
+   * farmacéutico puede surtir igualmente el genérico.
+   */
+  denominacionDistintiva: string | null;
+  presentacion: string;
+  dosis: string; // '500 mg', '1 tableta'
+  via: string; // ViaAdministracion, o libre si viene de texto libre
+  frecuencia: string; // 'cada 8 horas'
+  duracion: string; // 'por 7 días'
+  indicaciones: string | null;
+  /**
+   * Fracción con la que se emitió, copiada del catálogo. Se congela: si la
+   * sustancia se recataloga después, esta receta debe seguir explicando bajo
+   * qué régimen se emitió. null = capturado como texto libre, donde el sistema
+   * no puede afirmar la fracción.
+   */
+  fraccion: number | null;
+}
+
+export interface RecetaContent {
+  emisor: EmisorReceta;
+  paciente: PacienteReceta;
+  diagnosticos: DiagnosticoCie10[];
+  medicamentos: MedicamentoRecetado[];
+  indicacionesGenerales: string | null;
+  /**
+   * Alergias vigentes al emitir. Se imprimen en la hoja: es una salvaguarda
+   * para quien surta y para quien administre, no un adorno.
+   */
+  alergiasSnapshot: string[];
+}
+
+export interface CancelacionReceta {
+  motivo: string;
+  canceladoPorNombre: string;
+  fecha: string;
+}
+
+export interface RecetaView {
+  id: string;
+  patientId: string;
+  appointmentId: string | null;
+  doctorId: string;
+  /** Consecutivo por clínica: 'RX-2026-000123'. */
+  folio: string;
+  contenido: RecetaContent;
+  /** null = vigente. La receta en sí es inmutable (ver 0028_recetas.sql). */
+  cancelacion: CancelacionReceta | null;
+  createdAt: string;
+}
+
+/**
+ * `RecetaView` + lo que solo la hoja impresa necesita. El contenido ya trae el
+ * snapshot del emisor y del paciente, así que esto agrega únicamente el nombre
+ * ACTUAL del paciente, para el encabezado de navegación de la pantalla — que
+ * no es el documento y sí debe reflejar la corrección de un nombre mal
+ * capturado.
+ */
+export interface RecetaDetalle extends RecetaView {
+  patientNombre: string;
+}
+
+export interface EmitirRecetaRequest {
+  patientId: string;
+  appointmentId?: string;
+  diagnosticos: DiagnosticoCie10[];
+  medicamentos: MedicamentoRecetado[];
+  indicacionesGenerales?: string;
+}
+
+export interface CancelarRecetaRequest {
+  motivo: string;
+}
+
+/** Un ítem vacío para arrancar la fila de captura en la UI. */
+export const MEDICAMENTO_RECETADO_VACIO: MedicamentoRecetado = {
+  clave: null,
+  denominacionGenerica: '',
+  denominacionDistintiva: null,
+  presentacion: '',
+  dosis: '',
+  via: '',
+  frecuencia: '',
+  duracion: '',
+  indicaciones: null,
+  fraccion: null,
+};

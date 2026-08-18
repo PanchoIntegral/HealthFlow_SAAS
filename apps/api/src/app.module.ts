@@ -23,6 +23,7 @@ import { PresupuestosModule } from './modules/presupuestos/presupuestos.module';
 import { CajaModule } from './modules/caja/caja.module';
 import { UsersModule } from './modules/users/users.module';
 import { ConsentimientosModule } from './modules/consentimientos/consentimientos.module';
+import { RecetasModule } from './modules/recetas/recetas.module';
 import { RadiografiasModule } from './modules/radiografias/radiografias.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
@@ -65,6 +66,7 @@ import { PlantillasModule } from './modules/plantillas/plantillas.module';
     CajaModule,
     UsersModule,
     ConsentimientosModule,
+    RecetasModule,
     RadiografiasModule,
     AccountsModule,
     AiScribeModule,

@@ -56,6 +56,12 @@ import type {
   UserProfile,
   UserProfileMe,
   WaitingRoomEntry,
+  MedicamentoCatalogo,
+  RecetaView,
+  RecetaDetalle,
+  EmitirRecetaRequest,
+  CancelarRecetaRequest,
+  UpdatePatientRequest,
 } from '@healthflow/shared-types';
 import { API_URL } from './config';
 import { marcarAlCorriente, marcarSuspendida } from './suscripcion';
@@ -164,6 +170,25 @@ export const api = {
   buscarCie10: (token: string, q: string) =>
     request<DiagnosticoCie10[]>(`/catalogos/cie10?q=${encodeURIComponent(q)}`, { token }),
 
+  buscarMedicamentos: (token: string, q: string) =>
+    request<MedicamentoCatalogo[]>(`/catalogos/medicamentos?q=${encodeURIComponent(q)}`, { token }),
+
+  // ── Recetas ────────────────────────────────────────────────────
+  listarRecetas: (token: string, patientId: string) =>
+    request<RecetaView[]>(`/recetas?patientId=${patientId}`, { token }),
+
+  getReceta: (token: string, id: string) => request<RecetaDetalle>(`/recetas/${id}`, { token }),
+
+  emitirReceta: (token: string, body: EmitirRecetaRequest) =>
+    request<RecetaView>('/recetas', { method: 'POST', token, body: JSON.stringify(body) }),
+
+  cancelarReceta: (token: string, id: string, body: CancelarRecetaRequest) =>
+    request<{ ok: true }>(`/recetas/${id}/cancelar`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
   checkIn: (token: string, appointmentId: string) =>
     request<WaitingRoomEntry>(`/appointments/${appointmentId}/check-in`, {
       method: 'POST',
@@ -172,6 +197,22 @@ export const api = {
 
   searchPatients: (token: string, q: string) =>
     request<PatientSummary[]>(`/patients?q=${encodeURIComponent(q)}`, { token }),
+
+  updatePatient: (token: string, id: string, body: UpdatePatientRequest) =>
+    request<PatientSummary>(`/patients/${id}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  archivarPaciente: (token: string, id: string) =>
+    request<{ ok: true }>(`/patients/${id}/archivar`, { method: 'POST', token }),
+
+  reactivarPaciente: (token: string, id: string) =>
+    request<{ ok: true }>(`/patients/${id}/reactivar`, { method: 'POST', token }),
+
+  eliminarPaciente: (token: string, id: string) =>
+    request<void>(`/patients/${id}`, { method: 'DELETE', token }),
 
   createPatient: (token: string, body: CreatePatientRequest) =>
     request<PatientSummary>('/patients', {

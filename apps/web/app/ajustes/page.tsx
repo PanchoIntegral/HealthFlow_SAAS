@@ -121,6 +121,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
   /** Cédula tal como está GUARDADA. Dispara el aviso, no lo que se va tecleando. */
   const [cedulaGuardada, setCedulaGuardada] = useState<string | null>(null);
   const [cedulaEspecialidad, setCedulaEspecialidad] = useState('');
+  const [institucionTitulo, setInstitucionTitulo] = useState('');
   const [rol, setRol] = useState<string>('medico');
   /**
    * Solo true si el perfil se leyó BIEN. `loading` no basta: baja a false
@@ -142,6 +143,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
         setCedula(profile.cedulaProfesional ?? '');
         setCedulaGuardada(profile.cedulaProfesional);
         setCedulaEspecialidad(profile.cedulaEspecialidad ?? '');
+        setInstitucionTitulo(profile.institucionTitulo ?? '');
         setRol(profile.rol);
         setPerfilCargado(true);
       })
@@ -163,6 +165,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
         // de captura.
         cedulaProfesional: cedula.trim(),
         cedulaEspecialidad: cedulaEspecialidad.trim(),
+        institucionTitulo: institucionTitulo.trim(),
       });
       setCedulaGuardada(perfil.cedulaProfesional);
       setGuardado(true);
@@ -221,6 +224,24 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
             <span className="mt-1 block text-xs text-slate-400">
               Distinta de la profesional. Opcional — hoy solo se usa en el membrete de documentos
               impresos (la orden de plantillas ortopédicas).
+            </span>
+          </label>
+
+          <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block font-medium text-slate-600">
+              Institución que expidió tu título
+            </span>
+            <input
+              value={institucionTitulo}
+              onChange={(e) => setInstitucionTitulo(e.target.value)}
+              disabled={loading}
+              placeholder="Universidad Nacional Autónoma de México"
+              maxLength={200}
+              className={CAMPO}
+            />
+            <span className="mt-1 block text-xs text-slate-400">
+              El artículo 64 del Reglamento de Insumos para la Salud la exige en toda receta, junto
+              a tu nombre y tu cédula. Sin este dato no se pueden emitir recetas.
             </span>
           </label>
 

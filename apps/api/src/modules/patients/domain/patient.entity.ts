@@ -1,3 +1,4 @@
+import { SEXOS_PACIENTE, type SexoPaciente } from '@healthflow/shared-types';
 import { InvalidBirthDateError, InvalidCurpError } from './patient.errors';
 
 /**
@@ -11,6 +12,7 @@ const CURP_REGEX =
 export interface NewPatientInput {
   nombre: string;
   fechaNacimiento: string; // YYYY-MM-DD
+  sexo?: SexoPaciente | null;
   curp?: string | null;
   telefono?: string | null;
 }
@@ -18,6 +20,14 @@ export interface NewPatientInput {
 export interface PatientProps {
   nombre: string;
   fechaNacimiento: string;
+  /**
+   * RIS art. 65: la receta lo exige. null = no se capturó, y es distinto de
+   * 'no_especificado' (ver SEXOS_PACIENTE). No se deriva del CURP aunque éste
+   * lo codifique en su séptimo carácter: no todo paciente tiene CURP y
+   * adivinar un dato de identidad a partir de una cadena que el usuario pudo
+   * teclear mal es peor que dejarlo vacío y pedirlo.
+   */
+  sexo: SexoPaciente | null;
   curp: string | null;
   telefono: string | null;
 }
@@ -44,6 +54,7 @@ export class Patient {
     return new Patient({
       nombre,
       fechaNacimiento,
+      sexo: normalizeSexo(input.sexo),
       curp,
       telefono: input.telefono?.trim() || null,
     });
@@ -67,6 +78,16 @@ export class Patient {
   toProps(): PatientProps {
     return { ...this.props };
   }
+}
+
+/**
+ * Un valor fuera del catálogo se descarta en vez de lanzar: el DTO ya lo
+ * rechaza en el borde con @IsIn y la base tiene su CHECK, así que llegar aquí
+ * con basura significa que algo interno se equivocó — y guardar null es más
+ * seguro que guardar un sexo inventado en un expediente clínico.
+ */
+function normalizeSexo(sexo: SexoPaciente | null | undefined): SexoPaciente | null {
+  return sexo && (SEXOS_PACIENTE as readonly string[]).includes(sexo) ? sexo : null;
 }
 
 function normalizeCurp(curp: string | null | undefined): string | null {

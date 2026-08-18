@@ -16,6 +16,7 @@ interface UserProfileRow {
   especialidad_key: UserProfile['especialidadKey'];
   cedula_profesional: string | null;
   cedula_especialidad: string | null;
+  institucion_titulo: string | null;
 }
 
 function toProfile(row: UserProfileRow): PerfilPersistido {
@@ -27,6 +28,7 @@ function toProfile(row: UserProfileRow): PerfilPersistido {
     especialidadKey: row.especialidad_key,
     cedulaProfesional: row.cedula_profesional,
     cedulaEspecialidad: row.cedula_especialidad,
+    institucionTitulo: row.institucion_titulo,
   };
 }
 
@@ -39,7 +41,8 @@ function toProfile(row: UserProfileRow): PerfilPersistido {
 export class DrizzleUserProfileRepository implements UserProfileRepository {
   async getById(tx: Tx, userId: string): Promise<PerfilPersistido | null> {
     const result = await tx.execute(sql`
-      SELECT id, nombre, rol, especialidad, especialidad_key, cedula_profesional, cedula_especialidad
+      SELECT id, nombre, rol, especialidad, especialidad_key,
+             cedula_profesional, cedula_especialidad, institucion_titulo
         FROM users
        WHERE id = ${userId}
        LIMIT 1
@@ -58,9 +61,11 @@ export class DrizzleUserProfileRepository implements UserProfileRepository {
          SET especialidad = ${input.especialidad},
              especialidad_key = ${input.especialidadKey},
              cedula_profesional = ${input.cedulaProfesional},
-             cedula_especialidad = ${input.cedulaEspecialidad}
+             cedula_especialidad = ${input.cedulaEspecialidad},
+             institucion_titulo = ${input.institucionTitulo}
        WHERE id = ${userId}
-      RETURNING id, nombre, rol, especialidad, especialidad_key, cedula_profesional, cedula_especialidad
+      RETURNING id, nombre, rol, especialidad, especialidad_key,
+                cedula_profesional, cedula_especialidad, institucion_titulo
     `);
     const row = (result.rows as unknown as UserProfileRow[])[0];
     return row ? toProfile(row) : null;

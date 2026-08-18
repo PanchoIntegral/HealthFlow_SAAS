@@ -37,4 +37,16 @@ export class UpdatePerfilDto {
     message: 'La cédula de especialidad solo puede tener letras, números y guiones',
   })
   cedulaEspecialidad?: string;
+
+  /**
+   * Institución que expidió el título profesional (RIS art. 64), requerida
+   * para emitir recetas. Texto libre y no un catálogo: junto a las
+   * universidades mexicanas hay títulos extranjeros revalidados, y una lista
+   * cerrada dejaría a esos médicos sin poder capturar el dato que la ley les
+   * exige imprimir. La cadena vacía se permite: es como se borra.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  institucionTitulo?: string;
 }

@@ -3,11 +3,14 @@
 import { useState } from 'react';
 import {
   BANDERAS_CLINICAS,
+  ETIQUETAS_SEXO,
   SEVERIDADES_ALERGIA,
+  SEXOS_PACIENTE,
   TIPOS_ALERGIA,
   type Alergia,
   type HistorialPaciente,
   type SeveridadAlergia,
+  type SexoPaciente,
   type TipoAlergia,
 } from '@healthflow/shared-types';
 
@@ -27,6 +30,7 @@ export function EditorHistorial({
   onGuardar: (h: HistorialPaciente) => void;
   onCancelar?: () => void;
 }) {
+  const [sexo, setSexo] = useState<SexoPaciente | ''>(inicial.sexo ?? '');
   const [sinAlergias, setSinAlergias] = useState(inicial.sinAlergiasConocidas);
   const [alergias, setAlergias] = useState<Alergia[]>(inicial.alergias);
   const [banderas, setBanderas] = useState<string[]>(inicial.antecedentes?.banderas ?? []);
@@ -57,12 +61,35 @@ export function EditorHistorial({
       sinAlergiasConocidas: sinAlergias,
       alergias,
       antecedentes: { banderas, ...texto },
+      // '' se manda como null, que el backend interpreta como "no lo estoy
+      // editando" y conserva lo guardado. Aquí es lo mismo: la cadena vacía
+      // solo aparece cuando el dato nunca se capturó.
+      sexo: sexo || null,
     });
 
   const input = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-blue';
 
   return (
     <div className="space-y-5">
+      <section>
+        <h3 className="mb-1 font-semibold">Sexo</h3>
+        <p className="mb-2 text-xs text-slate-500">
+          Va impreso en la receta médica (art. 65 del Reglamento de Insumos para la Salud).
+        </p>
+        <select
+          value={sexo}
+          onChange={(e) => setSexo(e.target.value as SexoPaciente | '')}
+          className={input}
+        >
+          <option value="">Sin capturar</option>
+          {SEXOS_PACIENTE.map((s) => (
+            <option key={s} value={s}>
+              {ETIQUETAS_SEXO[s]}
+            </option>
+          ))}
+        </select>
+      </section>
+
       <section>
         <h3 className="mb-2 font-semibold">Alergias</h3>
 

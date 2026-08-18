@@ -85,6 +85,12 @@ export const users = pgTable('users', {
   cedulaProfesional: text('cedula_profesional'),
   /** Distinta de la profesional: certifica la especialidad, no el ejercicio general. */
   cedulaEspecialidad: text('cedula_especialidad'),
+  /**
+   * Institución que expidió el título (RIS art. 64, ver 0026). Del médico y no
+   * de la clínica: dos médicos del mismo consultorio pueden venir de
+   * universidades distintas. Nullable; lo exige RecetaValidator al emitir.
+   */
+  institucionTitulo: text('institucion_titulo'),
   /** Etiqueta editable que se muestra en el selector de agenda. */
   especialidad: text('especialidad'),
   /**
@@ -117,8 +123,19 @@ export const patients = pgTable('patients', {
   antecedentes: jsonb('antecedentes').notNull().default({ banderas: [] }),
   nombre: text('nombre').notNull(),
   fechaNacimiento: date('fecha_nacimiento').notNull(),
+  /**
+   * SexoPaciente (ver 0026). NULL = no capturado, distinto de
+   * 'no_especificado'; solo el primero bloquea emitir una receta.
+   */
+  sexo: text('sexo'),
   curp: text('curp'),
   telefono: text('telefono'),
+  /**
+   * Baja lógica (ver 0029). NULL = activo. No se borra el expediente: la
+   * NOM-004 obliga a conservarlo cinco años desde el último acto médico.
+   */
+  archivadoEn: timestamp('archivado_en', { withTimezone: true }),
+  archivadoPor: uuid('archivado_por'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -431,6 +448,68 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+/**
+ * Catálogo global de medicamentos (0027). Sin tenant_id ni RLS, igual que
+ * `cie10Diagnosticos`: un principio activo no tiene dueño.
+ */
+export const medicamentos = pgTable('medicamentos', {
+  clave: text('clave').primaryKey(),
+  claveCnis: text('clave_cnis'),
+  denominacionGenerica: text('denominacion_generica').notNull(),
+  formaFarmaceutica: text('forma_farmaceutica').notNull(),
+  presentacion: text('presentacion').notNull(),
+  viaSugerida: text('via_sugerida').notNull(),
+  grupoTerapeutico: text('grupo_terapeutico').notNull(),
+  /** Fracción del art. 226 LGS. I y II no son emisibles desde HealthFlow. */
+  fraccion: integer('fraccion').notNull(),
+});
+
+/**
+ * Receta médica emitida (0028). Insert-only en la base: sin UPDATE ni DELETE
+ * concedidos al rol de la app.
+ */
+export const recetas = pgTable('recetas', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  patientId: uuid('patient_id').notNull(),
+  doctorId: uuid('doctor_id').notNull(),
+  appointmentId: uuid('appointment_id'),
+  /** Consecutivo por clínica, legible: 'RX-2026-000123'. */
+  folio: text('folio').notNull(),
+  folioAnio: integer('folio_anio').notNull(),
+  folioNumero: integer('folio_numero').notNull(),
+  /** RecetaContent — snapshot del emisor, el paciente y la prescripción. */
+  contenido: jsonb('contenido').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Cancelación de una receta. Tabla aparte para no conceder UPDATE sobre `recetas`. */
+export const recetasCancelaciones = pgTable('recetas_cancelaciones', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdConDefault(),
+  recetaId: uuid('receta_id').notNull(),
+  canceladoPor: uuid('cancelado_por').notNull(),
+  motivo: text('motivo').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Contador de folios por clínica, serie y año (0028). Se incrementa con un
+ * upsert atómico; es la única tabla del sistema que necesita UPDATE para
+ * funcionar y no para corregir.
+ */
+export const folioContadores = pgTable(
+  'folio_contadores',
+  {
+    tenantId: tenantIdConDefault(),
+    serie: text('serie').notNull(),
+    anio: integer('anio').notNull(),
+    ultimo: integer('ultimo').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.tenantId, t.serie, t.anio] }) }),
+);
+
 export const schema = {
   tenants,
   users,
@@ -457,5 +536,9 @@ export const schema = {
   cajaMovimientos,
   consentimientos,
   radiografias,
+  medicamentos,
+  recetas,
+  recetasCancelaciones,
+  folioContadores,
 };
 export type DbSchema = typeof schema;

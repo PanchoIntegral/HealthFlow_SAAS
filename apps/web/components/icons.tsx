@@ -293,3 +293,53 @@ export function IconClipboardList({ size = 16 }: { size?: number }) {
     </svg>
   );
 }
+
+/** Receta médica: cápsula en diagonal. */
+export function IconPill({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)" />
+      <path d="m8.5 8.5 7 7" />
+    </svg>
+  );
+}
+
+/** Prohibido: receta cancelada y medicamento que no se puede emitir. */
+export function IconBan({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m5.6 5.6 12.8 12.8" />
+    </svg>
+  );
+}
+
+/** Editar / corregir un dato. */
+export function IconPencil({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Z" />
+      <path d="m14.5 6.5 3 3" />
+    </svg>
+  );
+}
+
+/** Archivar: baja lógica que conserva el expediente. */
+export function IconArchive({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4" />
+    </svg>
+  );
+}
+
+/** Eliminar definitivamente. */
+export function IconTrash({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      <path d="M6 7v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7M10 11v6M14 11v6" />
+    </svg>
+  );
+}

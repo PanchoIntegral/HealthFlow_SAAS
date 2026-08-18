@@ -1,4 +1,5 @@
 import type {
+  ActividadClinicaPaciente,
   HistorialPaciente,
   PatientSummary,
   UpdateHistorialRequest,
@@ -35,6 +36,39 @@ export interface PatientRepository {
     patientId: string,
     input: UpdateHistorialRequest,
   ): Promise<HistorialPaciente | null>;
+
+  /**
+   * Corrige nombre y/o teléfono. `undefined` = no se toca ese campo.
+   * Devuelve null si el paciente no existe en el tenant activo.
+   */
+  actualizarDatos(
+    tx: Tx,
+    patientId: string,
+    datos: { nombre?: string; telefono?: string | null },
+  ): Promise<PatientSummary | null>;
+
+  /** true si el paciente existe en el tenant activo. */
+  existe(tx: Tx, patientId: string): Promise<boolean>;
+
+  /** Nombre actual, para dejar constancia del valor anterior al corregirlo. */
+  nombreActual(tx: Tx, patientId: string): Promise<string | null>;
+
+  /**
+   * Cuenta los actos médicos y documentos del paciente. Es lo que decide si
+   * se puede borrar: cero en todo = nunca fue un expediente, fue un error de
+   * captura.
+   */
+  contarActividadClinica(tx: Tx, patientId: string): Promise<ActividadClinicaPaciente>;
+
+  /** Baja lógica. `null` en archivadoPor lo reactiva. */
+  archivar(tx: Tx, patientId: string, archivadoPor: string | null): Promise<boolean>;
+
+  /**
+   * Borrado real. Solo debe llamarse tras comprobar que no hay actividad
+   * clínica: la base lo permite (patients sí concede DELETE) y arrastraría en
+   * cascada nueve tablas.
+   */
+  eliminar(tx: Tx, patientId: string): Promise<boolean>;
 }
 
 export const PATIENT_REPOSITORY = Symbol('PATIENT_REPOSITORY');

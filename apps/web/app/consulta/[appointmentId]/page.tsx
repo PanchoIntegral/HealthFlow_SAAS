@@ -30,7 +30,8 @@ import { CamposEspecialidad } from '../../../components/campos-especialidad';
 import { AlertaAlergias } from '../../../components/alerta-alergias';
 import { EditorHistorial } from '../../../components/editor-historial';
 import { OrdenPlantillasModal } from '../../../components/orden-plantillas-modal';
-import { IconClipboardList } from '../../../components/icons';
+import { IconClipboardList, IconPill } from '../../../components/icons';
+import { RecetaModal } from '../../../components/receta-modal';
 import { Odontograma } from '../../../components/odontograma';
 import { Podograma } from '../../../components/podograma';
 import { NuevoPresupuestoModal } from '../../../components/nuevo-presupuesto-modal';
@@ -143,6 +144,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
   /** Orden de plantillas ortopédicas (solo podología). Se monta al abrir el modal
    * y se desmonta al cerrarlo — nunca vive de fondo, así hidrata limpio cada vez. */
   const [modalPlantillas, setModalPlantillas] = useState(false);
+  const [modalReceta, setModalReceta] = useState(false);
 
   /**
    * Qué campos vienen de la IA y siguen sin revisar. Vive en el estado de la
@@ -746,6 +748,20 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
                 Va al costado de Progreso porque es lo que el médico va
                 llenando a lo largo de TODA la consulta, no una sección más
                 del formulario. */}
+            {/* La receta NO va condicionada a la especialidad, a diferencia
+                de la orden de plantillas: prescribir es transversal a
+                cualquier consultorio. Vive aquí, al costado de Progreso,
+                porque el médico la emite al final de la consulta pero sin
+                cerrar la nota — la receta tiene su propio ciclo de vida. */}
+            <button
+              type="button"
+              onClick={() => setModalReceta(true)}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              <IconPill size={14} />
+              Emitir receta
+            </button>
+
             {perfil.key === 'podologia' && (
               <button
                 type="button"
@@ -846,6 +862,19 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             </p>
           )}
         </Modal>
+      )}
+
+      {modalReceta && patientId && (
+        <RecetaModal
+          token={token}
+          patientId={patientId}
+          appointmentId={appointmentId}
+          historial={record.data?.historial}
+          // Los diagnósticos ya capturados en la nota: el médico no debe
+          // teclear el CIE-10 dos veces.
+          diagnosticosIniciales={content.diagnosticos}
+          onClose={() => setModalReceta(false)}
+        />
       )}
 
       {modalPlantillas && (

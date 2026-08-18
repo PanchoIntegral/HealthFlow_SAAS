@@ -18,6 +18,8 @@ import { PresupuestoPanel } from '../../../components/presupuesto-panel';
 import { ConsentimientoPanel } from '../../../components/consentimiento-panel';
 import { RadiografiaPanel } from '../../../components/radiografia-panel';
 import { OrdenesPlantillasPanel } from '../../../components/ordenes-plantillas-panel';
+import { RecetaPanel } from '../../../components/receta-panel';
+import { FichaPaciente } from '../../../components/ficha-paciente';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -116,12 +118,18 @@ function ExpedientePageInner({ patientId }: { patientId: string }) {
           <>
             <div className="mb-6">
               <h1 className="text-2xl font-bold">{expediente.patientNombre}</h1>
-              <p className="text-sm text-slate-500">
+              <p className="mb-2 text-sm text-slate-500">
                 {/* El total es del expediente entero, no de lo ya cargado: en
                     un expediente clínico un conteo parcial engaña. */}
                 Expediente abierto el {fecha(expediente.abiertoEn)} · {expediente.totalNotas}{' '}
                 nota{expediente.totalNotas === 1 ? '' : 's'}
               </p>
+              <FichaPaciente
+                token={token}
+                patientId={patientId}
+                nombre={expediente.patientNombre}
+                telefono={expediente.patientTelefono}
+              />
             </div>
 
             {editando ? (
@@ -172,6 +180,13 @@ function ExpedientePageInner({ patientId }: { patientId: string }) {
                 puedeEliminar={user.rol === 'medico' || user.rol === 'admin'}
               />
             </section>
+
+            <RecetaPanel
+              token={token}
+              patientId={patientId}
+              pacienteNombre={expediente.patientNombre}
+              historial={expediente.historial}
+            />
 
             <OrdenesPlantillasPanel token={token} patientId={patientId} />
 

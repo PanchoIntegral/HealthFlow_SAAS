@@ -10,8 +10,10 @@ import {
 } from 'class-validator';
 import {
   SEVERIDADES_ALERGIA,
+  SEXOS_PACIENTE,
   TIPOS_ALERGIA,
   type SeveridadAlergia,
+  type SexoPaciente,
   type TipoAlergia,
 } from '@healthflow/shared-types';
 
@@ -60,4 +62,13 @@ export class UpdateHistorialDto {
   @ValidateNested()
   @Type(() => AntecedentesDto)
   antecedentes!: AntecedentesDto;
+
+  /**
+   * Opcional a diferencia del resto del cuerpo: omitirlo conserva el valor
+   * guardado (ver el COALESCE del repositorio). Es lo que permite capturar
+   * solo el sexo desde el modal de receta.
+   */
+  @IsOptional()
+  @IsIn(SEXOS_PACIENTE)
+  sexo?: SexoPaciente;
 }

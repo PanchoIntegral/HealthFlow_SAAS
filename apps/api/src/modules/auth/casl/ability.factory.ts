@@ -32,6 +32,12 @@ export type Subject =
    */
   | 'Caja'
   | 'Consentimiento'
+  /**
+   * Receta médica. `cancel` va separado de `write` a propósito —igual que en
+   * `Caja`— porque una receta emitida no se edita nunca: se cancela y se
+   * emite otra. No existe `write` para este subject por la misma razón.
+   */
+  | 'Receta'
   | 'Radiografia'
   /**
    * Cuentas del equipo (alta de otros médicos y del asistente). Sin ningún
@@ -84,6 +90,14 @@ export class CaslAbilityFactory {
         // la ficha, y que llegue completo importa más que quién lo teclea —
         // una alergia sin registrar es un riesgo, no un tema de permisos.
         can('write', 'Patient');
+        // Archivar y eliminar. Ojo con el nombre: `delete` sobre Patient NO
+        // permite borrar un expediente. El caso de uso solo consiente el
+        // borrado real cuando NUNCA hubo acto médico —un duplicado, un dedazo—
+        // y con historial obliga a archivar, porque la NOM-004 exige conservar
+        // el expediente cinco años. Se le da al asistente por el mismo motivo
+        // que `write`: es quien captura las fichas, y por tanto quien genera y
+        // quien detecta los duplicados.
+        can('delete', 'Patient');
         // Facturar es trabajo de recepción: crea y consulta facturas, pero la
         // cancelación (acto fiscal ante el SAT) queda en médico/admin.
         can('create', 'Factura');
@@ -100,6 +114,12 @@ export class CaslAbilityFactory {
         // Documentar riesgos/alternativas es juicio clínico del médico; el
         // asistente puede consultarlos, no crearlos (mismo criterio que Presupuesto).
         can('read', 'Consentimiento');
+        // Solo lectura, mismo criterio que Consentimiento: el asistente puede
+        // reimprimir o consultar una receta que el médico ya emitió, pero
+        // prescribir es un acto médico indelegable — `create` es la línea que
+        // no se cruza, y `cancel` tampoco, porque anular una receta que ya
+        // circula es una decisión clínica.
+        can('read', 'Receta');
         // Tomar una radiografía es operar el equipo, no un juicio clínico —
         // tarea típica del asistente dental. Borrar sí se reserva a
         // médico/admin: ahí el riesgo es accidental/malicioso, no de criterio.
@@ -115,6 +135,12 @@ export class CaslAbilityFactory {
         can('cancel', 'Appointment');
         can('create', 'Patient');
         can('write', 'Patient');
+        // Archivar y eliminar. `delete` sobre Patient NO significa borrar un
+        // expediente: el caso de uso solo permite el borrado real cuando nunca
+        // hubo acto médico (duplicado o error de captura), y con historial
+        // obliga a archivar. Lo tiene también el asistente porque es quien
+        // captura las fichas y quien genera —y detecta— los duplicados.
+        can('delete', 'Patient');
         can('start', 'Consultation');
         can('write', 'Consultation');
         can('finish', 'Consultation');
@@ -135,6 +161,9 @@ export class CaslAbilityFactory {
         can('cancel', 'Caja');
         can('read', 'Consentimiento');
         can('create', 'Consentimiento');
+        can('read', 'Receta');
+        can('create', 'Receta');
+        can('cancel', 'Receta');
         can('read', 'Radiografia');
         can('create', 'Radiografia');
         can('delete', 'Radiografia');

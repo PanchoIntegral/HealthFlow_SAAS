@@ -58,6 +58,7 @@ export class RegisterPatientUseCase {
         id,
         nombre: props.nombre,
         edad: Patient.edad(props.fechaNacimiento),
+        sexo: props.sexo,
         curp: props.curp,
         telefono: props.telefono,
       };

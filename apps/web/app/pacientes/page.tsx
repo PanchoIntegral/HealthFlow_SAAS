@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreatePatientRequest } from '@healthflow/shared-types';
+import {
+  ETIQUETAS_SEXO,
+  SEXOS_PACIENTE,
+  type CreatePatientRequest,
+  type SexoPaciente,
+} from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
@@ -170,6 +175,7 @@ function NewPatientForm({
   const [form, setForm] = useState<CreatePatientRequest>({
     nombre: '',
     fechaNacimiento: '',
+    sexo: null,
     curp: '',
     telefono: '',
   });
@@ -179,6 +185,7 @@ function NewPatientForm({
       api.createPatient(token, {
         nombre: form.nombre,
         fechaNacimiento: form.fechaNacimiento,
+        sexo: form.sexo || null,
         curp: form.curp?.trim() || null,
         telefono: form.telefono?.trim() || null,
       }),
@@ -216,6 +223,23 @@ function NewPatientForm({
           onChange={set('fechaNacimiento')}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue"
         />
+      </label>
+      <label className="text-sm">
+        <span className="mb-1 block font-medium text-slate-600">Sexo</span>
+        <select
+          value={form.sexo ?? ''}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, sexo: (e.target.value as SexoPaciente) || null }))
+          }
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue"
+        >
+          <option value="">Opcional</option>
+          {SEXOS_PACIENTE.map((s) => (
+            <option key={s} value={s}>
+              {ETIQUETAS_SEXO[s]}
+            </option>
+          ))}
+        </select>
       </label>
       <label className="text-sm">
         <span className="mb-1 block font-medium text-slate-600">CURP</span>

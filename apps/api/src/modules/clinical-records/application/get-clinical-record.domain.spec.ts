@@ -12,10 +12,11 @@ function vistaConDosNotas(): ClinicalRecordView {
     recordId: 'rec-1',
     patientId: 'pac-1',
     patientNombre: 'Ana',
+    patientTelefono: null,
     abiertoEn: '2026-01-01T00:00:00.000Z',
     nextCursor: null,
     totalNotas: 2,
-    historial: { sinAlergiasConocidas: true, alergias: [], antecedentes: { banderas: [] } },
+    historial: { sinAlergiasConocidas: true, alergias: [], antecedentes: { banderas: [] }, sexo: null },
     notas: [
       {
         id: 'nota-1',
@@ -90,7 +91,7 @@ describe('GetClinicalRecordUseCase', () => {
 
     expect(vista.patientNombre).toBe('Ana');
     expect(vista.totalNotas).toBe(2);
-    expect(vista.historial).toEqual({ sinAlergiasConocidas: true, alergias: [], antecedentes: { banderas: [] } });
+    expect(vista.historial).toEqual({ sinAlergiasConocidas: true, alergias: [], antecedentes: { banderas: [] }, sexo: null });
     expect(vista.notas[0]?.contenido.diagnosticos).toEqual([{ cie10: 'R51', descripcion: 'Cefalea' }]);
     expect(vista.notas[0]?.contenido.planTerapeutico).toBe('Paracetamol 500mg cada 8h');
     expect(vista.notas[1]).toMatchObject({ id: 'nota-2', estatus: 'borrador' });

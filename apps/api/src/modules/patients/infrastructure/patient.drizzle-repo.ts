@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
   ANTECEDENTES_VACIOS,
+  type ActividadClinicaPaciente,
   type Alergia,
   type AntecedentesPaciente,
   type HistorialPaciente,
   type PatientSummary,
+  type SexoPaciente,
   type UpdateHistorialRequest,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
@@ -16,6 +18,7 @@ interface PatientRow {
   id: string;
   nombre: string;
   edad: number;
+  sexo: SexoPaciente | null;
   curp: string | null;
   telefono: string | null;
 }
@@ -31,8 +34,8 @@ export class DrizzlePatientRepository implements PatientRepository {
     const p = patient.toProps();
     // tenant_id se autocompleta por DEFAULT current_tenant_id() (ver 0003).
     const result = await tx.execute(sql`
-      INSERT INTO patients (nombre, fecha_nacimiento, curp, telefono)
-      VALUES (${p.nombre}, ${p.fechaNacimiento}, ${p.curp}, ${p.telefono})
+      INSERT INTO patients (nombre, fecha_nacimiento, sexo, curp, telefono)
+      VALUES (${p.nombre}, ${p.fechaNacimiento}, ${p.sexo}, ${p.curp}, ${p.telefono})
       RETURNING id
     `);
     return (result.rows[0] as { id: string }).id;
@@ -46,7 +49,13 @@ export class DrizzlePatientRepository implements PatientRepository {
   }
 
   async contarTodos(tx: Tx): Promise<number> {
-    const result = await tx.execute(sql`SELECT count(*)::int AS total FROM patients`);
+    // Los archivados NO consumen cupo del plan, mismo criterio que
+    // `users.activo` (0018): dar de baja libera el lugar aunque el registro se
+    // conserve. Cobrar por un paciente que ya no se atiende, y que la clínica
+    // solo guarda porque la NOM-004 la obliga, sería cobrar por archivo muerto.
+    const result = await tx.execute(
+      sql`SELECT count(*)::int AS total FROM patients WHERE archivado_en IS NULL`,
+    );
     return (result.rows as unknown as { total: number }[])[0]?.total ?? 0;
   }
 
@@ -62,25 +71,27 @@ export class DrizzlePatientRepository implements PatientRepository {
     // el externo devuelve el mismo tope de siempre. Esto es un autocompletado
     // por prefijo — mismo criterio de coincidencia que antes.
     const result = await tx.execute(sql`
-      SELECT id, nombre, edad, curp, telefono
+      SELECT id, nombre, edad, sexo, curp, telefono
         FROM (
           (SELECT id,
                   nombre,
                   date_part('year', age(fecha_nacimiento))::int AS edad,
+                  sexo,
                   curp,
                   telefono
              FROM patients
-            WHERE lower(nombre) LIKE ${like}
+            WHERE lower(nombre) LIKE ${like} AND archivado_en IS NULL
             ORDER BY nombre ASC
             LIMIT ${limit})
           UNION
           (SELECT id,
                   nombre,
                   date_part('year', age(fecha_nacimiento))::int AS edad,
+                  sexo,
                   curp,
                   telefono
              FROM patients
-            WHERE lower(curp) LIKE ${like}
+            WHERE lower(curp) LIKE ${like} AND archivado_en IS NULL
             ORDER BY nombre ASC
             LIMIT ${limit})
         ) coincidencias
@@ -91,6 +102,7 @@ export class DrizzlePatientRepository implements PatientRepository {
       id: r.id,
       nombre: r.nombre,
       edad: Number(r.edad),
+      sexo: r.sexo,
       curp: r.curp,
       telefono: r.telefono,
     }));
@@ -101,9 +113,11 @@ export class DrizzlePatientRepository implements PatientRepository {
       SELECT id,
              nombre,
              date_part('year', age(fecha_nacimiento))::int AS edad,
+             sexo,
              curp,
              telefono
         FROM patients
+       WHERE archivado_en IS NULL
        ORDER BY nombre ASC
        LIMIT ${limit}
     `);
@@ -111,6 +125,7 @@ export class DrizzlePatientRepository implements PatientRepository {
       id: r.id,
       nombre: r.nombre,
       edad: Number(r.edad),
+      sexo: r.sexo,
       curp: r.curp,
       telefono: r.telefono,
     }));
@@ -124,19 +139,27 @@ export class DrizzlePatientRepository implements PatientRepository {
     // Reemplazo completo, no merge: la pantalla envía siempre el historial
     // entero, y un merge parcial haría imposible BORRAR una alergia que se
     // capturó por error — justo la operación que más importa que funcione.
+    // `sexo` es la excepción al reemplazo completo: es opcional en el request
+    // y `undefined` significa "no lo estoy editando". COALESCE con un
+    // parámetro NULL conserva el valor guardado, que es justo lo que necesita
+    // el modal de receta cuando captura ÚNICAMENTE el sexo faltante sin
+    // reenviar alergias ni antecedentes.
+    const sexo = input.sexo === undefined ? null : input.sexo;
     const result = await tx.execute(sql`
       UPDATE patients
          SET sin_alergias_conocidas = ${input.sinAlergiasConocidas},
              alergias      = ${JSON.stringify(input.alergias)}::jsonb,
-             antecedentes  = ${JSON.stringify(input.antecedentes)}::jsonb
+             antecedentes  = ${JSON.stringify(input.antecedentes)}::jsonb,
+             sexo          = COALESCE(${sexo}, sexo)
        WHERE id = ${patientId}
-      RETURNING sin_alergias_conocidas, alergias, antecedentes
+      RETURNING sin_alergias_conocidas, alergias, antecedentes, sexo
     `);
     const row = (
       result.rows as unknown as {
         sin_alergias_conocidas: boolean;
         alergias: Alergia[] | null;
         antecedentes: AntecedentesPaciente | null;
+        sexo: SexoPaciente | null;
       }[]
     )[0];
     if (!row) return null;
@@ -145,6 +168,119 @@ export class DrizzlePatientRepository implements PatientRepository {
       sinAlergiasConocidas: row.sin_alergias_conocidas,
       alergias: row.alergias ?? [],
       antecedentes: row.antecedentes ?? ANTECEDENTES_VACIOS,
+      sexo: row.sexo,
     };
+  }
+
+  async actualizarDatos(
+    tx: Tx,
+    patientId: string,
+    datos: { nombre?: string; telefono?: string | null },
+  ): Promise<PatientSummary | null> {
+    // COALESCE con parámetro NULL conserva lo guardado: es lo que da la
+    // semántica de PATCH (campo ausente = no se toca) sin construir el SQL a
+    // pedazos. El teléfono necesita además poder BORRARSE, y por eso el caso
+    // de uso traduce la cadena vacía a un centinela: aquí un NULL significa
+    // "no lo mandaron", no "déjalo vacío".
+    const result = await tx.execute(sql`
+      UPDATE patients
+         SET nombre   = COALESCE(${datos.nombre ?? null}, nombre),
+             telefono = CASE WHEN ${datos.telefono === undefined} THEN telefono
+                             ELSE ${datos.telefono ?? null} END
+       WHERE id = ${patientId}
+      RETURNING id, nombre,
+                date_part('year', age(fecha_nacimiento))::int AS edad,
+                sexo, curp, telefono
+    `);
+    const row = (result.rows as unknown as PatientRow[])[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      nombre: row.nombre,
+      edad: Number(row.edad),
+      sexo: row.sexo,
+      curp: row.curp,
+      telefono: row.telefono,
+    };
+  }
+
+  async existe(tx: Tx, patientId: string): Promise<boolean> {
+    const result = await tx.execute(sql`SELECT 1 FROM patients WHERE id = ${patientId} LIMIT 1`);
+    return result.rows.length > 0;
+  }
+
+  async nombreActual(tx: Tx, patientId: string): Promise<string | null> {
+    const result = await tx.execute(
+      sql`SELECT nombre FROM patients WHERE id = ${patientId} LIMIT 1`,
+    );
+    return (result.rows as unknown as { nombre: string }[])[0]?.nombre ?? null;
+  }
+
+  /**
+   * Un solo viaje con subconsultas escalares en vez de ocho COUNT sueltos.
+   *
+   * Las citas cuentan solo si se ATENDIERON: una cita 'agendada' o 'cancelada'
+   * de un paciente capturado por error es parte del mismo error, y exigir que
+   * el usuario la borre antes convertiría la limpieza en un rompecabezas.
+   * 'en_espera', 'en_consulta' y 'finalizada' sí son actos.
+   */
+  async contarActividadClinica(tx: Tx, patientId: string): Promise<ActividadClinicaPaciente> {
+    const result = await tx.execute(sql`
+      SELECT
+        (SELECT count(*) FROM clinical_notes n
+           JOIN clinical_records r ON r.id = n.clinical_record_id
+          WHERE r.patient_id = ${patientId})                                  AS notas,
+        (SELECT count(*) FROM recetas            WHERE patient_id = ${patientId}) AS recetas,
+        (SELECT count(*) FROM consentimientos    WHERE patient_id = ${patientId}) AS consentimientos,
+        (SELECT count(*) FROM radiografias       WHERE patient_id = ${patientId}) AS radiografias,
+        (SELECT count(*) FROM presupuestos       WHERE patient_id = ${patientId}) AS presupuestos,
+        -- Las facturas no cuelgan del paciente directamente: se ligan por el
+        -- receptor fiscal, que es donde vive el RFC.
+        (SELECT count(*) FROM facturas f
+           JOIN receptores_fiscales rf ON rf.id = f.receptor_id
+          WHERE rf.patient_id = ${patientId})                                 AS facturas,
+        (SELECT count(*) FROM receptores_fiscales WHERE patient_id = ${patientId}) AS datos_fiscales,
+        (SELECT count(*) FROM ordenes_plantillas WHERE patient_id = ${patientId}) AS ordenes_plantillas,
+        (SELECT count(*) FROM appointments
+          WHERE patient_id = ${patientId}
+            AND estatus IN ('en_espera', 'en_consulta', 'finalizada'))        AS citas_atendidas
+    `);
+    const r = (result.rows as unknown as Record<string, string>[])[0]!;
+    return {
+      notas: Number(r.notas),
+      recetas: Number(r.recetas),
+      consentimientos: Number(r.consentimientos),
+      radiografias: Number(r.radiografias),
+      presupuestos: Number(r.presupuestos),
+      facturas: Number(r.facturas),
+      datosFiscales: Number(r.datos_fiscales),
+      ordenesPlantillas: Number(r.ordenes_plantillas),
+      citasAtendidas: Number(r.citas_atendidas),
+    };
+  }
+
+  async archivar(tx: Tx, patientId: string, archivadoPor: string | null): Promise<boolean> {
+    // archivadoPor null = reactivar. Se limpian las dos columnas juntas para
+    // que no quede un "archivado por Fulano" sobre un paciente activo.
+    // Dos consultas y no una con CASE: `now()` es un fragmento SQL y `null` un
+    // parámetro; meterlos en el mismo hueco del template hace que el tipo de
+    // la columna dependa de la rama. Explícito se lee mejor que el truco.
+    const result = archivadoPor
+      ? await tx.execute(sql`
+          UPDATE patients SET archivado_en = now(), archivado_por = ${archivadoPor}
+           WHERE id = ${patientId} RETURNING id
+        `)
+      : await tx.execute(sql`
+          UPDATE patients SET archivado_en = NULL, archivado_por = NULL
+           WHERE id = ${patientId} RETURNING id
+        `);
+    return result.rows.length > 0;
+  }
+
+  async eliminar(tx: Tx, patientId: string): Promise<boolean> {
+    const result = await tx.execute(
+      sql`DELETE FROM patients WHERE id = ${patientId} RETURNING id`,
+    );
+    return result.rows.length > 0;
   }
 }

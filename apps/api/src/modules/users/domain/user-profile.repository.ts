@@ -21,6 +21,8 @@ export interface UpdatePerfilInput {
   cedulaProfesional: string | null;
   /** null = borrar la cédula guardada. */
   cedulaEspecialidad: string | null;
+  /** Institución que expidió el título (RIS art. 64). null = borrar. */
+  institucionTitulo: string | null;
 }
 
 /**
