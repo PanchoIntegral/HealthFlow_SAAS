@@ -7,6 +7,7 @@ import type { AppointmentStatus, WaitingRoomEntry } from '@healthflow/shared-typ
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { useWaitingRoom, WAITING_ROOM_QUERY_KEY } from '../../lib/use-waiting-room';
+import { useFormatoHora } from '../../lib/use-formato-hora';
 import { WaitingRoomCard, dragMimeType } from '../../components/waiting-room-card';
 import { AppShell } from '../../components/app-shell';
 
@@ -29,6 +30,7 @@ export default function SalaDeEsperaPage() {
   const router = useRouter();
   const { token, user, ready } = useAuth();
   const queryClient = useQueryClient();
+  const formatoHora = useFormatoHora();
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -155,6 +157,7 @@ export default function SalaDeEsperaPage() {
                       <WaitingRoomCard
                         key={entry.appointmentId}
                         entry={entry}
+                        formatoHora={formatoHora}
                         canCheckIn={canCheckIn}
                         canAdvanceToConsulta={canAdvanceToConsulta}
                         puedeAbrirNota={puedeAbrirNota}

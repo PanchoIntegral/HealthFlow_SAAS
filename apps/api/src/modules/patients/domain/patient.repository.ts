@@ -38,13 +38,13 @@ export interface PatientRepository {
   ): Promise<HistorialPaciente | null>;
 
   /**
-   * Corrige nombre y/o teléfono. `undefined` = no se toca ese campo.
-   * Devuelve null si el paciente no existe en el tenant activo.
+   * Corrige nombre, teléfono y/o fecha de nacimiento. `undefined` = no se toca
+   * ese campo. Devuelve null si el paciente no existe en el tenant activo.
    */
   actualizarDatos(
     tx: Tx,
     patientId: string,
-    datos: { nombre?: string; telefono?: string | null },
+    datos: { nombre?: string; telefono?: string | null; fechaNacimiento?: string },
   ): Promise<PatientSummary | null>;
 
   /** true si el paciente existe en el tenant activo. */

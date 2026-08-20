@@ -175,18 +175,21 @@ export class DrizzlePatientRepository implements PatientRepository {
   async actualizarDatos(
     tx: Tx,
     patientId: string,
-    datos: { nombre?: string; telefono?: string | null },
+    datos: { nombre?: string; telefono?: string | null; fechaNacimiento?: string },
   ): Promise<PatientSummary | null> {
     // COALESCE con parámetro NULL conserva lo guardado: es lo que da la
     // semántica de PATCH (campo ausente = no se toca) sin construir el SQL a
     // pedazos. El teléfono necesita además poder BORRARSE, y por eso el caso
     // de uso traduce la cadena vacía a un centinela: aquí un NULL significa
-    // "no lo mandaron", no "déjalo vacío".
+    // "no lo mandaron", no "déjalo vacío". `fechaNacimiento` no tiene ese
+    // problema — no existe "borrar la fecha de nacimiento" — así que le basta
+    // el mismo COALESCE que `nombre`.
     const result = await tx.execute(sql`
       UPDATE patients
-         SET nombre   = COALESCE(${datos.nombre ?? null}, nombre),
-             telefono = CASE WHEN ${datos.telefono === undefined} THEN telefono
-                             ELSE ${datos.telefono ?? null} END
+         SET nombre           = COALESCE(${datos.nombre ?? null}, nombre),
+             telefono         = CASE WHEN ${datos.telefono === undefined} THEN telefono
+                             ELSE ${datos.telefono ?? null} END,
+             fecha_nacimiento = COALESCE(${datos.fechaNacimiento ?? null}, fecha_nacimiento)
        WHERE id = ${patientId}
       RETURNING id, nombre,
                 date_part('year', age(fecha_nacimiento))::int AS edad,

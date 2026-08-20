@@ -6,6 +6,8 @@ import type { WaitingRoomEntry } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { useWaitingRoom, WAITING_ROOM_QUERY_KEY } from '../../lib/use-waiting-room';
+import { useFormatoHora } from '../../lib/use-formato-hora';
+import { formatearHora } from '../../lib/formato-hora';
 import { AppShell } from '../../components/app-shell';
 import { StatusBadge } from '../../components/status-badge';
 import { IconSearch } from '../../components/icons';
@@ -23,6 +25,7 @@ function DashboardContent() {
   const router = useRouter();
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
+  const formatoHora = useFormatoHora();
 
   const stats = useQuery({
     queryKey: ['dashboard-stats'],
@@ -132,7 +135,9 @@ function DashboardContent() {
                 <ul className="divide-y divide-slate-100">
                   {entries.map((e) => (
                     <li key={e.appointmentId} className="flex items-center gap-4 py-3">
-                      <span className="w-14 text-sm font-mono text-slate-500">{hora(e.inicioProgramado)}</span>
+                      <span className="w-14 text-sm font-mono text-slate-500">
+                        {formatearHora(e.inicioProgramado, formatoHora)}
+                      </span>
                       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
                         {inic(e.patientNombre)}
                       </div>
@@ -273,9 +278,6 @@ function hoyLargo(): string {
     month: 'long',
     year: 'numeric',
   });
-}
-function hora(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 }
 function inic(nombre: string): string {
   return nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();

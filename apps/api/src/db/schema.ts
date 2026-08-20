@@ -64,6 +64,14 @@ export const tenants = pgTable('tenants', {
   /** Membrete para documentos impresos (ver 0024_datos_clinica.sql). */
   direccion: text('direccion'),
   telefono: text('telefono'),
+  /**
+   * Logo de la clínica para el membrete de la receta impresa (ver
+   * 0031_logo_clinica.sql). Clave de storage, NO url: se resuelve a una URL
+   * firmada de corta duración en cada lectura (ver ALMACENAMIENTO_PORT).
+   */
+  logoStorageKey: text('logo_storage_key'),
+  /** Texto libre para el pie de la receta impresa. */
+  leyendaPie: text('leyenda_pie'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -99,6 +107,11 @@ export const users = pgTable('users', {
    * `especialidad`, que es texto libre para mostrar (ver 0012_especialidad.sql).
    */
   especialidadKey: text('especialidad_key').notNull().default('general'),
+  /**
+   * '12h' | '24h' (ver 0030). Preferencia personal de cómo se muestra la
+   * hora — calendario, dashboard, sala de espera, corte de caja.
+   */
+  formatoHora: text('formato_hora').notNull().default('24h'),
   /**
    * Baja lógica (ver 0018_cuentas_equipo.sql): una cuenta inactiva no puede
    * iniciar sesión y libera su cupo del plan, pero conserva su historial —

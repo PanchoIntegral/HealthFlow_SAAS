@@ -2,19 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { opcionesEspecialidad, type EspecialidadKey } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
 import { FacturacionSeccion } from '../../components/facturacion-seccion';
+import { RecetaSeccion } from '../../components/receta-seccion';
 
 const OPCIONES = opcionesEspecialidad();
 
-type SeccionKey = 'perfil' | 'seguridad' | 'facturacion';
+type SeccionKey = 'perfil' | 'seguridad' | 'receta' | 'facturacion';
 
 const SECCIONES: { key: SeccionKey; nombre: string; descripcion: string }[] = [
   { key: 'perfil', nombre: 'Perfil profesional', descripcion: 'Cómo es tu nota y con qué datos se firma.' },
   { key: 'seguridad', nombre: 'Seguridad', descripcion: 'Tu contraseña de acceso.' },
+  { key: 'receta', nombre: 'Receta', descripcion: 'Logo y leyenda de la receta impresa.' },
   { key: 'facturacion', nombre: 'Facturación', descripcion: 'Plan, método de pago e historial de cobros.' },
 ];
 
@@ -44,7 +47,7 @@ export default function AjustesPage() {
    * un médico contratado una puerta que se le va a cerrar en la cara.
    */
   const esTitular = user.rol === 'admin';
-  const visibles = SECCIONES.filter((s) => s.key !== 'facturacion' || esTitular);
+  const visibles = SECCIONES.filter((s) => (s.key !== 'facturacion' && s.key !== 'receta') || esTitular);
   const actual = visibles.find((s) => s.key === seccion) ?? visibles[0]!;
 
   return (
@@ -93,6 +96,7 @@ export default function AjustesPage() {
 
             {actual.key === 'perfil' && <PerfilSeccion token={token} esTitular={esTitular} />}
             {actual.key === 'seguridad' && <SeguridadSeccion token={token} />}
+            {actual.key === 'receta' && <RecetaSeccion token={token} />}
             {actual.key === 'facturacion' && <FacturacionSeccion token={token} />}
           </div>
         </div>
@@ -115,6 +119,7 @@ function Tarjeta({ children }: { children: React.ReactNode }) {
 // ── Perfil ────────────────────────────────────────────────────────
 
 function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean }) {
+  const qc = useQueryClient();
   const [especialidadKey, setEspecialidadKey] = useState<EspecialidadKey>('general');
   const [especialidad, setEspecialidad] = useState('');
   const [cedula, setCedula] = useState('');
@@ -122,6 +127,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
   const [cedulaGuardada, setCedulaGuardada] = useState<string | null>(null);
   const [cedulaEspecialidad, setCedulaEspecialidad] = useState('');
   const [institucionTitulo, setInstitucionTitulo] = useState('');
+  const [formatoHora, setFormatoHora] = useState<'12h' | '24h'>('24h');
   const [rol, setRol] = useState<string>('medico');
   /**
    * Solo true si el perfil se leyó BIEN. `loading` no basta: baja a false
@@ -144,6 +150,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
         setCedulaGuardada(profile.cedulaProfesional);
         setCedulaEspecialidad(profile.cedulaEspecialidad ?? '');
         setInstitucionTitulo(profile.institucionTitulo ?? '');
+        setFormatoHora(profile.formatoHora);
         setRol(profile.rol);
         setPerfilCargado(true);
       })
@@ -166,8 +173,13 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
         cedulaProfesional: cedula.trim(),
         cedulaEspecialidad: cedulaEspecialidad.trim(),
         institucionTitulo: institucionTitulo.trim(),
+        formatoHora,
       });
       setCedulaGuardada(perfil.cedulaProfesional);
+      // El resto de la app (calendario, dashboard, sala de espera, caja) lee
+      // el formato de hora de esta misma query — invalidarla es lo que hace
+      // que se vea el cambio sin recargar la página.
+      qc.invalidateQueries({ queryKey: ['mi-perfil'] });
       setGuardado(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Error de conexión');
@@ -277,6 +289,23 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
             />
             <span className="mt-1 block text-xs text-slate-400">
               Texto libre: es solo lo que se muestra en el selector de agenda.
+            </span>
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">Formato de hora</span>
+            <select
+              value={formatoHora}
+              onChange={(e) => setFormatoHora(e.target.value as '12h' | '24h')}
+              disabled={loading}
+              className={CAMPO}
+            >
+              <option value="24h">24 horas (14:30)</option>
+              <option value="12h">12 horas (2:30 p.m.)</option>
+            </select>
+            <span className="mt-1 block text-xs text-slate-400">
+              Cómo ves la hora en el calendario, el dashboard, la sala de espera y la caja. Es
+              personal: no afecta a tus compañeros.
             </span>
           </label>
 

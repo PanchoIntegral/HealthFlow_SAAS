@@ -10,4 +10,10 @@ export class ActualizarDatosClinicaDto {
   @IsString()
   @MaxLength(40)
   telefono?: string;
+
+  /** Texto libre para el pie de la receta impresa. Cadena vacía = borrar. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  leyendaPie?: string;
 }

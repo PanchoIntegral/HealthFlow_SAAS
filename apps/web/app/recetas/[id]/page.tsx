@@ -98,39 +98,49 @@ function HojaReceta({ receta }: { receta: RecetaDetalle }) {
         </div>
       )}
 
-      <header className="mb-6 border-b border-slate-300 pb-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Receta médica</p>
-        <h1 className="mt-1 text-xl font-bold">{emisor.nombreClinica}</h1>
-        {/* Se omite la línea entera si faltan los datos, en vez de imprimir
-            "—": un membrete con guiones se ve como un documento a medias. */}
-        {(emisor.domicilioEstablecimiento || emisor.telefonoClinica) && (
-          <p className="mt-0.5 text-xs text-slate-500">
-            {[
-              emisor.domicilioEstablecimiento,
-              emisor.telefonoClinica ? `Tel: ${emisor.telefonoClinica}` : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
+      <header className="mb-6 flex gap-4 border-b border-slate-300 pb-4">
+        {emisor.logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={emisor.logoUrl}
+            alt=""
+            className="h-16 w-16 shrink-0 object-contain print:h-14 print:w-14"
+          />
         )}
-
-        <div className="mt-3 flex items-end justify-between gap-6">
-          <div>
-            <p className="font-semibold text-slate-800">{emisor.medicoNombre}</p>
-            {emisor.especialidad && (
-              <p className="text-xs text-slate-500">{emisor.especialidad}</p>
-            )}
-            {/* Los tres datos que exige el art. 64 del RIS, juntos. */}
-            <p className="mt-0.5 text-xs text-slate-600">
-              Céd. prof. {emisor.cedulaProfesional}
-              {emisor.cedulaEspecialidad ? ` · Céd. esp. ${emisor.cedulaEspecialidad}` : ''}
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Receta médica</p>
+          <h1 className="mt-1 text-xl font-bold">{emisor.nombreClinica}</h1>
+          {/* Se omite la línea entera si faltan los datos, en vez de imprimir
+              "—": un membrete con guiones se ve como un documento a medias. */}
+          {(emisor.domicilioEstablecimiento || emisor.telefonoClinica) && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              {[
+                emisor.domicilioEstablecimiento,
+                emisor.telefonoClinica ? `Tel: ${emisor.telefonoClinica}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
-            <p className="text-xs text-slate-600">{emisor.institucionTitulo}</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Folio</p>
-            <p className="font-mono font-semibold text-slate-800">{receta.folio}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{fecha(receta.createdAt)}</p>
+          )}
+
+          <div className="mt-3 flex items-end justify-between gap-6">
+            <div>
+              <p className="font-semibold text-slate-800">{emisor.medicoNombre}</p>
+              {emisor.especialidad && (
+                <p className="text-xs text-slate-500">{emisor.especialidad}</p>
+              )}
+              {/* Los tres datos que exige el art. 64 del RIS, juntos. */}
+              <p className="mt-0.5 text-xs text-slate-600">
+                Céd. prof. {emisor.cedulaProfesional}
+                {emisor.cedulaEspecialidad ? ` · Céd. esp. ${emisor.cedulaEspecialidad}` : ''}
+              </p>
+              <p className="text-xs text-slate-600">{emisor.institucionTitulo}</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Folio</p>
+              <p className="font-mono font-semibold text-slate-800">{receta.folio}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{fecha(receta.createdAt)}</p>
+            </div>
           </div>
         </div>
       </header>
@@ -205,6 +215,11 @@ function HojaReceta({ receta }: { receta: RecetaDetalle }) {
         <div className="mx-auto w-72 border-t border-slate-400 pt-1 text-center text-xs text-slate-500">
           Firma autógrafa del médico
         </div>
+        {emisor.leyendaPie && (
+          <p className="mt-8 whitespace-pre-line text-center text-xs text-slate-400">
+            {emisor.leyendaPie}
+          </p>
+        )}
       </footer>
     </article>
   );

@@ -204,7 +204,8 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
   ): Promise<ClinicalRecordView | null> {
     const recordRes = await tx.execute(sql`
       SELECT cr.id AS record_id, cr.patient_id, cr.abierto_en, p.nombre AS patient_nombre,
-             p.sin_alergias_conocidas, p.alergias, p.antecedentes, p.sexo, p.telefono
+             p.sin_alergias_conocidas, p.alergias, p.antecedentes, p.sexo, p.telefono,
+             p.fecha_nacimiento
         FROM clinical_records cr
         JOIN patients p ON p.id = cr.patient_id
        WHERE cr.patient_id = ${patientId}
@@ -217,6 +218,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         abierto_en: Date;
         patient_nombre: string;
         telefono: string | null;
+        fecha_nacimiento: string;
         sin_alergias_conocidas: boolean;
         sexo: SexoPaciente | null;
         alergias: Alergia[] | null;
@@ -268,6 +270,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       patientId: record.patient_id,
       patientNombre: record.patient_nombre,
       patientTelefono: record.telefono,
+      patientFechaNacimiento: record.fecha_nacimiento,
       abiertoEn: new Date(record.abierto_en).toISOString(),
       nextCursor: hayMas && ultima ? codificarCursor(ultima) : null,
       totalNotas,

@@ -15,6 +15,9 @@ export interface ContextoEmision {
   nombreClinica: string;
   direccionClinica: string | null;
   telefonoClinica: string | null;
+  /** Clave de storage, NO url — se congela así en el snapshot (ver EmisorReceta). */
+  logoStorageKey: string | null;
+  leyendaPie: string | null;
   pacienteNombre: string;
   pacienteFechaNacimiento: string;
   pacienteSexo: SexoPaciente | null;

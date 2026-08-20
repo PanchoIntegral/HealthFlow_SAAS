@@ -27,11 +27,13 @@ export function FichaPaciente({
   patientId,
   nombre,
   telefono,
+  fechaNacimiento,
 }: {
   token: string;
   patientId: string;
   nombre: string;
   telefono: string | null;
+  fechaNacimiento: string;
 }) {
   const [editando, setEditando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
@@ -63,6 +65,7 @@ export function FichaPaciente({
           patientId={patientId}
           nombre={nombre}
           telefono={telefono}
+          fechaNacimiento={fechaNacimiento}
           onClose={() => setEditando(false)}
         />
       )}
@@ -84,26 +87,36 @@ function EditarDatosModal({
   patientId,
   nombre,
   telefono,
+  fechaNacimiento,
   onClose,
 }: {
   token: string;
   patientId: string;
   nombre: string;
   telefono: string | null;
+  fechaNacimiento: string;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [n, setN] = useState(nombre);
   const [t, setT] = useState(telefono ?? '');
+  const [f, setF] = useState(fechaNacimiento);
 
   const guardar = useMutation({
-    mutationFn: () => api.updatePatient(token, patientId, { nombre: n.trim(), telefono: t.trim() }),
+    mutationFn: () =>
+      api.updatePatient(token, patientId, {
+        nombre: n.trim(),
+        telefono: t.trim(),
+        fechaNacimiento: f,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clinical-record', patientId] });
       qc.invalidateQueries({ queryKey: ['patients'] });
       onClose();
     },
   });
+
+  const hoy = new Date().toISOString().slice(0, 10);
 
   return (
     <Modal titulo="Corregir datos del paciente" onClose={onClose}>
@@ -112,7 +125,7 @@ function EditarDatosModal({
         <input value={n} onChange={(e) => setN(e.target.value)} maxLength={160} className={CAMPO} />
       </label>
 
-      <label className="mb-4 block text-sm">
+      <label className="mb-3 block text-sm">
         <span className="mb-1 block font-medium text-slate-600">Teléfono</span>
         <input
           value={t}
@@ -124,14 +137,28 @@ function EditarDatosModal({
         <span className="mt-1 block text-xs text-slate-400">Déjalo vacío para borrarlo.</span>
       </label>
 
+      <label className="mb-4 block text-sm">
+        <span className="mb-1 block font-medium text-slate-600">Fecha de nacimiento</span>
+        <input
+          type="date"
+          value={f}
+          max={hoy}
+          onChange={(e) => setF(e.target.value)}
+          className={CAMPO}
+        />
+      </label>
+
       {/* Se avisa explícitamente porque es contraintuitivo: el usuario espera
-          que corregir el nombre arregle TODO, y en las recetas ya emitidas no
+          que corregir estos datos arregle TODO, y en las recetas ya emitidas no
           lo hace — su contenido es un snapshot congelado a propósito, para que
-          la reimpresión coincida con el papel que se entregó. */}
+          la reimpresión coincida con el papel que se entregó. La fecha de
+          nacimiento pesa más que el nombre aquí: cambia la EDAD, y una receta
+          ya impresa se queda con la edad anterior. */}
       <p className="mb-4 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
-        Las recetas y documentos ya emitidos conservan el nombre con el que se
-        imprimieron: son copias de lo que se entregó al paciente y no se
-        reescriben. La corrección aplica de aquí en adelante.
+        Las recetas y documentos ya emitidos conservan el nombre y la edad con
+        los que se imprimieron: son copias de lo que se entregó al paciente y
+        no se reescriben. La corrección aplica de aquí en adelante, incluida la
+        edad en las próximas recetas.
       </p>
 
       {guardar.error && (
@@ -150,7 +177,7 @@ function EditarDatosModal({
         </button>
         <button
           type="button"
-          disabled={n.trim().length < 2 || guardar.isPending}
+          disabled={n.trim().length < 2 || !f || guardar.isPending}
           onClick={() => guardar.mutate()}
           className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >

@@ -24,10 +24,15 @@ import type {
   TurnoCajaResumen,
   TurnoCajaView,
   ChangePasswordRequest,
+  ConfirmLogoRequest,
   ConfirmRadiografiaRequest,
   CrearCuentaRequest,
   CuentasResumen,
   CuentaView,
+  DatosClinicaView,
+  LogoClinicaView,
+  RequestLogoUploadUrlRequest,
+  RequestLogoUploadUrlResponse,
   ConsentimientoView,
   CrearConsentimientoRequest,
   CrearPresupuestoRequest,
@@ -463,13 +468,33 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  /** Dirección y teléfono de la clínica, para el membrete de documentos impresos. Solo titular. */
+  /** Dirección, teléfono y leyenda de la clínica, para documentos impresos. Solo titular. */
   actualizarDatosClinica: (token: string, body: ActualizarDatosClinicaRequest) =>
     request<{ direccion: string | null; telefono: string | null }>('/cuentas/clinica', {
       method: 'PATCH',
       token,
       body: JSON.stringify(body),
     }),
+
+  /** Dirección, teléfono, logo (URL firmada) y leyenda de pie. Solo titular. */
+  obtenerDatosClinica: (token: string) => request<DatosClinicaView>('/cuentas/clinica', { token }),
+
+  requestLogoUploadUrl: (token: string, body: RequestLogoUploadUrlRequest) =>
+    request<RequestLogoUploadUrlResponse>('/cuentas/clinica/logo/upload-url', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  confirmLogo: (token: string, body: ConfirmLogoRequest) =>
+    request<LogoClinicaView>('/cuentas/clinica/logo', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  eliminarLogo: (token: string) =>
+    request<void>('/cuentas/clinica/logo', { method: 'DELETE', token }),
 
   /** Especialidad + cédula profesional (la que se estampa al firmar la nota). */
   updatePerfil: (token: string, body: UpdatePerfilRequest) =>

@@ -17,6 +17,8 @@ import { es } from 'date-fns/locale';
 import type { AppointmentStatus, AppointmentView, PatientSummary } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
+import { useFormatoHora } from '../../lib/use-formato-hora';
+import { calendarFormats, formatearHora, type FormatoHora } from '../../lib/formato-hora';
 import { AppShell } from '../../components/app-shell';
 import { STATUS_HEX, STATUS_LABEL } from '../../components/status-badge';
 
@@ -80,6 +82,8 @@ function CalendarioContent() {
   const searchParams = useSearchParams();
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
+  const formatoHora = useFormatoHora();
+  const formats = useMemo(() => calendarFormats(formatoHora), [formatoHora]);
 
   const [view, setView] = useState<View>('week');
   const [range, setRange] = useState(() => weekRange(new Date()));
@@ -159,6 +163,7 @@ function CalendarioContent() {
           <Calendar
             localizer={localizer}
             culture="es"
+            formats={formats}
             messages={MESSAGES}
             events={events}
             view={view}
@@ -206,6 +211,7 @@ function CalendarioContent() {
           appointment={selected}
           canCancel={canManage && selected.estatus === 'agendada'}
           pending={cancel.isPending}
+          formatoHora={formatoHora}
           onCancel={(motivo) => cancel.mutate({ id: selected.id, motivo })}
           onClose={() => setSelected(null)}
         />
@@ -421,17 +427,22 @@ function DetailModal({
   appointment,
   canCancel,
   pending,
+  formatoHora,
   onCancel,
   onClose,
 }: {
   appointment: AppointmentView;
   canCancel: boolean;
   pending: boolean;
+  formatoHora: FormatoHora;
   onCancel: (motivo?: string) => void;
   onClose: () => void;
 }) {
   const [motivo, setMotivo] = useState('');
   const [confirming, setConfirming] = useState(false);
+
+  const fechaHoraCita = (iso: string) =>
+    `${new Date(iso).toLocaleDateString('es-MX')}, ${formatearHora(iso, formatoHora)}`;
 
   return (
     <Modal titulo="Detalle de la cita" onClose={onClose}>
@@ -439,8 +450,8 @@ function DetailModal({
         <Row label="Paciente" value={appointment.patientNombre} />
         <Row label="Médico" value={appointment.doctorNombre} />
         <Row label="Motivo" value={appointment.motivo ?? '—'} />
-        <Row label="Inicio" value={new Date(appointment.inicioProgramado).toLocaleString('es-MX')} />
-        <Row label="Fin" value={new Date(appointment.finProgramado).toLocaleString('es-MX')} />
+        <Row label="Inicio" value={fechaHoraCita(appointment.inicioProgramado)} />
+        <Row label="Fin" value={fechaHoraCita(appointment.finProgramado)} />
         <Row label="Estatus" value={STATUS_LABEL[appointment.estatus]} />
 
         {canCancel && !confirming && (

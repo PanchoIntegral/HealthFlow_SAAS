@@ -1,13 +1,16 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 /**
- * Corrección de los datos de identificación. Ambos opcionales: es un PATCH y
+ * Corrección de los datos de identificación. Todos opcionales: es un PATCH y
  * el campo ausente conserva lo guardado.
  *
- * No admite fecha de nacimiento ni CURP a propósito. La primera cambia la edad
- * que ya quedó impresa en cada receta emitida —que es un snapshot congelado,
- * no un JOIN— y la segunda tiene control de duplicados y validación de forma
- * propios. Corregir cualquiera de esas dos es otro caso de uso, con sus reglas.
+ * `fechaNacimiento` SÍ cambia la edad ya impresa en cada receta emitida — pero
+ * no la reescribe: `recetas.contenido` es un snapshot congelado (ver 0028), así
+ * que las ya emitidas conservan la edad con la que se imprimieron. Corregir
+ * aquí solo afecta expediente y recetas futuras.
+ *
+ * No admite CURP a propósito: tiene control de duplicados y validación de
+ * forma propios, es otro caso de uso con sus reglas.
  */
 export class UpdatePatientDto {
   @IsOptional()
@@ -21,4 +24,9 @@ export class UpdatePatientDto {
   @IsString()
   @MaxLength(20)
   telefono?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'fechaNacimiento debe ser YYYY-MM-DD' })
+  fechaNacimiento?: string;
 }

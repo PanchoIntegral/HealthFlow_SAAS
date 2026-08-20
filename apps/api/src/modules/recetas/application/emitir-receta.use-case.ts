@@ -137,6 +137,11 @@ function emisorDe(c: ContextoEmision): EmisorReceta {
     nombreClinica: c.nombreClinica,
     domicilioEstablecimiento: c.direccionClinica ?? '',
     telefonoClinica: c.telefonoClinica,
+    // Se congela la CLAVE, no una URL firmada: la firmada expira en minutos y
+    // este snapshot se conserva para siempre. GetRecetaDetalleUseCase resuelve
+    // una URL fresca en cada lectura.
+    logoStorageKey: c.logoStorageKey,
+    leyendaPie: c.leyendaPie,
   };
 }
 

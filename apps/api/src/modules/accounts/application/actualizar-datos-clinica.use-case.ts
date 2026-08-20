@@ -31,9 +31,10 @@ export class ActualizarDatosClinicaUseCase {
 
       const direccion = conservar(input.direccion, anterior.direccion);
       const telefono = conservar(input.telefono, anterior.telefono);
+      const leyendaPie = conservar(input.leyendaPie, anterior.leyendaPie);
 
       await tx.execute(sql`
-        UPDATE tenants SET direccion = ${direccion}, telefono = ${telefono}
+        UPDATE tenants SET direccion = ${direccion}, telefono = ${telefono}, leyenda_pie = ${leyendaPie}
       `);
 
       await this.audit.record(tx, {
@@ -42,10 +43,11 @@ export class ActualizarDatosClinicaUseCase {
         detalle: {
           direccionCambio: anterior.direccion !== direccion,
           telefonoCambio: anterior.telefono !== telefono,
+          leyendaPieCambio: anterior.leyendaPie !== leyendaPie,
         },
       });
 
-      return { direccion, telefono };
+      return { direccion, telefono, leyendaPie, logoStorageKey: anterior.logoStorageKey };
     });
   }
 }

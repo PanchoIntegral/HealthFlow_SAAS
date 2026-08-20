@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AppointmentStatus, WaitingRoomEntry } from '@healthflow/shared-types';
+import { formatearHora, type FormatoHora } from '../lib/formato-hora';
 import { StatusBadge } from './status-badge';
 import { FacturaPanel } from './factura-panel';
 
@@ -26,10 +27,6 @@ function waitMinutes(checkinAt: string | null): number | null {
   return Math.max(0, Math.round((Date.now() - new Date(checkinAt).getTime()) / 60000));
 }
 
-function hora(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-}
-
 export function WaitingRoomCard({
   entry,
   canCheckIn,
@@ -40,6 +37,7 @@ export function WaitingRoomCard({
   pending,
   draggable = false,
   onDragStatusChange,
+  formatoHora,
 }: {
   entry: WaitingRoomEntry;
   canCheckIn: boolean;
@@ -54,6 +52,7 @@ export function WaitingRoomCard({
   draggable?: boolean;
   /** Avisa a la página qué estatus se está arrastrando (o null al soltar), para resaltar columnas válidas. */
   onDragStatusChange?: (status: AppointmentStatus | null) => void;
+  formatoHora: FormatoHora;
 }) {
   const wait = waitMinutes(entry.checkinAt);
   const urgent = wait !== null && wait >= 20;
@@ -91,7 +90,7 @@ export function WaitingRoomCard({
           <StatusBadge status={entry.estatus} />
         ) : (
           <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
-            {hora(entry.inicioProgramado)}
+            {formatearHora(entry.inicioProgramado, formatoHora)}
           </span>
         )}
       </div>

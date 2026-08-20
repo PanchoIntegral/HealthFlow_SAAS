@@ -23,6 +23,7 @@ export interface UpdatePerfilInput {
   cedulaEspecialidad: string | null;
   /** Institución que expidió el título (RIS art. 64). null = borrar. */
   institucionTitulo: string | null;
+  formatoHora: '12h' | '24h';
 }
 
 /**

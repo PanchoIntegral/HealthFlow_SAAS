@@ -53,6 +53,8 @@ export class DrizzleRecetaRepository implements RecetaRepository {
              t.nombre_clinica,
              t.direccion           AS direccion_clinica,
              t.telefono            AS telefono_clinica,
+             t.logo_storage_key,
+             t.leyenda_pie,
              p.nombre              AS paciente_nombre,
              p.fecha_nacimiento    AS paciente_fecha_nacimiento,
              p.sexo                AS paciente_sexo,
@@ -73,6 +75,8 @@ export class DrizzleRecetaRepository implements RecetaRepository {
         nombre_clinica: string;
         direccion_clinica: string | null;
         telefono_clinica: string | null;
+        logo_storage_key: string | null;
+        leyenda_pie: string | null;
         paciente_nombre: string;
         paciente_fecha_nacimiento: string;
         paciente_sexo: ContextoEmision['pacienteSexo'];
@@ -90,6 +94,8 @@ export class DrizzleRecetaRepository implements RecetaRepository {
       nombreClinica: row.nombre_clinica,
       direccionClinica: row.direccion_clinica,
       telefonoClinica: row.telefono_clinica,
+      logoStorageKey: row.logo_storage_key,
+      leyendaPie: row.leyenda_pie,
       pacienteNombre: row.paciente_nombre,
       pacienteFechaNacimiento: String(row.paciente_fecha_nacimiento),
       pacienteSexo: row.paciente_sexo,

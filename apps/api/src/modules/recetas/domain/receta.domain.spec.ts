@@ -15,6 +15,8 @@ const emisor = (over: Partial<EmisorReceta> = {}): EmisorReceta => ({
   nombreClinica: 'Clínica Norte',
   domicilioEstablecimiento: 'Av. Reforma 100, CDMX',
   telefonoClinica: '5555555555',
+  logoStorageKey: null,
+  leyendaPie: null,
   ...over,
 });
 

@@ -6,6 +6,7 @@ import type {
   ResumenCaja,
   TipoMovimientoCaja,
 } from '@healthflow/shared-types';
+import { formatearHora, type FormatoHora } from '../lib/formato-hora';
 import { pesos } from './presupuesto-panel';
 
 export const ETIQUETA_TIPO: Record<TipoMovimientoCaja, string> = {
@@ -27,15 +28,15 @@ const COLOR_TIPO: Record<TipoMovimientoCaja, string> = {
   retiro: 'bg-slate-100 text-slate-600',
 };
 
-export const hora = (iso: string) =>
-  new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+export const hora = formatearHora;
 
-export const fechaHora = (iso: string) =>
+export const fechaHora = (iso: string, formato: FormatoHora) =>
   new Date(iso).toLocaleString('es-MX', {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: formato === '12h',
   });
 
 /**
@@ -159,10 +160,12 @@ function Kpi({
 export function TablaMovimientos({
   movimientos,
   acciones,
+  formatoHora,
 }: {
   movimientos: MovimientoCajaView[];
   /** Columna de acciones por movimiento; sin ella la tabla es solo lectura. */
   acciones?: (m: MovimientoCajaView) => React.ReactNode;
+  formatoHora: FormatoHora;
 }) {
   if (movimientos.length === 0) {
     return (
@@ -193,7 +196,9 @@ export function TablaMovimientos({
               const cancelado = m.canceladoEn !== null;
               return (
                 <tr key={m.id} className={cancelado ? 'bg-slate-50/60 text-slate-400' : ''}>
-                  <td className="whitespace-nowrap px-6 py-3 text-slate-500">{hora(m.createdAt)}</td>
+                  <td className="whitespace-nowrap px-6 py-3 text-slate-500">
+                    {hora(m.createdAt, formatoHora)}
+                  </td>
                   <td className="px-6 py-3">
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs font-semibold ${

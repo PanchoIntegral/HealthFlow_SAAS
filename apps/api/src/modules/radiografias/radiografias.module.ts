@@ -35,5 +35,9 @@ const usarStorageFake =
     { provide: RADIOGRAFIA_REPOSITORY, useClass: DrizzleRadiografiaRepository },
     { provide: ALMACENAMIENTO_PORT, useClass: usarStorageFake ? FakeAlmacenamientoAdapter : R2Adapter },
   ],
+  // El logo de la clínica (módulo accounts) y el snapshot de receta (módulo
+  // recetas) reusan el MISMO storage S3-compatible que radiografías, en vez
+  // de duplicar el adaptador R2.
+  exports: [ALMACENAMIENTO_PORT],
 })
 export class RadiografiasModule {}

@@ -10,6 +10,7 @@ import type {
   TurnoCajaView,
 } from '@healthflow/shared-types';
 import { api, ApiError } from '../lib/api';
+import { useFormatoHora } from '../lib/use-formato-hora';
 import { Modal } from './modal';
 import { pesos } from './presupuesto-panel';
 import { CorteResumen, ETIQUETA_METODO, ETIQUETA_TIPO, TablaMovimientos } from './caja-corte';
@@ -627,6 +628,7 @@ export function CorteModal({
     queryKey: ['corte-caja', turnoId],
     queryFn: () => api.corteDeCaja(token, turnoId),
   });
+  const formatoHora = useFormatoHora();
 
   return (
     <Modal
@@ -649,7 +651,7 @@ export function CorteModal({
               {corte.data.notasCierre}
             </p>
           )}
-          <TablaMovimientos movimientos={corte.data.movimientos} />
+          <TablaMovimientos movimientos={corte.data.movimientos} formatoHora={formatoHora} />
         </div>
       )}
     </Modal>

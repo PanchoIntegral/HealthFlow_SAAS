@@ -49,4 +49,9 @@ export class UpdatePerfilDto {
   @IsString()
   @MaxLength(200)
   institucionTitulo?: string;
+
+  /** '12h' o '24h'. Siempre se manda desde el <select> de Ajustes. */
+  @IsOptional()
+  @IsIn(['12h', '24h'])
+  formatoHora?: '12h' | '24h';
 }

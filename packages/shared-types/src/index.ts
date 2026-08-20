@@ -575,6 +575,12 @@ export interface UpdatePatientRequest {
   nombre?: string;
   /** Cadena vacía = borrar el teléfono guardado, igual que las cédulas. */
   telefono?: string;
+  /**
+   * YYYY-MM-DD. Las recetas ya emitidas conservan la edad con la que se
+   * imprimieron (snapshot congelado, ver 0028) — esto solo afecta el
+   * expediente y las recetas futuras.
+   */
+  fechaNacimiento?: string;
 }
 
 /**
@@ -718,6 +724,13 @@ export interface UserProfile {
    * nota, de modo que no participa en esa validación.
    */
   institucionTitulo: string | null;
+  /**
+   * '12h' (con AM/PM) o '24h'. Preferencia PERSONAL de cómo se muestra la hora
+   * en el calendario, el dashboard, la sala de espera y el corte de caja —
+   * distinta de `especialidadKey`: no afecta a nadie más que a quien la elige.
+   * Default '24h' para cuentas nuevas.
+   */
+  formatoHora: '12h' | '24h';
   /**
    * Si la clínica tiene contratado el asistente de transcripción con IA. Viaja
    * con el perfil —y no en una petición aparte— porque la pantalla de consulta
@@ -864,6 +877,8 @@ export interface UpdatePerfilRequest {
   cedulaEspecialidad?: string;
   /** RIS art. 64. Cadena vacía = borrar el dato guardado, igual que las cédulas. */
   institucionTitulo?: string;
+  /** '12h' o '24h'. Siempre se manda: no tiene semántica de "borrar". */
+  formatoHora?: '12h' | '24h';
 }
 
 /** @deprecated Usa UpdatePerfilRequest — mismo cuerpo, más la cédula. */
@@ -878,6 +893,42 @@ export type UpdateEspecialidadRequest = UpdatePerfilRequest;
 export interface ActualizarDatosClinicaRequest {
   direccion?: string;
   telefono?: string;
+  /** Texto libre para el pie de la receta impresa. Cadena vacía = borrar. */
+  leyendaPie?: string;
+}
+
+/** Tipos MIME aceptados para el logo de la clínica (mismo criterio que radiografías). */
+export const MIME_TYPES_LOGO_CLINICA = ['image/jpeg', 'image/png'] as const;
+export type MimeTypeLogoClinica = (typeof MIME_TYPES_LOGO_CLINICA)[number];
+
+export interface RequestLogoUploadUrlRequest {
+  mimeType: MimeTypeLogoClinica;
+}
+
+/** Misma forma que RequestUploadUrlResponse (radiografías): política de subida directa a storage. */
+export interface RequestLogoUploadUrlResponse {
+  uploadUrl: string;
+  fields: Record<string, string>;
+  storageKey: string;
+}
+
+export interface ConfirmLogoRequest {
+  storageKey: string;
+  mimeType: MimeTypeLogoClinica;
+}
+
+export interface LogoClinicaView {
+  /** URL firmada de corta duración, lista para <img src>. */
+  url: string;
+}
+
+/** GET /cuentas/clinica — lo que pinta Ajustes → Receta. */
+export interface DatosClinicaView {
+  direccion: string | null;
+  telefono: string | null;
+  leyendaPie: string | null;
+  /** URL firmada, resuelta en esta petición. null = la clínica no tiene logo. */
+  logoUrl: string | null;
 }
 
 // ── Suscripciones (Stripe) / onboarding self-serve ────────────────
@@ -1557,6 +1608,8 @@ export interface ClinicalRecordView {
   patientNombre: string;
   /** Viaja con el expediente para poder corregirlo sin una petición aparte. */
   patientTelefono: string | null;
+  /** YYYY-MM-DD. Viaja con el expediente por el mismo motivo que el teléfono. */
+  patientFechaNacimiento: string;
   abiertoEn: string;
   /** Una PÁGINA de notas, de la más reciente a la más antigua. */
   notas: ClinicalNoteView[];
@@ -3113,6 +3166,17 @@ export interface EmisorReceta {
   /** RIS art. 64: domicilio del establecimiento. */
   domicilioEstablecimiento: string;
   telefonoClinica: string | null;
+  /**
+   * Clave estable en storage (no URL): la firmada expira en minutos, pero
+   * este snapshot se conserva para siempre. `GetRecetaDetalleUseCase` la
+   * resuelve a `logoUrl` en cada lectura. null = la clínica no tenía logo al
+   * emitir esta receta.
+   */
+  logoStorageKey: string | null;
+  /** Solo se llena al LEER (nunca se guarda en el snapshot). */
+  logoUrl?: string;
+  /** Texto libre para el pie de la receta impresa. null = sin leyenda. */
+  leyendaPie: string | null;
 }
 
 /**

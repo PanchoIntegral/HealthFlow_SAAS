@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MovimientoCajaView, TurnoCajaView } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
+import { useFormatoHora } from '../../lib/use-formato-hora';
 import { AppShell } from '../../components/app-shell';
 import { pesos } from '../../components/presupuesto-panel';
 import { CorteResumen, TablaMovimientos, fechaHora, hora } from '../../components/caja-corte';
@@ -30,6 +31,7 @@ export default function CajaPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { token, user, ready } = useAuth();
+  const formatoHora = useFormatoHora();
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -80,7 +82,7 @@ export default function CajaPage() {
                 banner aparte: es contexto del encabezado, no un aviso. */}
             <p className="text-sm text-slate-500">
               {turno
-                ? `Abierta desde las ${hora(turno.abiertaEn)} por ${turno.abiertaPorNombre}.`
+                ? `Abierta desde las ${hora(turno.abiertaEn, formatoHora)} por ${turno.abiertaPorNombre}.`
                 : 'El dinero que entra y sale del consultorio hoy, y el corte al cerrar el día.'}
             </p>
           </div>
@@ -132,6 +134,7 @@ export default function CajaPage() {
               </h2>
               <TablaMovimientos
                 movimientos={turno.movimientos}
+                formatoHora={formatoHora}
                 acciones={(m) => (
                   <div className="flex justify-end gap-3">
                     <button
@@ -186,9 +189,9 @@ export default function CajaPage() {
                       return (
                         <tr key={c.id} className="hover:bg-slate-50">
                           <td className="whitespace-nowrap px-6 py-3">
-                            {fechaHora(c.abiertaEn)}
+                            {fechaHora(c.abiertaEn, formatoHora)}
                             {c.cerradaEn && (
-                              <span className="text-slate-400"> → {hora(c.cerradaEn)}</span>
+                              <span className="text-slate-400"> → {hora(c.cerradaEn, formatoHora)}</span>
                             )}
                           </td>
                           <td className="px-6 py-3 text-slate-500">

@@ -129,6 +129,7 @@ function ExpedientePageInner({ patientId }: { patientId: string }) {
                 patientId={patientId}
                 nombre={expediente.patientNombre}
                 telefono={expediente.patientTelefono}
+                fechaNacimiento={expediente.patientFechaNacimiento}
               />
             </div>
 

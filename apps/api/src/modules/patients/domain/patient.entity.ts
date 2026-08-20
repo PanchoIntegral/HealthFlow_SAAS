@@ -95,7 +95,11 @@ function normalizeCurp(curp: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-function normalizeBirthDate(value: string): string {
+/**
+ * Formato YYYY-MM-DD y no futura. Se usa al dar de alta y al corregir
+ * (ActualizarPacienteUseCase) — misma regla, un solo lugar.
+ */
+export function normalizeBirthDate(value: string): string {
   const trimmed = value?.trim();
   if (!trimmed || !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     throw new InvalidBirthDateError(value);

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../../common/audit/audit.module';
+import { RadiografiasModule } from '../radiografias/radiografias.module';
 import { CaslAbilityFactory } from '../auth/casl/ability.factory';
 import { PoliciesGuard } from '../auth/casl/policies.guard';
 import { RECETA_REPOSITORY } from './domain/receta.repository';
@@ -11,8 +12,10 @@ import { CancelarRecetaUseCase } from './application/cancelar-receta.use-case';
 import { DrizzleRecetaRepository } from './infrastructure/receta.drizzle-repo';
 import { RecetasController } from './infrastructure/recetas.controller';
 
+/** Importa RadiografiasModule por su ALMACENAMIENTO_PORT: resolver la URL del
+ * logo de la clínica al leer una receta reusa el mismo storage. */
 @Module({
-  imports: [AuthModule, AuditModule],
+  imports: [AuthModule, AuditModule, RadiografiasModule],
   controllers: [RecetasController],
   providers: [
     EmitirRecetaUseCase,

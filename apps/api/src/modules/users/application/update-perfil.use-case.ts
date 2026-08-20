@@ -53,6 +53,8 @@ export class UpdatePerfilUseCase {
         cedulaProfesional: conservar(input.cedulaProfesional, anterior.cedulaProfesional),
         cedulaEspecialidad: conservar(input.cedulaEspecialidad, anterior.cedulaEspecialidad),
         institucionTitulo: conservar(input.institucionTitulo, anterior.institucionTitulo),
+        // Sin semántica de "borrar" — siempre viene del <select> de Ajustes.
+        formatoHora: input.formatoHora ?? anterior.formatoHora,
       });
       if (!actualizado) throw new NotFoundException('Usuario no encontrado');
 
