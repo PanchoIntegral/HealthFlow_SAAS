@@ -119,25 +119,51 @@ body {
   border: none;
   border-radius: 8px;
   padding: 3px 6px;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06), inset 0 0 0 1px rgb(15 23 42 / 0.06);
+  align-items: stretch;
+}
+
+/* Selector de 3 clases a propósito: el CSS de react-big-calendar trae su propio
+   `.rbc-day-slot .rbc-event { min-height: 20px }` con la misma especificidad que
+   `.hf-calendar .rbc-event` y se carga después, así que ganaba él y una cita de
+   15 min quedaba en 20px — sin alto para su única línea de texto. */
+.hf-calendar .rbc-day-slot .rbc-event {
+  border: none;
+  min-height: 26px;
 }
 
 .hf-calendar .rbc-event:focus {
   outline: none;
 }
 
+.hf-calendar .rbc-event:hover {
+  box-shadow: 0 4px 10px rgb(15 23 42 / 0.14), inset 0 0 0 1px rgb(15 23 42 / 0.08);
+}
+
+/* La tarjeta flotante de la cita (ver AppointmentEvent) se sale del alto del chip;
+   sin esto el overflow:hidden por defecto de RBC la recorta apenas se muestra. */
+.hf-calendar .rbc-event:hover,
+.hf-calendar .rbc-event:focus-within {
+  overflow: visible;
+  z-index: 20;
+}
+
 .hf-calendar .rbc-event.rbc-selected {
   box-shadow: 0 0 0 2px rgb(37 99 235 / 0.45);
 }
 
+/* La hora ya la dibuja nuestro AppointmentEvent; la etiqueta nativa de RBC solo duplicaría el texto. */
 .hf-calendar .rbc-event-label {
-  font-size: 0.68rem;
-  opacity: 0.85;
+  display: none;
 }
 
 .hf-calendar .rbc-event-content {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
   font-size: 0.75rem;
   font-weight: 500;
+  overflow: visible;
 }
 
 .hf-calendar .rbc-slot-selection {

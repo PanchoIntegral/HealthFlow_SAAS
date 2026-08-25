@@ -8,6 +8,20 @@ import type { Tx } from '../../../db/drizzle';
 import type { Patient } from './patient.entity';
 
 /**
+ * Posición dentro del listado, que va ordenado por `(nombre, id)`. Se pagina por
+ * keyset y no por OFFSET: con OFFSET la base tiene que recorrer y descartar las
+ * filas anteriores, así que cada página cuesta más que la anterior; comparando
+ * contra la última clave entregada, la página 20 cuesta lo mismo que la 1.
+ *
+ * El `id` no es decorativo: sin él el orden no es total y dos pacientes
+ * homónimos harían que la página siguiente repitiera o saltara filas.
+ */
+export interface PatientCursor {
+  nombre: string;
+  id: string;
+}
+
+/**
  * Puerto del repositorio de pacientes. Todos los métodos reciben la transacción
  * con el tenant fijado, por lo que RLS garantiza el aislamiento por clínica.
  */
@@ -21,11 +35,17 @@ export interface PatientRepository {
   /** Total de pacientes de la clínica — lo que consume el cupo del plan. */
   contarTodos(tx: Tx): Promise<number>;
 
-  /** Búsqueda por nombre o CURP (prefijo, case-insensitive). Limitada. */
-  search(tx: Tx, query: string, limit: number): Promise<PatientSummary[]>;
+  /** Cuántos pacientes coinciden con la búsqueda, ignorando la paginación. */
+  contarCoincidencias(tx: Tx, query: string): Promise<number>;
 
-  /** Directorio completo del tenant, ordenado por nombre. Limitado. */
-  list(tx: Tx, limit: number): Promise<PatientSummary[]>;
+  /**
+   * Búsqueda por nombre o CURP (prefijo, case-insensitive), una página.
+   * `desde` es el último `(nombre, id)` ya entregado; null empieza por el principio.
+   */
+  search(tx: Tx, query: string, limit: number, desde: PatientCursor | null): Promise<PatientSummary[]>;
+
+  /** Directorio del tenant ordenado por nombre, una página. Ver `search` para `desde`. */
+  list(tx: Tx, limit: number, desde: PatientCursor | null): Promise<PatientSummary[]>;
 
   /**
    * Reemplaza alergias y antecedentes. Devuelve el historial guardado, o null

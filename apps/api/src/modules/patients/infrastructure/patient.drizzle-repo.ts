@@ -12,7 +12,7 @@ import {
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import { Patient } from '../domain/patient.entity';
-import type { PatientRepository } from '../domain/patient.repository';
+import type { PatientCursor, PatientRepository } from '../domain/patient.repository';
 
 interface PatientRow {
   id: string;
@@ -21,6 +21,18 @@ interface PatientRow {
   sexo: SexoPaciente | null;
   curp: string | null;
   telefono: string | null;
+}
+
+/**
+ * Predicado keyset: "estrictamente después de `desde`" en el orden (nombre, id).
+ * Se escribe como comparación de tuplas —y no como `nombre > x OR (nombre = x
+ * AND id > y)`— porque así Postgres puede recorrer el índice compuesto
+ * directamente desde esa posición.
+ */
+function despuesDe(desde: PatientCursor | null) {
+  return desde
+    ? sql`AND (nombre, id) > (${desde.nombre}, ${desde.id}::uuid)`
+    : sql``;
 }
 
 /**
@@ -59,8 +71,29 @@ export class DrizzlePatientRepository implements PatientRepository {
     return (result.rows as unknown as { total: number }[])[0]?.total ?? 0;
   }
 
-  async search(tx: Tx, query: string, limit: number): Promise<PatientSummary[]> {
+  async contarCoincidencias(tx: Tx, query: string): Promise<number> {
     const like = `${query.toLowerCase()}%`;
+    const result = await tx.execute(sql`
+      SELECT count(*)::int AS total
+        FROM (
+          SELECT id FROM patients
+           WHERE lower(nombre) LIKE ${like} AND archivado_en IS NULL
+          UNION
+          SELECT id FROM patients
+           WHERE lower(curp) LIKE ${like} AND archivado_en IS NULL
+        ) coincidencias
+    `);
+    return Number((result.rows[0] as { total: number }).total);
+  }
+
+  async search(
+    tx: Tx,
+    query: string,
+    limit: number,
+    desde: PatientCursor | null,
+  ): Promise<PatientSummary[]> {
+    const like = `${query.toLowerCase()}%`;
+    const corte = despuesDe(desde);
     // Dos ramas UNION en vez de un OR: con `A LIKE … OR B LIKE …` el
     // planificador casi nunca usa índice (tendría que combinar dos índices
     // distintos sobre la misma tabla) y acaba en seq scan. Separadas, cada
@@ -80,8 +113,8 @@ export class DrizzlePatientRepository implements PatientRepository {
                   curp,
                   telefono
              FROM patients
-            WHERE lower(nombre) LIKE ${like} AND archivado_en IS NULL
-            ORDER BY nombre ASC
+            WHERE lower(nombre) LIKE ${like} AND archivado_en IS NULL ${corte}
+            ORDER BY nombre ASC, id ASC
             LIMIT ${limit})
           UNION
           (SELECT id,
@@ -91,11 +124,11 @@ export class DrizzlePatientRepository implements PatientRepository {
                   curp,
                   telefono
              FROM patients
-            WHERE lower(curp) LIKE ${like} AND archivado_en IS NULL
-            ORDER BY nombre ASC
+            WHERE lower(curp) LIKE ${like} AND archivado_en IS NULL ${corte}
+            ORDER BY nombre ASC, id ASC
             LIMIT ${limit})
         ) coincidencias
-       ORDER BY nombre ASC
+       ORDER BY nombre ASC, id ASC
        LIMIT ${limit}
     `);
     return (result.rows as unknown as PatientRow[]).map((r) => ({
@@ -108,7 +141,7 @@ export class DrizzlePatientRepository implements PatientRepository {
     }));
   }
 
-  async list(tx: Tx, limit: number): Promise<PatientSummary[]> {
+  async list(tx: Tx, limit: number, desde: PatientCursor | null): Promise<PatientSummary[]> {
     const result = await tx.execute(sql`
       SELECT id,
              nombre,
@@ -117,8 +150,8 @@ export class DrizzlePatientRepository implements PatientRepository {
              curp,
              telefono
         FROM patients
-       WHERE archivado_en IS NULL
-       ORDER BY nombre ASC
+       WHERE archivado_en IS NULL ${despuesDe(desde)}
+       ORDER BY nombre ASC, id ASC
        LIMIT ${limit}
     `);
     return (result.rows as unknown as PatientRow[]).map((r) => ({

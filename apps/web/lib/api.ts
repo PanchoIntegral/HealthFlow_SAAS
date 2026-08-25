@@ -52,6 +52,7 @@ import type {
   OrdenPlantillasContent,
   OrdenPlantillasDetalle,
   OrdenPlantillasView,
+  PatientDirectoryPage,
   PatientSummary,
   ReportsStats,
   StartConsultationResponse,
@@ -200,8 +201,16 @@ export const api = {
       token,
     }),
 
-  searchPatients: (token: string, q: string) =>
-    request<PatientSummary[]>(`/patients?q=${encodeURIComponent(q)}`, { token }),
+  /**
+   * Una página del directorio/buscador. `cursor` sale del `nextCursor` de la
+   * respuesta anterior; omitirlo pide la primera.
+   */
+  searchPatients: (token: string, q: string, cursor?: string | null, limit?: number) => {
+    const params = new URLSearchParams({ q });
+    if (cursor) params.set('cursor', cursor);
+    if (limit !== undefined) params.set('limit', String(limit));
+    return request<PatientDirectoryPage>(`/patients?${params}`, { token });
+  },
 
   updatePatient: (token: string, id: string, body: UpdatePatientRequest) =>
     request<PatientSummary>(`/patients/${id}`, {

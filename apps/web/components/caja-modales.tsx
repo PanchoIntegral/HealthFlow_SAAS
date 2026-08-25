@@ -341,10 +341,13 @@ function LigarPaciente({
     return () => clearTimeout(t);
   }, [q]);
 
+  // Selector, no listado: basta la primera página; afinar el texto es más
+  // rápido que paginar dentro de un desplegable.
   const busqueda = useQuery({
     queryKey: ['pacientes-buscar', debounced],
-    queryFn: () => api.searchPatients(token, debounced),
+    queryFn: () => api.searchPatients(token, debounced, null, 10),
     enabled: !paciente && q.trim().length > 0,
+    select: (page) => page.pacientes,
   });
 
   const presupuestos = useQuery({

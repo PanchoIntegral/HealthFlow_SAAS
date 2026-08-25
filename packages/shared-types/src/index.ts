@@ -617,6 +617,23 @@ export interface PatientSummary {
   telefono: string | null;
 }
 
+/** Una PÁGINA del directorio/buscador de pacientes (GET /patients). */
+export interface PatientDirectoryPage {
+  pacientes: PatientSummary[];
+  /**
+   * Cursor opaco para pedir la página siguiente; null cuando ya no hay más.
+   * No lo interpretes en el cliente: su formato es un detalle del servidor.
+   */
+  nextCursor: string | null;
+  /**
+   * Total de pacientes que cumplen el criterio, independiente de la paginación.
+   *
+   * Existe porque la cabecera dice "N pacientes en el directorio": mostrar ahí
+   * el largo de la página anunciaría una clínica de 300 pacientes como de 25.
+   */
+  total: number;
+}
+
 export interface Appointment {
   id: string;
   tenantId: string;

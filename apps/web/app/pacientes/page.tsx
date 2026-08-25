@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ETIQUETAS_SEXO,
   SEXOS_PACIENTE,
@@ -13,6 +13,9 @@ import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
 import { IconPhone, IconRecords, IconSearch } from '../../components/icons';
+
+/** Pacientes por página. El backend lo acota a 100 como máximo. */
+const TAMANO_PAGINA = 25;
 
 const AVATAR_COLORS = [
   'bg-blue-100 text-blue-700',
@@ -51,12 +54,18 @@ export default function PacientesPage() {
     return () => clearTimeout(t);
   }, [query]);
 
-  // Sin búsqueda el API devuelve el directorio completo del consultorio.
-  const results = useQuery({
+  // Paginado por cursor: la primera carga trae una página, no el directorio
+  // entero. Cambiar la búsqueda reinicia la paginación (va en la queryKey).
+  const results = useInfiniteQuery({
     queryKey: ['patients', debounced],
-    queryFn: () => api.searchPatients(token!, debounced),
+    queryFn: ({ pageParam }) => api.searchPatients(token!, debounced, pageParam, TAMANO_PAGINA),
+    initialPageParam: null as string | null,
+    getNextPageParam: (ultima) => ultima.nextCursor,
     enabled: !!token,
   });
+
+  const pacientes = results.data?.pages.flatMap((p) => p.pacientes) ?? [];
+  const total = results.data?.pages[0]?.total ?? 0;
 
   if (!ready || !token || !user) return null;
 
@@ -69,9 +78,11 @@ export default function PacientesPage() {
           <div>
             <h1 className="text-xl font-bold">Expedientes</h1>
             <p className="text-sm text-slate-500">
-              {results.data
-                ? `${results.data.length} paciente${results.data.length === 1 ? '' : 's'} en el directorio`
-                : 'Directorio de pacientes de la clínica'}
+              {!results.data
+                ? 'Directorio de pacientes de la clínica'
+                : debounced.trim().length >= 2
+                  ? `${total} resultado${total === 1 ? '' : 's'} para “${debounced.trim()}”`
+                  : `${total} paciente${total === 1 ? '' : 's'} en el directorio`}
             </p>
           </div>
           {canCreate && (
@@ -109,9 +120,10 @@ export default function PacientesPage() {
 
           {results.isLoading ? (
             <p className="py-12 text-center text-sm text-slate-400">Cargando pacientes…</p>
-          ) : results.data && results.data.length > 0 ? (
+          ) : pacientes.length > 0 ? (
+            <>
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              {results.data.map((p) => (
+              {pacientes.map((p) => (
                 <li key={p.id}>
                   <button
                     onClick={() => router.push(`/pacientes/${p.id}`)}
@@ -149,6 +161,23 @@ export default function PacientesPage() {
                 </li>
               ))}
             </ul>
+
+            {results.hasNextPage && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  onClick={() => results.fetchNextPage()}
+                  disabled={results.isFetchingNextPage}
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-brand-blue shadow-sm transition hover:border-brand-blue disabled:opacity-50"
+                >
+                  {results.isFetchingNextPage ? 'Cargando…' : 'Cargar más pacientes'}
+                </button>
+              </div>
+            )}
+
+            <p className="mt-3 text-center text-xs text-slate-400">
+              Mostrando {pacientes.length} de {total}
+            </p>
+            </>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-14 text-center">
               <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-slate-100 text-slate-400">

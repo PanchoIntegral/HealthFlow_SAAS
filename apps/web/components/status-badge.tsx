@@ -19,6 +19,16 @@ export const STATUS_HEX: Record<AppointmentStatus, string> = {
   no_asistio: '#94a3b8',
 };
 
+/** Fondo claro (tint) por estatus, para chips de cita en el calendario: el color vive en el riel y el punto, no en todo el bloque. */
+export const STATUS_TINT: Record<AppointmentStatus, string> = {
+  agendada: '#f8fafc',
+  en_espera: '#fef8f0',
+  en_consulta: '#eff6ff',
+  finalizada: '#ecfdf5',
+  cancelada: '#fef2f2',
+  no_asistio: '#f8fafc',
+};
+
 export const STATUS_LABEL: Record<AppointmentStatus, string> = Object.fromEntries(
   Object.entries(STYLES).map(([k, v]) => [k, v.label]),
 ) as Record<AppointmentStatus, string>;

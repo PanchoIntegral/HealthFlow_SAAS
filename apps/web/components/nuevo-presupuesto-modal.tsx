@@ -114,11 +114,13 @@ function SelectorPaciente({
     return () => clearTimeout(t);
   }, [q]);
 
-  // Sin texto (o 1 letra) el backend regresa el directorio completo, igual que
-  // "Expedientes": se ve la lista de entrada y el buscador solo va filtrando.
+  // Sin texto (o 1 letra) el backend regresa la primera página del directorio,
+  // igual que "Expedientes": se ve la lista de entrada y el buscador filtra.
+  // Es un selector, no un listado: quien no vea a su paciente escribe más.
   const busqueda = useQuery({
     queryKey: ['pacientes-buscar', debounced],
-    queryFn: () => api.searchPatients(token, debounced),
+    queryFn: () => api.searchPatients(token, debounced, null, 10),
+    select: (page) => page.pacientes,
   });
   const resultados: PatientSummary[] = busqueda.data ?? [];
 

@@ -2,7 +2,7 @@
 
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -20,7 +20,10 @@ import { api, ApiError } from '../../lib/api';
 import { useFormatoHora } from '../../lib/use-formato-hora';
 import { calendarFormats, formatearHora, type FormatoHora } from '../../lib/formato-hora';
 import { AppShell } from '../../components/app-shell';
-import { STATUS_HEX, STATUS_LABEL } from '../../components/status-badge';
+import { STATUS_HEX, STATUS_LABEL, STATUS_TINT } from '../../components/status-badge';
+
+/** Estatus que se muestran como etiqueta de texto en el chip (accionables); el resto solo lleva el punto de color. */
+const STATUS_WITH_LABEL: AppointmentStatus[] = ['en_espera', 'en_consulta'];
 
 const VIEW_LABELS: Record<View, string> = {
   month: 'Mes',
@@ -29,6 +32,36 @@ const VIEW_LABELS: Record<View, string> = {
   work_week: 'Semana laboral',
   agenda: 'Agenda',
 };
+
+/**
+ * Ventana visible del grid de horas y alto del calendario. Juntos definen los
+ * pixeles-por-minuto, que es lo que decide si una cita cabe con su nombre o no:
+ * con las 24 h en 680px una cita de 30 min medía 14px y el nombre no entraba.
+ * Con 7–21 h en 900px la hora mide ~53px, así que una cita de 60 min pasa el
+ * umbral de tres líneas y una de 30 min tiene alto de sobra para su línea única.
+ */
+const HORARIO_MIN = new Date(1970, 0, 1, 7, 0);
+const HORARIO_MAX = new Date(1970, 0, 1, 21, 0);
+const CALENDAR_HEIGHT = 900;
+
+/**
+ * Umbrales del chip, en píxeles reales del bloque — no en minutos de duración:
+ * los mismos 30 min miden distinto en Semana que en Día, y es el tamaño en
+ * pantalla el que determina qué texto cabe.
+ *
+ * `alturaTresLineas` decide si el chip se despliega a tres líneas (hora, nombre,
+ * motivo) o se resuelve en una sola. Los de ancho deciden cuánto texto entra en
+ * esa línea: en Semana una columna mide ~117px y ahí no caben ni el rango
+ * horario completo ni la etiqueta de estatus.
+ */
+const CHIP_PX = {
+  alturaTresLineas: 48,
+  /** Bajo este ancho solo cabe el apellido, y el punto de estatus cede su espacio al nombre. */
+  anchoNombreAbreviado: 125,
+  anchoNombreCompleto: 150,
+  anchoEtiquetaEstatus: 175,
+  anchoRangoHorario: 200,
+} as const;
 
 const LEGEND_STATUSES: AppointmentStatus[] = [
   'agendada',
@@ -101,6 +134,16 @@ function CalendarioContent() {
 
   const canManage = !!user && ['asistente', 'medico', 'admin'].includes(user.rol);
 
+  // Memorizado: si se crea inline en el render, RBC ve un componente nuevo cada vez,
+  // remonta cada chip y el ResizeObserver que elige la variante vuelve a empezar de cero.
+  const calendarComponents = useMemo(
+    () => ({
+      toolbar: CalendarToolbar,
+      event: (props: { event: CalEvent }) => <AppointmentEvent {...props} formatoHora={formatoHora} />,
+    }),
+    [formatoHora],
+  );
+
   const appointments = useQuery({
     queryKey: ['appointments', range.start.toISOString(), range.end.toISOString()],
     queryFn: () => api.listAppointments(token!, range.start.toISOString(), range.end.toISOString()),
@@ -171,19 +214,25 @@ function CalendarioContent() {
             views={['month', 'week', 'day', 'agenda']}
             defaultDate={new Date()}
             onRangeChange={(r) => setRange(normalizeRange(r, view))}
-            style={{ height: 680 }}
+            min={HORARIO_MIN}
+            max={HORARIO_MAX}
+            style={{ height: CALENDAR_HEIGHT }}
             selectable={canManage}
             onSelectSlot={(slot: SlotInfo) => canManage && setCreating({ start: slot.start, end: slot.end })}
             onSelectEvent={(e: CalEvent) => setSelected(e.resource)}
-            components={{ toolbar: CalendarToolbar }}
-            eventPropGetter={(e: CalEvent) => ({
-              style: {
-                backgroundColor: STATUS_HEX[e.resource.estatus],
-                border: 'none',
-                borderRadius: 8,
-                opacity: e.resource.estatus === 'cancelada' || e.resource.estatus === 'no_asistio' ? 0.55 : 1,
-              },
-            })}
+            components={calendarComponents}
+            eventPropGetter={(e: CalEvent) => {
+              const color = STATUS_HEX[e.resource.estatus];
+              const dimmed = e.resource.estatus === 'cancelada' || e.resource.estatus === 'no_asistio';
+              return {
+                style: {
+                  backgroundColor: STATUS_TINT[e.resource.estatus],
+                  borderLeft: `4px solid ${color}`,
+                  borderRadius: 8,
+                  opacity: dimmed ? 0.55 : 1,
+                },
+              };
+            }}
           />
         </div>
       </div>
@@ -218,6 +267,145 @@ function CalendarioContent() {
       )}
     </AppShell>
   );
+}
+
+/**
+ * Mide el bloque que RBC posiciona. Devuelve el alto y ancho reales del chip,
+ * que son los que deciden la variante: la duración en minutos no sirve porque
+ * los mismos 30 min miden distinto según la vista y el alto del calendario.
+ */
+function useChipSize() {
+  const ref = useRef<HTMLDivElement>(null);
+  // enGrid arranca en true: en las vistas de rejilla evita que el primer frame
+  // se pinte sin hora y luego dé un salto al medir.
+  const [state, setState] = useState({ height: 0, width: 0, enGrid: true });
+
+  const measure = useCallback((el: HTMLElement, enGrid: boolean) => {
+    const { height, width } = el.getBoundingClientRect();
+    setState((prev) =>
+      prev.height === height && prev.width === width && prev.enGrid === enGrid
+        ? prev
+        : { height, width, enGrid },
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    // El chip vive dentro de .rbc-event-content; el bloque con el alto que RBC
+    // calculó por duración es el .rbc-event de arriba, y es ese el que se mide.
+    // En la vista Agenda no existe ese ancestro: allí la cita es una fila de tabla.
+    const bloque = ref.current?.closest<HTMLElement>('.rbc-event');
+    const objetivo = bloque ?? ref.current;
+    if (!objetivo) return;
+    measure(objetivo, !!bloque);
+    const observer = new ResizeObserver(() => measure(objetivo, !!bloque));
+    observer.observe(objetivo);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  return { ref, ...state };
+}
+
+// ── Chip de cita: jerarquía fija, altura mínima, variante por espacio ──
+function AppointmentEvent({ event, formatoHora }: { event: CalEvent; formatoHora: FormatoHora }) {
+  const a = event.resource;
+  const color = STATUS_HEX[a.estatus];
+  const dimmed = a.estatus === 'cancelada' || a.estatus === 'no_asistio';
+
+  const { ref, height, width, enGrid } = useChipSize();
+  // El alto solo decide cuántas líneas caben; el ancho, cuánto texto entra en ellas.
+  const tresLineas = height >= CHIP_PX.alturaTresLineas;
+  const nombreCompleto = width >= CHIP_PX.anchoNombreCompleto;
+  const textClass = dimmed ? 'line-through' : '';
+
+  const horaInicio = formatearHora(event.start.toISOString(), formatoHora);
+  const horaFin = formatearHora(event.end.toISOString(), formatoHora);
+  const nombreLinea = fitName(a.patientNombre, width);
+  // El rango completo mide el doble que la hora sola: en Semana no cabe y se parte en dos líneas.
+  const horaTexto = width >= CHIP_PX.anchoRangoHorario ? `${horaInicio} – ${horaFin}` : horaInicio;
+
+  // Estatus: etiqueta de texto si sobra ancho, punto si no. En un chip muy
+  // estrecho ni el punto — el riel de color ya lo dice y ese espacio lo necesita
+  // el nombre, que es el dato que el usuario busca de un vistazo.
+  const showLabel = STATUS_WITH_LABEL.includes(a.estatus) && width >= CHIP_PX.anchoEtiquetaEstatus;
+  const estatusIndicador = showLabel ? (
+    <span
+      className="shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[0.62rem] font-semibold leading-4"
+      style={{ color, backgroundColor: 'rgb(255 255 255 / 0.75)' }}
+    >
+      {STATUS_LABEL[a.estatus]}
+    </span>
+  ) : width >= CHIP_PX.anchoNombreAbreviado ? (
+    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+  ) : null;
+
+  // En Agenda la hora ya la pone RBC en su propia columna; repetirla sobraría.
+  const horaSpan = enGrid ? (
+    <span
+      className={`shrink-0 whitespace-nowrap text-[0.68rem] font-semibold tabular-nums ${textClass}`}
+      style={{ color }}
+    >
+      {horaTexto}
+    </span>
+  ) : null;
+
+  return (
+    <div ref={ref} className="group relative h-full w-full">
+      {tresLineas ? (
+        // justify-start, no center: si el bloque se queda corto se recorta el motivo
+        // (la línea menos importante) y nunca la hora ni el nombre.
+        <div className="flex h-full flex-col justify-start gap-px leading-tight">
+          <div className="flex items-center justify-between gap-1.5">
+            {horaSpan}
+            {estatusIndicador}
+          </div>
+          <span className={`truncate text-[0.8rem] font-semibold text-slate-900 ${textClass}`}>{nombreLinea}</span>
+          {(a.motivo || a.doctorNombre) && (
+            <span className={`truncate text-[0.68rem] text-slate-500 ${textClass}`}>
+              {nombreCompleto ? [a.motivo, a.doctorNombre].filter(Boolean).join(' · ') : a.motivo || a.doctorNombre}
+            </span>
+          )}
+        </div>
+      ) : (
+        // Una sola línea: hora, nombre y estatus. Nunca dos, porque a esta altura
+        // la segunda quedaría recortada — que es justo lo que escondía el nombre.
+        <div className="flex h-full items-center gap-1 overflow-hidden">
+          {horaSpan}
+          <span className={`min-w-0 flex-1 truncate text-[0.78rem] font-semibold text-slate-900 ${textClass}`}>
+            {nombreLinea}
+          </span>
+          {estatusIndicador}
+        </div>
+      )}
+
+      {/* Tarjeta flotante con detalle completo al pasar el cursor; no abre el modal. */}
+      <div className="pointer-events-none invisible absolute left-0 top-full z-30 mt-1 w-56 rounded-lg border border-slate-200 bg-white p-3 text-xs opacity-0 shadow-lg transition-opacity duration-100 group-hover:visible group-hover:opacity-100">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="font-semibold text-slate-900">
+            {horaInicio} – {horaFin}
+          </span>
+          <span className="rounded-full px-2 py-0.5 text-[0.65rem] font-semibold" style={{ color, backgroundColor: STATUS_TINT[a.estatus] }}>
+            {STATUS_LABEL[a.estatus]}
+          </span>
+        </div>
+        <p className="font-medium text-slate-800">{a.patientNombre}</p>
+        {a.motivo && <p className="text-slate-500">{a.motivo}</p>}
+        <p className="text-slate-400">{a.doctorNombre}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Recorta el nombre al espacio disponible por palabras completas, nunca a media
+ * palabra: "José Antonio Ramírez" pasa a "J. Ramírez" y, si sigue sin caber,
+ * a "Ramírez" — que se lee, mientras que "José Anton…" no dice quién es.
+ */
+function fitName(nombre: string, ancho: number): string {
+  const partes = nombre.trim().split(/\s+/);
+  if (ancho >= CHIP_PX.anchoNombreCompleto || partes.length <= 1) return nombre;
+  const apellido = partes[partes.length - 1]!;
+  if (ancho < CHIP_PX.anchoNombreAbreviado) return apellido;
+  return `${partes[0]![0]}. ${apellido}`;
 }
 
 // ── Toolbar del calendario ───────────────────────────────────────
@@ -293,10 +481,13 @@ function NewAppointmentModal({
   const [error, setError] = useState<string | null>(null);
 
   const doctors = useQuery({ queryKey: ['doctors'], queryFn: () => api.listDoctors(token) });
+  // Autocompletado: basta la primera página. Quien no vea a su paciente entre
+  // los primeros afina la búsqueda, que es más rápido que paginar un desplegable.
   const patientResults = useQuery({
     queryKey: ['patients-search', patientQuery],
-    queryFn: () => api.searchPatients(token, patientQuery),
+    queryFn: () => api.searchPatients(token, patientQuery, null, 10),
     enabled: patientQuery.trim().length >= 2,
+    select: (page) => page.pacientes,
   });
 
   useEffect(() => {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,7 +12,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import type { HistorialPaciente, PatientSummary } from '@healthflow/shared-types';
+import type {
+  HistorialPaciente,
+  PatientDirectoryPage,
+  PatientSummary,
+} from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PoliciesGuard, RequirePolicy } from '../../auth/casl/policies.guard';
 import { RegisterPatientUseCase } from '../application/register-patient.use-case';
@@ -36,11 +41,23 @@ export class PatientsController {
     private readonly eliminarPaciente: EliminarPacienteUseCase,
   ) {}
 
-  /** Buscador de pacientes por nombre o CURP. */
+  /**
+   * Buscador/directorio de pacientes por nombre o CURP, paginado.
+   * `cursor` viene del `nextCursor` de la respuesta anterior; omitirlo pide la
+   * primera página. `limit` se acota en el caso de uso.
+   */
   @Get()
   @RequirePolicy('read', 'Patient')
-  search(@Query('q') q = ''): Promise<PatientSummary[]> {
-    return this.searchPatients.execute(q);
+  search(
+    @Query('q') q = '',
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ): Promise<PatientDirectoryPage> {
+    const parsed = limit === undefined ? undefined : Number(limit);
+    if (parsed !== undefined && !Number.isInteger(parsed)) {
+      throw new BadRequestException('limit debe ser un entero');
+    }
+    return this.searchPatients.execute(q, cursor, parsed);
   }
 
   /** Alta de paciente nuevo. */
