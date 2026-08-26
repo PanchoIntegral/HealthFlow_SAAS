@@ -211,3 +211,36 @@ body {
     display: none !important;
   }
 }
+
+/* Las ~18 secciones de casillas del formato del laboratorio, en columnas.
+   Multi-columna y no grid a propósito: el grid deja huecos cuando las
+   secciones tienen alturas muy distintas (Sport Line trae 12 casillas y
+   Positing Instructions una sola), y esos huecos son los que empujaban el
+   mapa de pies a una tercera hoja. */
+.columnas-orden {
+  column-count: 2;
+  column-gap: 1.5rem;
+}
+
+@media print {
+  /* Márgenes propios de la hoja: el default del navegador desperdicia ~2cm por
+     lado y es lo que obligaba a que el formato completo no cupiera. */
+  @page {
+    margin: 12mm 10mm;
+  }
+
+  .columnas-orden {
+    column-count: 3;
+    column-gap: 1rem;
+  }
+
+  /* Sin esto, Chrome y Safari imprimen los rellenos de las zonas marcadas del
+     podograma en blanco (ahorro de tinta por defecto) — el diagrama sale con
+     la silueta pero sin ninguna marca, que es justo el dato que el laboratorio
+     necesita. */
+  .hoja-orden,
+  .hoja-orden * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

@@ -5,6 +5,7 @@ import type {
   OrdenPlantillasContent,
   OrdenPlantillasDetalle,
   OrdenPlantillasView,
+  SexoPaciente,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type {
@@ -92,6 +93,9 @@ export class DrizzleOrdenPlantillasRepository implements OrdenPlantillasReposito
       SELECT o.id, o.patient_id, o.appointment_id, o.doctor_id, o.estatus, o.contenido,
              o.created_at, o.updated_at,
              p.nombre AS patient_nombre,
+             p.telefono AS patient_telefono,
+             p.sexo AS patient_sexo,
+             date_part('year', age(p.fecha_nacimiento))::int AS patient_edad,
              u.nombre AS doctor_nombre,
              u.cedula_profesional AS doctor_cedula,
              u.cedula_especialidad AS doctor_cedula_especialidad,
@@ -107,6 +111,9 @@ export class DrizzleOrdenPlantillasRepository implements OrdenPlantillasReposito
     `);
     const row = (result.rows as unknown as (Row & {
       patient_nombre: string;
+      patient_telefono: string | null;
+      patient_sexo: SexoPaciente | null;
+      patient_edad: number;
       doctor_nombre: string;
       doctor_cedula: string | null;
       doctor_cedula_especialidad: string | null;
@@ -118,6 +125,9 @@ export class DrizzleOrdenPlantillasRepository implements OrdenPlantillasReposito
     return {
       ...toView(row),
       patientNombre: row.patient_nombre,
+      patientTelefono: row.patient_telefono,
+      patientSexo: row.patient_sexo,
+      patientEdad: row.patient_edad,
       doctorNombre: row.doctor_nombre,
       doctorCedula: row.doctor_cedula,
       doctorCedulaEspecialidad: row.doctor_cedula_especialidad,

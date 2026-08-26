@@ -3093,6 +3093,10 @@ export interface OrdenPlantillasView {
  */
 export interface OrdenPlantillasDetalle extends OrdenPlantillasView {
   patientNombre: string;
+  /** Datos que el formato del laboratorio pide del paciente, no de la orden. */
+  patientTelefono: string | null;
+  patientSexo: SexoPaciente | null;
+  patientEdad: number;
   doctorNombre: string;
   doctorCedula: string | null;
   doctorCedulaEspecialidad: string | null;

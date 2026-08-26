@@ -338,15 +338,35 @@ export function OrdenPlantillasModal({
             </button>
             {/* Nueva pestaña y no navegación dentro del modal: la vista de
                 impresión es su propia ruta, sin el chrome de la consulta, y no
-                tiene sentido perder el borrador que se está llenando aquí. */}
+                tiene sentido perder el borrador que se está llenando aquí.
+
+                El click GUARDA antes de abrir: la hoja de impresión relee la
+                orden del servidor, y el autosave tiene 800 ms de debounce, así
+                que imprimir justo después de marcar la última casilla abría
+                una hoja SIN esos cambios. Es lo que producía impresiones "a
+                medias" que había que completar a mano. */}
             <a
               href={`/ordenes-plantillas/${orden.data.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+              onClick={async (e) => {
+                if (readOnly) return;
+                e.preventDefault();
+                const url = `/ordenes-plantillas/${orden.data!.id}`;
+                try {
+                  await saveDraft.mutateAsync(content);
+                } finally {
+                  // Si el navegador bloquea la ventana emergente (el await
+                  // rompe la cadena directa con el gesto del usuario), se
+                  // navega en la misma pestaña: el borrador ya está a salvo.
+                  const w = window.open(url, '_blank', 'noopener,noreferrer');
+                  if (!w) window.location.href = url;
+                }
+              }}
+              className="flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
             >
               <IconPrinter size={16} />
-              Imprimir / Exportar
+              {saveDraft.isPending ? 'Guardando…' : 'Imprimir / Exportar'}
             </a>
             <button
               type="button"

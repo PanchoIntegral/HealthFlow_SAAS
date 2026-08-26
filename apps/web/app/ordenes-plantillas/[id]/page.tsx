@@ -4,13 +4,13 @@ import { use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
+  ETIQUETAS_SEXO,
   ETIQUETA_GRUPO_PLANTILLA,
   ETIQUETA_LADO,
   GRUPOS_PLANTILLA,
   PODOGRAMA_VACIO,
-  opcionPlantillaPorKey,
+  VALORES_PLANTILLA,
   opcionesPlantillaDeGrupo,
-  valorPlantillaPorKey,
   type GrupoPlantilla,
   type OrdenPlantillasDetalle,
 } from '@healthflow/shared-types';
@@ -23,11 +23,33 @@ const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
 
 /**
+ * Fecha SIN hora (`dateRequired` viene como YYYY-MM-DD del `<input type=date>`).
+ * `new Date('2026-09-15')` la interpreta como medianoche UTC, que en México es
+ * el día 14: la hoja le pedía al laboratorio la entrega un día antes de lo que
+ * el médico capturó. Partirla a mano la deja en hora local.
+ */
+const fechaSolo = (ymd: string) => {
+  const [a, m, d] = ymd.split('-').map(Number);
+  return new Date(a!, m! - 1, d!).toLocaleDateString('es-MX', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+/**
  * Vista de impresión de la orden de plantillas. Ruta PROPIA y sin `AppShell` a
  * propósito: nada de barra lateral ni navegación debe colarse en la hoja que
  * termina en manos del laboratorio. "Exportar a PDF" no es un botón aparte —
  * es el diálogo de impresión del navegador (Guardar como PDF), que ya sabe
  * hacer esto sin que HealthFlow tenga que generar el PDF por su cuenta.
+ *
+ * La hoja reproduce el formato de papel COMPLETO —todas las casillas, marcadas
+ * y sin marcar, y todas las líneas de posting aunque vengan vacías— y no solo
+ * lo capturado. El laboratorio lee este formato por posición: una hoja con
+ * únicamente las tres casillas marcadas no le dice si lo demás se omitió a
+ * propósito o si el sistema lo perdió, y obliga a completar a mano lo que
+ * falta. Ese fue justo el reporte que originó esta versión.
  */
 export default function OrdenPlantillasPrintPage({
   params,
@@ -56,7 +78,7 @@ function OrdenPlantillasPrintPageInner({ id }: { id: string }) {
   if (!ready || !token || !user) return null;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-8 print:max-w-full print:px-0 print:py-0">
+    <main className="mx-auto max-w-4xl px-6 py-8 print:max-w-full print:px-0 print:py-0">
       <div className="no-print mb-6 flex items-center justify-between">
         <button onClick={() => router.back()} className="text-sm font-medium text-slate-500 hover:text-brand-blue">
           ← Volver
@@ -91,8 +113,8 @@ function HojaOrden({ orden }: { orden: OrdenPlantillasDetalle }) {
   const c = orden.contenido;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-8 text-sm print:rounded-none print:border-0 print:p-0">
-      <header className="mb-6 border-b border-slate-300 pb-4">
+    <article className="hoja-orden rounded-2xl border border-slate-200 bg-white p-8 text-sm print:rounded-none print:border-0 print:p-0">
+      <header className="mb-4 border-b border-slate-300 pb-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
           Orden de plantillas ortopédicas · Microrthopedic Solutions
         </p>
@@ -108,62 +130,88 @@ function HojaOrden({ orden }: { orden: OrdenPlantillasDetalle }) {
               .join(' · ')}
           </p>
         )}
-        <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-slate-600 sm:grid-cols-4">
-          <Dato label="Practitioner">
-            {orden.doctorNombre}
-            {orden.doctorCedula ? ` · céd. prof. ${orden.doctorCedula}` : ''}
-            {orden.doctorCedulaEspecialidad ? ` · céd. esp. ${orden.doctorCedulaEspecialidad}` : ''}
-          </Dato>
-          <Dato label="Patient">{orden.patientNombre}</Dato>
-          <Dato label="Date">{fecha(orden.createdAt)}</Dato>
-          <Dato label="Date Required">{c.dateRequired ? fecha(c.dateRequired) : '—'}</Dato>
-        </div>
       </header>
 
-      <section className="mb-6 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4">
-        <Dato label="Shoe Size">{c.shoeSize || '—'}</Dato>
-        <Dato label="Shoe Type">{c.shoeType || '—'}</Dato>
-        <Dato label="Weight">{c.weight || '—'}</Dato>
-        <Dato label="Account #">{c.accountNumber || '—'}</Dato>
-        <Dato label="Diagnosis" ancho={4}>
-          {c.diagnosis || '—'}
+      {/* Encabezado de datos, en el mismo orden que la mitad superior de la
+          hoja de papel: primero el médico que ordena, luego el paciente, luego
+          la orden. */}
+      <section className="mb-4 grid grid-cols-2 gap-x-6 gap-y-1.5 border-b border-slate-200 pb-4 sm:grid-cols-4">
+        <Dato label="Practitioner's Name" ancho={2}>
+          {orden.doctorNombre}
+          {orden.doctorCedula ? ` · céd. prof. ${orden.doctorCedula}` : ''}
+          {orden.doctorCedulaEspecialidad ? ` · céd. esp. ${orden.doctorCedulaEspecialidad}` : ''}
         </Dato>
-        <Dato label="Return Cast to Dr">{c.returnCastToDr ? 'Sí' : 'No'}</Dato>
-        <Dato label="Mail to Patient">{c.mailToPatient ? 'Sí' : 'No'}</Dato>
+        <Dato label="Account #">{c.accountNumber}</Dato>
+        <Dato label="Date">{fecha(orden.createdAt)}</Dato>
+
+        <Dato label="Patient Name" ancho={2}>
+          {orden.patientNombre}
+        </Dato>
+        <Dato label="Phone Number">{orden.patientTelefono}</Dato>
+        <Dato label="Sex / Age">
+          {[
+            orden.patientSexo ? ETIQUETAS_SEXO[orden.patientSexo] : null,
+            `${orden.patientEdad} años`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </Dato>
+
+        <Dato label="Shoe Size">{c.shoeSize}</Dato>
+        <Dato label="Shoe Type">{c.shoeType}</Dato>
+        <Dato label="Weight">{c.weight}</Dato>
+        <Dato label="Date Required">{c.dateRequired ? fechaSolo(c.dateRequired) : null}</Dato>
+
+        <Dato label="Diagnosis" ancho={4}>
+          {c.diagnosis}
+        </Dato>
+        <div className="flex gap-6 text-[11px] sm:col-span-4">
+          <Casilla marcada={c.returnCastToDr === true} texto="Return Cast to Dr" />
+          <Casilla marcada={c.mailToPatient === true} texto="Mail to Patient" />
+        </div>
       </section>
 
-      {/* Solo los grupos con algo marcado: una hoja en blanco no le sirve al
-          laboratorio, y reimprimir las 99 casillas vacías la haría ilegible. */}
-      <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 print:grid-cols-2">
+      {/* TODAS las casillas del formato, marcadas y sin marcar. El laboratorio
+          lee esta hoja por posición: omitir los grupos vacíos —como hacía la
+          versión anterior— deja una hoja que no se puede cotejar contra el
+          formato de papel y obliga a completarla a mano. */}
+      <div className="columnas-orden">
         {GRUPOS_PLANTILLA.map((grupo) => (
           <GrupoImpreso key={grupo} grupo={grupo} orden={orden} />
         ))}
+        <ValoresImpresos orden={orden} />
       </div>
 
-      <ValoresImpresos orden={orden} />
+      {/* Siempre, aunque no tenga marcas: en papel el diagrama en blanco sirve
+          para rayarlo a mano junto al paciente, que es exactamente lo que
+          hacían cuando la hoja salía sin él. `modoImpresion` fuerza planta Y
+          dorso a la vez — en papel no hay forma de "voltear" para ver la otra
+          vista. */}
+      <section className="mt-5 break-inside-avoid border-t border-slate-200 pt-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Mapa de pies
+        </p>
+        <Podograma valor={c.podograma ?? PODOGRAMA_VACIO} onChange={() => {}} readOnly modoImpresion />
+      </section>
 
-      {/* Mismo criterio que el resto de la hoja: solo se imprime si hay algo
-          marcado. `modoImpresion` fuerza planta Y dorso a la vez —en papel no
-          hay forma de "voltear" para ver la otra vista. */}
-      {c.podograma && c.podograma.marcas.length > 0 && (
-        <section className="mt-6 border-t border-slate-200 pt-4 break-inside-avoid">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Mapa de pies
-          </p>
-          <Podograma valor={c.podograma ?? PODOGRAMA_VACIO} onChange={() => {}} readOnly modoImpresion />
-        </section>
-      )}
-
-      {c.specialInstructions && (
-        <section className="mt-6 border-t border-slate-200 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Special Instructions and Diagnostic
-          </p>
+      <section className="mt-5 break-inside-avoid border-t border-slate-200 pt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Special Instructions and Diagnostic
+        </p>
+        {c.specialInstructions ? (
           <p className="mt-1 whitespace-pre-wrap text-slate-700">{c.specialInstructions}</p>
-        </section>
-      )}
+        ) : (
+          // Renglones en blanco en vez de nada: es el espacio que el médico usa
+          // para escribir a mano lo que no cabe en las casillas.
+          <div className="mt-2 space-y-4">
+            <div className="border-b border-slate-300" />
+            <div className="border-b border-slate-300" />
+            <div className="border-b border-slate-300" />
+          </div>
+        )}
+      </section>
 
-      <footer className="mt-8 border-t border-slate-200 pt-4 text-xs text-slate-400">
+      <footer className="mt-6 border-t border-slate-200 pt-3 text-xs text-slate-400">
         {orden.estatus === 'completada' ? 'Completada' : orden.estatus === 'cancelada' ? 'Cancelada' : 'Borrador'} ·
         actualizada el {fecha(orden.updatedAt)}
       </footer>
@@ -174,51 +222,71 @@ function HojaOrden({ orden }: { orden: OrdenPlantillasDetalle }) {
 function GrupoImpreso({ grupo, orden }: { grupo: GrupoPlantilla; orden: OrdenPlantillasDetalle }) {
   const c = orden.contenido;
   const opciones = opcionesPlantillaDeGrupo(grupo);
-
-  const lineas = opciones
-    .map((o) => {
-      if (o.porLado) {
-        const lados = (['derecho', 'izquierdo'] as const).filter((lado) =>
-          c.marcas.some((m) => m.opcion === o.key && m.lado === lado),
-        );
-        if (lados.length === 0) return null;
-        return `${o.label} — ${lados.map((l) => ETIQUETA_LADO[l]).join(' y ')}`;
-      }
-      return c.opciones.includes(o.key) ? o.label : null;
-    })
-    .filter((l): l is string => l !== null);
-
-  if (lineas.length === 0) return null;
+  if (opciones.length === 0) return null;
 
   return (
-    <section className="break-inside-avoid">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+    <section className="mb-3 break-inside-avoid">
+      <p className="border-b border-slate-300 pb-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-600">
         {ETIQUETA_GRUPO_PLANTILLA[grupo]}
       </p>
-      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-slate-700">
-        {lineas.map((l) => (
-          <li key={l}>{l}</li>
-        ))}
+      <ul className="mt-1 space-y-0.5">
+        {opciones.map((o) =>
+          o.porLado ? (
+            <li key={o.key} className="flex items-baseline justify-between gap-2 text-[11px] leading-snug">
+              <span className="text-slate-700">{o.label}</span>
+              <span className="flex shrink-0 gap-1.5">
+                {(['derecho', 'izquierdo'] as const).map((lado) => (
+                  <Casilla
+                    key={lado}
+                    marcada={c.marcas.some((m) => m.opcion === o.key && m.lado === lado)}
+                    texto={ETIQUETA_LADO[lado].charAt(0)}
+                  />
+                ))}
+              </span>
+            </li>
+          ) : (
+            <li key={o.key} className="text-[11px] leading-snug">
+              <Casilla marcada={c.opciones.includes(o.key)} texto={o.label} />
+            </li>
+          ),
+        )}
       </ul>
     </section>
   );
 }
 
 function ValoresImpresos({ orden }: { orden: OrdenPlantillasDetalle }) {
-  const entradas = Object.entries(orden.contenido.valores).filter(([, v]) => v);
-  if (entradas.length === 0) return null;
+  const valores = orden.contenido.valores;
 
   return (
-    <section className="mt-6 border-t border-slate-200 pt-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Posting y cobertura</p>
-      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
-        {entradas.map(([key, valor]) => (
-          <Dato key={key} label={valorPlantillaPorKey(key)?.label ?? key}>
-            {valor}
-          </Dato>
+    <section className="mb-3 break-inside-avoid">
+      <p className="border-b border-slate-300 pb-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+        Posting y cobertura
+      </p>
+      {/* Todos los campos, con renglón en blanco cuando no se capturó: en la
+          hoja de papel estas son líneas para rellenar, y dejarlas visibles es
+          lo que permite completarlas junto al paciente. */}
+      <ul className="mt-1 space-y-0.5">
+        {VALORES_PLANTILLA.map((v) => (
+          <li key={v.key} className="flex items-baseline gap-2 text-[11px] leading-snug">
+            <span className="shrink-0 text-slate-500">{v.label}:</span>
+            <span className="flex-1 border-b border-dotted border-slate-400 font-medium text-slate-800">
+              {valores[v.key] ?? ' '}
+            </span>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
+  );
+}
+
+/** Casilla del formato: ☑ / ☐, para que la hoja se lea igual que la de papel. */
+function Casilla({ marcada, texto }: { marcada: boolean; texto: string }) {
+  return (
+    <span className={marcada ? 'font-semibold text-slate-900' : 'text-slate-600'}>
+      <span className="mr-1">{marcada ? '☑' : '☐'}</span>
+      {texto}
+    </span>
   );
 }
 
@@ -226,11 +294,11 @@ function Dato({ label, ancho = 1, children }: { label: string; ancho?: number; c
   // Clases completas y literales a propósito: Tailwind detecta clases por
   // texto exacto en el build, y `sm:col-span-${ancho}` interpolado nunca se
   // generaría — quedaría sin estilo en producción aunque funcionara en dev.
-  const spanClass = ancho === 4 ? 'sm:col-span-4' : undefined;
+  const spanClass = ancho === 4 ? 'sm:col-span-4' : ancho === 2 ? 'sm:col-span-2' : undefined;
   return (
     <div className={spanClass}>
       <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="text-slate-800">{children}</p>
+      <p className="border-b border-slate-200 text-slate-800">{children || ' '}</p>
     </div>
   );
 }
