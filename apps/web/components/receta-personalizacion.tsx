@@ -220,14 +220,17 @@ export function ControlesApariencia({
 }
 
 /**
- * Orden del cuerpo de la receta, arrastrable.
+ * Orden y títulos del cuerpo de la receta.
  *
- * Con Pointer Events y no con el drag-and-drop nativo de HTML: aquél no existe
- * en pantallas táctiles, y buena parte de los consultorios configura esto desde
- * una tablet. Los mismos handlers sirven para mouse y para dedo.
+ * El campo del título vive DENTRO de la fila que se arrastra, y no en una
+ * lista aparte: separados, el médico tenía que adivinar cuál de cuatro
+ * casillas correspondía a cada bloque. Juntos, lo que se lee es "este bloque
+ * va aquí y se llama así".
  *
- * Las flechas se quedan ADEMÁS del arrastre: son el camino accesible por
- * teclado y el que funciona sin motricidad fina.
+ * El arrastre usa Pointer Events y no el drag-and-drop nativo de HTML: aquél
+ * no existe en pantallas táctiles, y buena parte de los consultorios configura
+ * esto desde una tablet. Las flechas se quedan además del arrastre, como
+ * camino accesible por teclado.
  */
 function OrdenSecciones({
   config,
@@ -242,8 +245,8 @@ function OrdenSecciones({
   const listaRef = useRef<HTMLUListElement>(null);
   /**
    * El índice vive en un ref y no solo en el estado: un arrastre rápido
-   * dispara pointerdown y pointermove en el mismo tick, y el handler leería
-   * el `useState` del render anterior —todavía en null— y descartaría el
+   * dispara pointerdown y pointermove en el mismo tick, y el handler leería el
+   * `useState` del render anterior —todavía en null— y descartaría el
    * movimiento. El estado se conserva únicamente para resaltar la fila.
    */
   const arrastrandoRef = useRef<number | null>(null);
@@ -261,6 +264,12 @@ function OrdenSecciones({
     nuevo.splice(hasta, 0, movido!);
     onChange((previo) => ({ ...previo, ordenSecciones: nuevo }));
   };
+
+  const renombrar = (clave: SeccionReceta, valor: string) =>
+    onChange((previo) => ({
+      ...previo,
+      etiquetas: { ...ETIQUETAS_RECETA_DEFAULT, ...previo.etiquetas, [clave]: valor },
+    }));
 
   /** Índice de la fila que está bajo el puntero, o -1. */
   const indiceBajo = (clientY: number) => {
@@ -285,12 +294,18 @@ function OrdenSecciones({
 
   return (
     <div>
-      <span className="mb-1.5 block text-sm font-medium text-slate-600">Orden de la receta</span>
+      <span className="mb-1 block text-sm font-medium text-slate-700">
+        Orden y títulos del contenido
+      </span>
+      <p className="mb-3 text-xs text-slate-400">
+        Arrastra por el asa ⠿ o usa las flechas. Cambia el título escribiendo encima.
+      </p>
+
       <ul
         ref={listaRef}
-        className="space-y-1.5"
+        className="space-y-2"
         onPointerMove={alMover}
-        // Soltar fuera de una fila (o al salir de la lista) no debe dejar el
+        // Soltar fuera de una fila (o salir de la lista) no debe dejar el
         // arrastre pegado al puntero.
         onPointerUp={() => marcar(null)}
         onPointerLeave={() => marcar(null)}
@@ -298,17 +313,17 @@ function OrdenSecciones({
         {orden.map((seccion, i) => (
           <li
             key={seccion}
-            className={`flex items-center gap-2 rounded-lg border bg-white px-3 py-2 transition ${
+            className={`flex items-center gap-3 rounded-xl border bg-white p-3 transition ${
               arrastrando === i
-                ? 'border-brand-blue shadow-sm ring-2 ring-brand-blue/20'
-                : 'border-slate-200'
+                ? 'border-brand-blue shadow-md ring-2 ring-brand-blue/20'
+                : 'border-slate-200 hover:border-slate-300'
             } ${disabled ? 'opacity-50' : ''}`}
           >
             <span
               aria-hidden
               // touch-none: en el móvil, sin esto el gesto se lo lleva el scroll
               // de la página y la fila nunca llega a moverse.
-              className={`touch-none select-none text-lg leading-none text-slate-300 ${
+              className={`touch-none select-none px-1 text-xl leading-none text-slate-300 ${
                 disabled ? '' : 'cursor-grab active:cursor-grabbing'
               }`}
               onPointerDown={(e) => {
@@ -320,19 +335,29 @@ function OrdenSecciones({
             >
               ⠿
             </span>
+
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium text-slate-700">
-                {config.etiquetas?.[seccion]?.trim() || ETIQUETAS_RECETA_DEFAULT[seccion]}
+              <input
+                value={config.etiquetas?.[seccion] ?? ''}
+                onChange={(e) => renombrar(seccion, e.target.value)}
+                disabled={disabled}
+                maxLength={60}
+                placeholder={ETIQUETAS_RECETA_DEFAULT[seccion]}
+                aria-label={`Título de ${ETIQUETAS_RECETA_DEFAULT[seccion]}`}
+                className="w-full rounded-lg border border-transparent bg-slate-50 px-2.5 py-1.5 text-sm font-medium text-slate-800 outline-none transition hover:border-slate-200 focus:border-brand-blue focus:bg-white"
+              />
+              <span className="mt-1 block px-2.5 text-xs text-slate-400">
+                {DESCRIPCION_SECCION[seccion]}
               </span>
-              <span className="block text-xs text-slate-400">{DESCRIPCION_SECCION[seccion]}</span>
             </span>
+
             <span className="flex shrink-0 flex-col">
               <button
                 type="button"
                 disabled={disabled || i === 0}
                 onClick={() => mover(i, i - 1)}
                 aria-label={`Subir ${ETIQUETAS_RECETA_DEFAULT[seccion]}`}
-                className="px-1 text-xs text-slate-400 hover:text-brand-blue disabled:opacity-25"
+                className="px-1.5 py-0.5 text-sm text-slate-400 hover:text-brand-blue disabled:opacity-25"
               >
                 ▲
               </button>
@@ -341,7 +366,7 @@ function OrdenSecciones({
                 disabled={disabled || i === orden.length - 1}
                 onClick={() => mover(i, i + 1)}
                 aria-label={`Bajar ${ETIQUETAS_RECETA_DEFAULT[seccion]}`}
-                className="px-1 text-xs text-slate-400 hover:text-brand-blue disabled:opacity-25"
+                className="px-1.5 py-0.5 text-sm text-slate-400 hover:text-brand-blue disabled:opacity-25"
               >
                 ▼
               </button>
@@ -349,16 +374,16 @@ function OrdenSecciones({
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-xs text-slate-400">
-        Arrastra los bloques por el asa ⠿ o usa las flechas. El membrete, la ficha del paciente y
-        la firma conservan su lugar.
-      </p>
     </div>
   );
 }
 
-/** Encabezados de cada bloque: cada consultorio los nombra a su manera. */
-export function EtiquetasSecciones({
+/**
+ * Texto bajo la línea de firma. Queda fuera de la lista de bloques porque la
+ * firma no se reordena: su lugar al final de la hoja es parte de cómo se lee
+ * un documento firmado.
+ */
+export function CampoFirma({
   config,
   onChange,
   disabled,
@@ -367,35 +392,23 @@ export function EtiquetasSecciones({
   onChange: (actualizar: (previo: ConfigReceta) => ConfigReceta) => void;
   disabled?: boolean;
 }) {
-  const set = (clave: keyof ConfigReceta['etiquetas'], valor: string) =>
-    onChange((previo) => ({
-      ...previo,
-      etiquetas: { ...ETIQUETAS_RECETA_DEFAULT, ...previo.etiquetas, [clave]: valor },
-    }));
-
-  const campos: { clave: keyof ConfigReceta['etiquetas']; label: string }[] = [
-    { clave: 'diagnostico', label: 'Título del diagnóstico' },
-    { clave: 'indicaciones', label: 'Título de las indicaciones' },
-    { clave: 'prescripcion', label: 'Título de los medicamentos' },
-    { clave: 'firma', label: 'Texto bajo la línea de firma' },
-  ];
-
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {campos.map(({ clave, label }) => (
-        <label key={clave} className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-600">{label}</span>
-          <input
-            value={config.etiquetas?.[clave] ?? ''}
-            onChange={(e) => set(clave, e.target.value)}
-            disabled={disabled}
-            maxLength={60}
-            placeholder={ETIQUETAS_RECETA_DEFAULT[clave]}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-blue disabled:bg-slate-50"
-          />
-        </label>
-      ))}
-    </div>
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-slate-700">Texto bajo la línea de firma</span>
+      <input
+        value={config.etiquetas?.firma ?? ''}
+        onChange={(e) =>
+          onChange((previo) => ({
+            ...previo,
+            etiquetas: { ...ETIQUETAS_RECETA_DEFAULT, ...previo.etiquetas, firma: e.target.value },
+          }))
+        }
+        disabled={disabled}
+        maxLength={60}
+        placeholder={ETIQUETAS_RECETA_DEFAULT.firma}
+        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-blue disabled:bg-slate-50"
+      />
+    </label>
   );
 }
 
@@ -440,14 +453,17 @@ function Interruptor({
  */
 export function PreviaReceta({ receta }: { receta: RecetaDetalle }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-100 p-4">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-100 p-4">
       <p className="mb-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400">
         Vista previa · así se imprime
       </p>
       <div className="overflow-x-auto">
         {/* 794px = ancho de una carta a 96 dpi. La sombra y el borde la hacen
             leerse como una hoja y no como otra tarjeta de la interfaz. */}
-        <div className="mx-auto w-[794px] max-w-full rounded-lg border border-slate-300 bg-white shadow-md">
+        {/* 794px = ancho de una carta a 96 dpi. No se encoge: en una pantalla
+            angosta se desplaza dentro de su caja, porque una hoja aplastada
+            deja de mostrar cómo va a imprimirse — que es su único trabajo. */}
+        <div className="mx-auto w-[794px] rounded-lg border border-slate-300 bg-white shadow-md">
           <HojaReceta receta={receta} />
         </div>
       </div>

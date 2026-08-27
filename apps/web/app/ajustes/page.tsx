@@ -22,7 +22,11 @@ type SeccionKey = 'perfil' | 'seguridad' | 'receta' | 'facturacion';
 const SECCIONES: { key: SeccionKey; nombre: string; descripcion: string }[] = [
   { key: 'perfil', nombre: 'Perfil profesional', descripcion: 'Cómo es tu nota y con qué datos se firma.' },
   { key: 'seguridad', nombre: 'Seguridad', descripcion: 'Tu contraseña de acceso.' },
-  { key: 'receta', nombre: 'Receta', descripcion: 'Logo y leyenda de la receta impresa.' },
+  {
+    key: 'receta',
+    nombre: 'Receta',
+    descripcion: 'Membrete, orden del contenido y apariencia de la hoja impresa.',
+  },
   { key: 'facturacion', nombre: 'Facturación', descripcion: 'Plan, método de pago e historial de cobros.' },
 ];
 
@@ -57,7 +61,14 @@ export default function AjustesPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-5xl px-8 py-8">
+      {/*
+        La sección de Receta necesita más ancho que las demás: trae una hoja
+        tamaño carta al lado de sus controles, y en 1024px eso obliga a partir
+        los campos en columnas de la mitad del ancho que necesitan.
+      */}
+      <div
+        className={`mx-auto px-8 py-8 ${seccion === 'receta' ? 'max-w-7xl' : 'max-w-5xl'}`}
+      >
         <header className="mb-8">
           <h1 className="text-2xl font-bold">Ajustes</h1>
           <p className="text-sm text-slate-500">
@@ -65,13 +76,19 @@ export default function AjustesPage() {
           </p>
         </header>
 
-        <div className="flex flex-col gap-8 md:flex-row">
-          {/* En móvil la navegación se vuelve una fila desplazable: una columna
-              lateral de 200px sobre una pantalla de 375 no deja sitio al
-              contenido, que es lo que se viene a leer. */}
+        {/* La columna lateral empieza en lg y no en md: en una tablet de 768px
+            el nav se llevaba 224 y al contenido le quedaban ~200, con los
+            campos aplastados uno sobre otro. Hasta lg, el nav va arriba en una
+            fila desplazable y el contenido usa el ancho completo. */}
+        <div className="flex min-w-0 flex-col gap-8 lg:flex-row">
+          {/* En móvil y tablet la navegación es una fila desplazable: una
+              columna lateral no deja sitio al contenido, que es lo que se
+              viene a leer. */}
+          {/* sticky en escritorio: al bajar por una sección larga, la
+              navegación deja de irse y no queda una columna vacía. */}
           <nav
             aria-label="Secciones de ajustes"
-            className="flex shrink-0 gap-1 overflow-x-auto md:w-56 md:flex-col md:overflow-visible"
+            className="flex shrink-0 gap-1 overflow-x-auto lg:sticky lg:top-8 lg:h-fit lg:w-56 lg:flex-col lg:overflow-visible"
           >
             {visibles.map((s) => {
               const activa = s.key === actual.key;
@@ -99,7 +116,7 @@ export default function AjustesPage() {
               <p className="text-sm text-slate-500">{actual.descripcion}</p>
             </div>
 
-            {actual.key === 'perfil' && <PerfilSeccion token={token} esTitular={esTitular} />}
+            {actual.key === 'perfil' && <PerfilSeccion token={token} />}
             {actual.key === 'seguridad' && <SeguridadSeccion token={token} />}
             {actual.key === 'receta' && <RecetaSeccion token={token} />}
             {actual.key === 'facturacion' && <FacturacionSeccion token={token} />}
@@ -123,7 +140,7 @@ function Tarjeta({ children }: { children: React.ReactNode }) {
 
 // ── Perfil ────────────────────────────────────────────────────────
 
-function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean }) {
+function PerfilSeccion({ token }: { token: string }) {
   const qc = useQueryClient();
   const [especialidadKey, setEspecialidadKey] = useState<EspecialidadKey>('general');
   const [especialidad, setEspecialidad] = useState('');
@@ -355,93 +372,11 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
       {/* Del TENANT, no del médico: solo el titular la edita, mismo criterio
           que el resto de /cuentas. Cualquier otro médico la vería sin poder
           tocarla, así que mejor no ofrecerla. */}
-      {esTitular && <DatosClinicaSeccion token={token} />}
     </div>
   );
 }
 
 // ── Datos de la clínica (membrete de documentos impresos) ──────────
-
-function DatosClinicaSeccion({ token }: { token: string }) {
-  const [direccion, setDireccion] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [guardado, setGuardado] = useState(false);
-
-  useEffect(() => {
-    api
-      .getMyProfile(token)
-      .then((profile) => {
-        setDireccion(profile.direccionClinica ?? '');
-        setTelefono(profile.telefonoClinica ?? '');
-      })
-      .catch(() => setError('No se pudieron cargar los datos de la clínica'))
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setGuardado(false);
-    setSaving(true);
-    try {
-      await api.actualizarDatosClinica(token, {
-        direccion: direccion.trim(),
-        telefono: telefono.trim(),
-      });
-      setGuardado(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Error de conexión');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Tarjeta>
-      <h2 className="mb-1 font-semibold">Datos de la clínica</h2>
-      <p className="mb-4 text-sm text-slate-500">
-        Dirección y teléfono para el membrete de documentos impresos, como la orden de plantillas
-        ortopédicas.
-      </p>
-      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm sm:col-span-2">
-          <span className="mb-1 block font-medium text-slate-600">Dirección</span>
-          <input
-            value={direccion}
-            onChange={(e) => setDireccion(e.target.value)}
-            disabled={loading}
-            placeholder="Av. Francisco I. Madero #1327, Col. Segunda Sección"
-            maxLength={200}
-            className={CAMPO}
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-600">Teléfono</span>
-          <input
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
-            disabled={loading}
-            placeholder="686 554-19-20"
-            maxLength={40}
-            className={CAMPO}
-          />
-        </label>
-        <div className="sm:col-span-2">
-          {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-          {guardado && <p className="mt-1 text-sm text-emerald-600">Cambios guardados.</p>}
-          <button type="submit" disabled={loading || saving} className={`mt-3 ${BOTON}`}>
-            {saving ? 'Guardando…' : 'Guardar cambios'}
-          </button>
-        </div>
-      </form>
-    </Tarjeta>
-  );
-}
-
-// ── Seguridad ─────────────────────────────────────────────────────
 
 function SeguridadSeccion({ token }: { token: string }) {
   const [actual, setActual] = useState('');

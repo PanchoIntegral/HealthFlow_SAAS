@@ -11,8 +11,8 @@ import {
 import { api, ApiError } from '../lib/api';
 import { ErrorSubidaDirecta, subirArchivoDirecto } from '../lib/subida-directa';
 import {
+  CampoFirma,
   ControlesApariencia,
-  EtiquetasSecciones,
   PreviaReceta,
   recetaDeEjemplo,
 } from './receta-personalizacion';
@@ -38,8 +38,12 @@ export function RecetaSeccion({ token }: { token: string }) {
   const [errorLogo, setErrorLogo] = useState<string | null>(null);
   const [leyendaPie, setLeyendaPie] = useState('');
   const [nombreClinica, setNombreClinica] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [telefono, setTelefono] = useState('');
   const [config, setConfig] = useState<ConfigReceta>(CONFIG_RECETA_DEFAULT);
-  const [guardadoLeyenda, setGuardadoLeyenda] = useState(false);
+  const [guardado, setGuardado] = useState(false);
+  /** Marca que hay cambios sin guardar: enciende el botón y avisa al salir. */
+  const [sucio, setSucio] = useState(false);
 
   const datos = useQuery({
     queryKey: ['datos-clinica-logo'],
@@ -52,6 +56,8 @@ export function RecetaSeccion({ token }: { token: string }) {
     if (!datos.data) return;
     setLeyendaPie(datos.data.leyendaPie ?? '');
     setNombreClinica(datos.data.nombreClinica);
+    setDireccion(datos.data.direccion ?? '');
+    setTelefono(datos.data.telefono ?? '');
     setConfig(datos.data.configReceta);
   }, [datos.data]);
 
@@ -64,18 +70,28 @@ export function RecetaSeccion({ token }: { token: string }) {
 
   const refrescar = () => qc.invalidateQueries({ queryKey: ['datos-clinica-logo'] });
 
-  const guardarLeyenda = useMutation({
+  const guardar = useMutation({
     mutationFn: () =>
       api.actualizarDatosClinica(token, {
         leyendaPie: leyendaPie.trim(),
         nombreClinica: nombreClinica.trim(),
+        direccion: direccion.trim(),
+        telefono: telefono.trim(),
         configReceta: config,
       }),
     onSuccess: () => {
-      setGuardadoLeyenda(true);
+      setGuardado(true);
+      setSucio(false);
       refrescar();
     },
   });
+
+  /** Un solo punto de cambio: cualquier control marca sucio y borra el "guardado". */
+  const editar = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setSucio(true);
+    setGuardado(false);
+  };
 
   const quitarLogo = useMutation({
     mutationFn: () => api.eliminarLogo(token),
@@ -113,188 +129,222 @@ export function RecetaSeccion({ token }: { token: string }) {
     }
   }
 
+
   const loading = datos.isLoading;
 
+  /*
+    Dos columnas solo a partir de 2xl: con el menú de la app y la navegación de
+    ajustes, en 1280px a la hoja le quedaban 240px y volvía a partir el nombre
+    del médico en tres renglones — justo el problema que este rediseño venía a
+    resolver. Por debajo de ese ancho la previa baja y se lleva la fila entera.
+
+    `grid-cols-[minmax(0,1fr)]` y no `grid-cols-1`: una columna de grid mide por
+    omisión su contenido mínimo, y la hoja de 794px estiraba la página entera en
+    pantallas angostas en vez de desplazarse dentro de su propia caja.
+  */
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 font-semibold">Logo de la clínica</h2>
-        <p className="mb-4 text-sm text-slate-500">
-          Se imprime en el membrete de cada receta nueva. Las recetas ya emitidas conservan el
-          membrete con el que se imprimieron — es un documento congelado, no se actualiza
-          retroactivamente.
-        </p>
-
-        <div className="flex items-center gap-4">
-          <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
-            {loading ? (
-              <span className="text-xs text-slate-400">…</span>
-            ) : datos.data?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={datos.data.logoUrl} alt="Logo de la clínica" className="h-full w-full object-contain" />
-            ) : (
-              <span className="px-2 text-center text-xs text-slate-400">Sin logo</span>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="cursor-pointer text-sm font-medium text-brand-blue hover:underline">
-              {subiendo ? 'Subiendo…' : datos.data?.logoUrl ? 'Cambiar logo' : 'Subir logo'}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={MIME_TYPES_LOGO_CLINICA.join(',')}
-                disabled={subiendo || loading}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void onArchivoSeleccionado(file);
-                }}
-                className="hidden"
-              />
-            </label>
-            {datos.data?.logoUrl && (
-              <button
-                type="button"
-                disabled={quitarLogo.isPending}
-                onClick={() => quitarLogo.mutate()}
-                className="text-left text-sm font-medium text-slate-400 hover:text-red-600 disabled:opacity-50"
-              >
-                {quitarLogo.isPending ? 'Quitando…' : 'Quitar logo'}
-              </button>
-            )}
-            <span className="text-xs text-slate-400">JPEG o PNG, máximo 2MB.</span>
-          </div>
-        </div>
-
-        {errorLogo && <p className="mt-3 text-sm text-red-600">{errorLogo}</p>}
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 font-semibold">Nombre de la clínica</h2>
-        <p className="mb-3 text-sm text-slate-500">
-          Encabeza el membrete de la receta. El artículo 64 del Reglamento de Insumos para la
-          Salud lo exige, así que no puede quedar vacío.
-        </p>
-        <input
-          value={nombreClinica}
-          onChange={(e) => {
-            setNombreClinica(e.target.value);
-            setGuardadoLeyenda(false);
-          }}
-          disabled={loading}
-          maxLength={120}
-          placeholder="p.ej. Unidad Médica Pisada Sana"
-          className={CAMPO}
-        />
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 font-semibold">Leyenda al pie</h2>
-        <p className="mb-4 text-sm text-slate-500">
-          Texto libre para el pie de la receta impresa — horario de atención, redes sociales, un
-          aviso legal. Opcional.
-        </p>
-        <textarea
-          value={leyendaPie}
-          onChange={(e) => {
-            setLeyendaPie(e.target.value);
-            setGuardadoLeyenda(false);
-          }}
-          disabled={loading}
-          maxLength={300}
-          rows={3}
-          placeholder="p.ej. Horario de atención: lunes a viernes 9:00–18:00"
-          className={CAMPO}
-        />
-        <div className="mt-1 flex justify-between text-xs text-slate-400">
-          <span>{300 - leyendaPie.length} caracteres restantes</span>
-        </div>
-
-        {guardarLeyenda.error && (
-          <p className="mt-2 text-sm text-red-600">
-            {guardarLeyenda.error instanceof ApiError ? guardarLeyenda.error.message : 'Error de conexión'}
-          </p>
-        )}
-        {guardadoLeyenda && <p className="mt-2 text-sm text-emerald-600">Cambios guardados.</p>}
-
-        <button
-          type="button"
-          disabled={loading || guardarLeyenda.isPending}
-          onClick={() => guardarLeyenda.mutate()}
-          className={`mt-4 ${BOTON}`}
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-start gap-6 2xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      {/* ── Columna de controles ───────────────────────────────────── */}
+      {/* max-w mientras van en una sola columna: un campo de texto de mil
+          píxeles de ancho es incómodo de leer y de llenar. */}
+      <div className="w-full max-w-2xl space-y-4 2xl:max-w-none">
+        <Bloque
+          titulo="Membrete"
+          ayuda="Encabeza cada receta. Las ya emitidas conservan el suyo: son documentos congelados."
         >
-          {guardarLeyenda.isPending ? 'Guardando…' : 'Guardar cambios'}
-        </button>
-      </div>
+          <div className="flex items-start gap-4">
+            <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50">
+              {loading ? (
+                <span className="text-xs text-slate-400">…</span>
+              ) : datos.data?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={datos.data.logoUrl}
+                  alt="Logo de la clínica"
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <span className="px-2 text-center text-xs text-slate-400">Sin logo</span>
+              )}
+            </div>
 
-      {/*
-        Apariencia y previa, lado a lado: el médico ve el efecto de cada
-        control en la hoja real —el mismo componente que se imprime— en vez de
-        configurar a ciegas y tener que emitir una receta para enterarse.
-      */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 font-semibold">Apariencia de la receta</h2>
-        <p className="mb-4 text-sm text-slate-500">
-          Cambia cómo se ve la hoja impresa. Los datos que la ley exige —tu nombre, tu cédula, la
-          institución de tu título y el domicilio del consultorio— se imprimen siempre.
-        </p>
+            <div className="min-w-0 flex-1 space-y-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700">Nombre de la clínica</span>
+                <input
+                  value={nombreClinica}
+                  onChange={(e) => editar(setNombreClinica)(e.target.value)}
+                  disabled={loading}
+                  maxLength={120}
+                  placeholder="p.ej. Unidad Médica Pisada Sana"
+                  className={CAMPO}
+                />
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-700">Dirección</span>
+                  <input
+                    value={direccion}
+                    onChange={(e) => editar(setDireccion)(e.target.value)}
+                    disabled={loading}
+                    maxLength={200}
+                    placeholder="Av. Madero #1327, Col. Centro"
+                    className={CAMPO}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-700">Teléfono</span>
+                  <input
+                    value={telefono}
+                    onChange={(e) => editar(setTelefono)(e.target.value)}
+                    disabled={loading}
+                    maxLength={40}
+                    placeholder="686 554 1920"
+                    className={CAMPO}
+                  />
+                </label>
+              </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <label className="cursor-pointer font-medium text-brand-blue hover:underline">
+                  {subiendo ? 'Subiendo…' : datos.data?.logoUrl ? 'Cambiar logo' : 'Subir logo'}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={MIME_TYPES_LOGO_CLINICA.join(',')}
+                    disabled={subiendo || loading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void onArchivoSeleccionado(file);
+                    }}
+                    className="hidden"
+                  />
+                </label>
+                {datos.data?.logoUrl && (
+                  <button
+                    type="button"
+                    disabled={quitarLogo.isPending}
+                    onClick={() => quitarLogo.mutate()}
+                    className="font-medium text-slate-400 hover:text-red-600 disabled:opacity-50"
+                  >
+                    {quitarLogo.isPending ? 'Quitando…' : 'Quitar'}
+                  </button>
+                )}
+                <span className="text-xs text-slate-400">JPEG o PNG, máx. 2MB</span>
+              </div>
+            </div>
+          </div>
+
+          {errorLogo && <p className="mt-3 text-sm text-red-600">{errorLogo}</p>}
+        </Bloque>
+
+        <Bloque
+          titulo="Apariencia"
+          ayuda="Los datos que la ley exige —tu nombre, tu cédula, la institución de tu título y el domicilio del consultorio— se imprimen siempre."
+        >
           <ControlesApariencia
             config={config}
             disabled={loading}
-            onChange={(actualizar) => {
-              setConfig(actualizar);
-              setGuardadoLeyenda(false);
-            }}
+            onChange={editar(setConfig)}
           />
+        </Bloque>
 
-          <div>
-            <h3 className="mb-2 text-sm font-medium text-slate-600">Títulos de la receta</h3>
-            <EtiquetasSecciones
-              config={config}
-              disabled={loading}
-              onChange={(actualizar) => {
-                setConfig(actualizar);
-                setGuardadoLeyenda(false);
-              }}
-            />
-            <p className="mt-2 text-xs text-slate-400">
-              Déjalos vacíos para usar los títulos por omisión.
+        <Bloque titulo="Pie de la receta">
+          <div className="space-y-4">
+            <CampoFirma config={config} disabled={loading} onChange={editar(setConfig)} />
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">Leyenda al pie</span>
+              <textarea
+                value={leyendaPie}
+                onChange={(e) => editar(setLeyendaPie)(e.target.value)}
+                disabled={loading}
+                maxLength={300}
+                rows={3}
+                placeholder="p.ej. Horario de atención: lunes a viernes 9:00–18:00"
+                className={CAMPO}
+              />
+              <span className="mt-1 block text-xs text-slate-400">
+                Horario, redes sociales o un aviso legal. {300 - leyendaPie.length} caracteres
+                restantes.
+              </span>
+            </label>
+          </div>
+        </Bloque>
+
+        {/* Barra de guardado: pegada abajo mientras se configura, porque los
+            controles son más altos que la pantalla y el botón quedaba fuera. */}
+        <div className="sticky bottom-0 -mx-1 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              {guardar.error ? (
+                <span className="text-red-600">
+                  {guardar.error instanceof ApiError
+                    ? guardar.error.message
+                    : 'Error de conexión'}
+                </span>
+              ) : guardado ? (
+                <span className="text-emerald-600">Cambios guardados.</span>
+              ) : sucio ? (
+                'Tienes cambios sin guardar.'
+              ) : (
+                'Aplica a las recetas que emitas de ahora en adelante.'
+              )}
             </p>
+            <button
+              type="button"
+              disabled={loading || guardar.isPending || !sucio}
+              onClick={() => guardar.mutate()}
+              className={BOTON}
+            >
+              {guardar.isPending ? 'Guardando…' : 'Guardar cambios'}
+            </button>
           </div>
         </div>
-
-        {/* La previa va a lo ancho, debajo de los controles: es una hoja tamaño
-            carta, y en media columna se deformaba. */}
-        {perfil.data && (
-          <div className="mt-6">
-            <PreviaReceta
-              receta={recetaDeEjemplo(
-                {
-                  nombreClinica,
-                  direccion: datos.data?.direccion ?? null,
-                  telefono: datos.data?.telefono ?? null,
-                  leyendaPie,
-                  logoUrl: datos.data?.logoUrl ?? null,
-                  medicoNombre: perfil.data.nombre,
-                  titulo: perfil.data.titulo,
-                  cedulaProfesional: perfil.data.cedulaProfesional ?? '',
-                  cedulaEspecialidad: perfil.data.cedulaEspecialidad,
-                  especialidad: perfil.data.especialidad,
-                  institucionTitulo: perfil.data.institucionTitulo ?? '',
-                },
-                config,
-              )}
-            />
-          </div>
-        )}
-
-        <p className="mt-4 text-xs text-slate-400">
-          Los cambios aplican a las recetas que emitas de ahora en adelante. Las ya emitidas
-          conservan el diseño con el que se firmaron.
-        </p>
       </div>
+
+      {/* ── Vista previa ───────────────────────────────────────────── */}
+      {perfil.data && (
+        <div className="min-w-0 2xl:sticky 2xl:top-8">
+          <PreviaReceta
+            receta={recetaDeEjemplo(
+              {
+                nombreClinica,
+                direccion: direccion || null,
+                telefono: telefono || null,
+                leyendaPie,
+                logoUrl: datos.data?.logoUrl ?? null,
+                medicoNombre: perfil.data.nombre,
+                titulo: perfil.data.titulo,
+                cedulaProfesional: perfil.data.cedulaProfesional ?? '',
+                cedulaEspecialidad: perfil.data.cedulaEspecialidad,
+                especialidad: perfil.data.especialidad,
+                institucionTitulo: perfil.data.institucionTitulo ?? '',
+              },
+              config,
+            )}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Tarjeta de un grupo de opciones. Un solo patrón para toda la sección. */
+function Bloque({
+  titulo,
+  ayuda,
+  children,
+}: {
+  titulo: string;
+  ayuda?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="font-semibold text-slate-800">{titulo}</h3>
+      {ayuda && <p className="mb-4 mt-0.5 text-sm text-slate-500">{ayuda}</p>}
+      {!ayuda && <div className="mb-4" />}
+      {children}
+    </section>
   );
 }
