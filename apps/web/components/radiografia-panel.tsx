@@ -1,35 +1,20 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MIME_TYPES_RADIOGRAFIA, type MimeTypeRadiografia, type RadiografiaView } from '@healthflow/shared-types';
-import { api, ApiError } from '../lib/api';
-import { ErrorSubidaDirecta, subirArchivoDirecto } from '../lib/subida-directa';
-
-/**
- * Traduce el fallo a algo que el usuario pueda accionar, y deja el detalle
- * técnico en la consola. Antes todo error no-ApiError caía en un genérico
- * "No se pudo subir la radiografía": el usuario no sabía si era su archivo o
- * la configuración del servidor, y soporte tampoco.
- */
-function mensajeDeError(e: unknown): string {
-  if (e instanceof ErrorSubidaDirecta) {
-    console.error('[radiografias] subida fallida:', e.causa, e.detalle);
-    return e.message;
-  }
-  if (e instanceof ApiError) return e.message;
-  console.error('[radiografias] error inesperado al subir:', e);
-  return 'No se pudo subir la radiografía';
-}
+import type { RadiografiaView } from '@healthflow/shared-types';
+import { api } from '../lib/api';
+import { SubirRadiografiasModal } from './subir-radiografias-modal';
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /**
- * Galería de radiografías del paciente. La subida NUNCA pasa por nuestro API
- * (el body JSON está limitado a 256kb a propósito): se pide una URL
- * prefirmada, el navegador sube el archivo DIRECTO a R2 con un PUT, y solo
- * entonces se confirma la metadata.
+ * Galería de radiografías del paciente. La subida vive en
+ * SubirRadiografiasModal (varias placas en una sola sesión) y NUNCA pasa por
+ * nuestro API: el body JSON está limitado a 256kb a propósito, así que se pide
+ * una URL prefirmada, el navegador sube el archivo DIRECTO a R2 con un PUT, y
+ * solo entonces se confirma la metadata.
  */
 export function RadiografiaPanel({
   token,
@@ -42,9 +27,7 @@ export function RadiografiaPanel({
   puedeEliminar: boolean;
 }) {
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [subiendo, setSubiendo] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
   const [visor, setVisor] = useState<RadiografiaView | null>(null);
 
   const lista = useQuery({
@@ -61,39 +44,6 @@ export function RadiografiaPanel({
       setVisor(null);
     },
   });
-
-  async function onArchivoSeleccionado(file: File) {
-    setError(null);
-    if (!MIME_TYPES_RADIOGRAFIA.includes(file.type as MimeTypeRadiografia)) {
-      setError('Solo se aceptan imágenes JPEG, PNG o WEBP.');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('La imagen no puede superar 10MB.');
-      return;
-    }
-
-    setSubiendo(true);
-    try {
-      const mimeType = file.type as MimeTypeRadiografia;
-      const { uploadUrl, headers, storageKey } = await api.requestUploadUrl(token, {
-        patientId,
-        mimeType,
-      });
-
-      // Subida directa al storage, sin Authorization (el storage no sabe nada
-      // de HealthFlow): la autorización va en la firma de la URL.
-      await subirArchivoDirecto(uploadUrl, headers, file);
-
-      await api.confirmRadiografia(token, { patientId, storageKey, mimeType });
-      refrescar();
-    } catch (e) {
-      setError(mensajeDeError(e));
-    } finally {
-      setSubiendo(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
 
   if (lista.isLoading) return <p className="text-sm text-slate-400">Cargando radiografías…</p>;
 
@@ -113,26 +63,26 @@ export function RadiografiaPanel({
           </button>
         ))}
 
-        <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-400 hover:border-brand-blue hover:text-brand-blue">
-          {subiendo ? 'Subiendo…' : '+ Subir'}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={MIME_TYPES_RADIOGRAFIA.join(',')}
-            disabled={subiendo}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void onArchivoSeleccionado(file);
-            }}
-            className="hidden"
-          />
-        </label>
+        <button
+          onClick={() => setModalAbierto(true)}
+          className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-400 transition hover:border-brand-blue hover:text-brand-blue"
+        >
+          + Subir
+        </button>
       </div>
 
       {radiografias.length === 0 && (
         <p className="mt-3 text-sm text-slate-400">Sin radiografías registradas.</p>
       )}
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+      {modalAbierto && (
+        <SubirRadiografiasModal
+          token={token}
+          patientId={patientId}
+          onClose={() => setModalAbierto(false)}
+          onSubida={refrescar}
+        />
+      )}
 
       {visor && (
         <div
