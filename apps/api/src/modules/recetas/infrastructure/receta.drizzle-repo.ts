@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import type {
-  Alergia,
-  CancelacionReceta,
-  RecetaContent,
-  RecetaDetalle,
-  RecetaView,
+import {
+  CONFIG_RECETA_DEFAULT,
+  type Alergia,
+  type CancelacionReceta,
+  type ConfigReceta,
+  type RecetaContent,
+  type RecetaDetalle,
+  type RecetaView,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type {
@@ -50,7 +52,9 @@ export class DrizzleRecetaRepository implements RecetaRepository {
              u.cedula_especialidad,
              u.especialidad,
              u.institucion_titulo,
+             u.titulo,
              t.nombre_clinica,
+             t.config_receta,
              t.direccion           AS direccion_clinica,
              t.telefono            AS telefono_clinica,
              t.logo_storage_key,
@@ -72,7 +76,9 @@ export class DrizzleRecetaRepository implements RecetaRepository {
         cedula_especialidad: string | null;
         especialidad: string | null;
         institucion_titulo: string | null;
+        titulo: string | null;
         nombre_clinica: string;
+        config_receta: Partial<ConfigReceta> | null;
         direccion_clinica: string | null;
         telefono_clinica: string | null;
         logo_storage_key: string | null;
@@ -91,7 +97,11 @@ export class DrizzleRecetaRepository implements RecetaRepository {
       cedulaEspecialidad: row.cedula_especialidad,
       especialidad: row.especialidad,
       institucionTitulo: row.institucion_titulo,
+      titulo: row.titulo,
       nombreClinica: row.nombre_clinica,
+      // Misma fusión que DatosClinicaReader: una config parcial o vacía se
+      // completa con los valores con los que la receta se imprimía antes.
+      configReceta: { ...CONFIG_RECETA_DEFAULT, ...(row.config_receta ?? {}) },
       direccionClinica: row.direccion_clinica,
       telefonoClinica: row.telefono_clinica,
       logoStorageKey: row.logo_storage_key,

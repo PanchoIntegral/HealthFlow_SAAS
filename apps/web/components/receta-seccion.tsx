@@ -2,9 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MIME_TYPES_LOGO_CLINICA, type MimeTypeLogoClinica } from '@healthflow/shared-types';
+import {
+  CONFIG_RECETA_DEFAULT,
+  MIME_TYPES_LOGO_CLINICA,
+  type ConfigReceta,
+  type MimeTypeLogoClinica,
+} from '@healthflow/shared-types';
 import { api, ApiError } from '../lib/api';
 import { ErrorSubidaDirecta, subirArchivoDirecto } from '../lib/subida-directa';
+import {
+  ControlesApariencia,
+  PreviaReceta,
+  recetaDeEjemplo,
+} from './receta-personalizacion';
 
 const CAMPO =
   'w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20 disabled:bg-slate-50';
@@ -12,7 +22,8 @@ const BOTON =
   'rounded-lg bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2.5 font-semibold text-white transition hover:opacity-95 disabled:opacity-50';
 
 /**
- * Personalización de la receta impresa: logo de la clínica y leyenda al pie.
+ * Personalización de la receta impresa: nombre y logo de la clínica, leyenda
+ * al pie y apariencia de la hoja, con vista previa en vivo.
  * Solo el titular la ve (mismo filtro que Facturación en ajustes/page.tsx).
  *
  * La subida del logo NUNCA pasa por nuestro API — mismo patrón que
@@ -25,6 +36,8 @@ export function RecetaSeccion({ token }: { token: string }) {
   const [subiendo, setSubiendo] = useState(false);
   const [errorLogo, setErrorLogo] = useState<string | null>(null);
   const [leyendaPie, setLeyendaPie] = useState('');
+  const [nombreClinica, setNombreClinica] = useState('');
+  const [config, setConfig] = useState<ConfigReceta>(CONFIG_RECETA_DEFAULT);
   const [guardadoLeyenda, setGuardadoLeyenda] = useState(false);
 
   const datos = useQuery({
@@ -35,13 +48,28 @@ export function RecetaSeccion({ token }: { token: string }) {
   // Se sincroniza el textarea solo cuando llega el valor guardado, sin pisar
   // lo que el usuario ya esté tecleando si react-query refresca detrás.
   useEffect(() => {
-    if (datos.data) setLeyendaPie(datos.data.leyendaPie ?? '');
+    if (!datos.data) return;
+    setLeyendaPie(datos.data.leyendaPie ?? '');
+    setNombreClinica(datos.data.nombreClinica);
+    setConfig(datos.data.configReceta);
   }, [datos.data]);
+
+  // El perfil da los datos del MÉDICO que la previa necesita (nombre, cédulas,
+  // institución): el membrete no es solo de la clínica.
+  const perfil = useQuery({
+    queryKey: ['perfil-para-previa'],
+    queryFn: () => api.getMyProfile(token),
+  });
 
   const refrescar = () => qc.invalidateQueries({ queryKey: ['datos-clinica-logo'] });
 
   const guardarLeyenda = useMutation({
-    mutationFn: () => api.actualizarDatosClinica(token, { leyendaPie: leyendaPie.trim() }),
+    mutationFn: () =>
+      api.actualizarDatosClinica(token, {
+        leyendaPie: leyendaPie.trim(),
+        nombreClinica: nombreClinica.trim(),
+        configReceta: config,
+      }),
     onSuccess: () => {
       setGuardadoLeyenda(true);
       refrescar();
@@ -141,6 +169,25 @@ export function RecetaSeccion({ token }: { token: string }) {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-1 font-semibold">Nombre de la clínica</h2>
+        <p className="mb-3 text-sm text-slate-500">
+          Encabeza el membrete de la receta. El artículo 64 del Reglamento de Insumos para la
+          Salud lo exige, así que no puede quedar vacío.
+        </p>
+        <input
+          value={nombreClinica}
+          onChange={(e) => {
+            setNombreClinica(e.target.value);
+            setGuardadoLeyenda(false);
+          }}
+          disabled={loading}
+          maxLength={120}
+          placeholder="p.ej. Unidad Médica Pisada Sana"
+          className={CAMPO}
+        />
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-1 font-semibold">Leyenda al pie</h2>
         <p className="mb-4 text-sm text-slate-500">
           Texto libre para el pie de la receta impresa — horario de atención, redes sociales, un
@@ -177,6 +224,56 @@ export function RecetaSeccion({ token }: { token: string }) {
         >
           {guardarLeyenda.isPending ? 'Guardando…' : 'Guardar cambios'}
         </button>
+      </div>
+
+      {/*
+        Apariencia y previa, lado a lado: el médico ve el efecto de cada
+        control en la hoja real —el mismo componente que se imprime— en vez de
+        configurar a ciegas y tener que emitir una receta para enterarse.
+      */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-1 font-semibold">Apariencia de la receta</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Cambia cómo se ve la hoja impresa. Los datos que la ley exige —tu nombre, tu cédula, la
+          institución de tu título y el domicilio del consultorio— se imprimen siempre.
+        </p>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <ControlesApariencia
+            config={config}
+            disabled={loading}
+            onChange={(actualizar) => {
+              setConfig(actualizar);
+              setGuardadoLeyenda(false);
+            }}
+          />
+
+          {perfil.data && (
+            <PreviaReceta
+              receta={recetaDeEjemplo(
+                {
+                  nombreClinica,
+                  direccion: datos.data?.direccion ?? null,
+                  telefono: datos.data?.telefono ?? null,
+                  leyendaPie,
+                  logoUrl: datos.data?.logoUrl ?? null,
+                  medicoNombre: perfil.data.nombre,
+                  titulo: perfil.data.titulo,
+                  cedulaProfesional: perfil.data.cedulaProfesional ?? '',
+                  cedulaEspecialidad: perfil.data.cedulaEspecialidad,
+                  especialidad: perfil.data.especialidad,
+                  institucionTitulo: perfil.data.institucionTitulo ?? '',
+                },
+                config,
+              )}
+            />
+          )}
+        </div>
+
+        <p className="mt-4 text-xs text-slate-400">
+          Los cambios aplican a las recetas que emitas de ahora en adelante. Las ya emitidas
+          conservan el diseño con el que se firmaron.
+        </p>
       </div>
     </div>
   );

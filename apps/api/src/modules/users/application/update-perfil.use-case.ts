@@ -52,6 +52,7 @@ export class UpdatePerfilUseCase {
         especialidad: conservar(input.especialidad, anterior.especialidad),
         cedulaProfesional: conservar(input.cedulaProfesional, anterior.cedulaProfesional),
         cedulaEspecialidad: conservar(input.cedulaEspecialidad, anterior.cedulaEspecialidad),
+        titulo: conservar(input.titulo, anterior.titulo),
         institucionTitulo: conservar(input.institucionTitulo, anterior.institucionTitulo),
         // Sin semántica de "borrar" — siempre viene del <select> de Ajustes.
         formatoHora: input.formatoHora ?? anterior.formatoHora,

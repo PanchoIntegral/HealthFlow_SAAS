@@ -17,6 +17,8 @@ export type PerfilPersistido = Omit<
 export interface UpdatePerfilInput {
   especialidadKey: string;
   especialidad: string | null;
+  /** 'Dr.' | 'Dra.'. null = sin título en el membrete. */
+  titulo: string | null;
   /** null = borrar la cédula guardada. */
   cedulaProfesional: string | null;
   /** null = borrar la cédula guardada. */

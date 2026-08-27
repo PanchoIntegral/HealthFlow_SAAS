@@ -1,4 +1,12 @@
-import type { EmisorReceta, MedicamentoRecetado, PacienteReceta } from '@healthflow/shared-types';
+import {
+  CONFIG_RECETA_DEFAULT,
+  nombreConTitulo,
+  type EmisorReceta,
+  type MedicamentoRecetado,
+  type PacienteReceta,
+} from '@healthflow/shared-types';
+import type { ContextoEmision } from './receta.repository';
+import { emisorDe } from '../application/emitir-receta.use-case';
 import { Receta } from './receta.entity';
 import { RecetaValidator } from './receta-validator';
 import {
@@ -202,5 +210,72 @@ describe('RecetaValidator', () => {
         'medicamentos[0].dosis',
       ]),
     );
+  });
+});
+
+describe('nombreConTitulo (membrete impreso)', () => {
+  it('antepone el título cuando el nombre no lo trae', () => {
+    expect(nombreConTitulo('Dra.', 'Guadalupe Villa')).toBe('Dra. Guadalupe Villa');
+  });
+
+  it('NO lo duplica si el nombre ya venía capturado con el título', () => {
+    // Caso real de las cuentas existentes: durante mucho tiempo el único lugar
+    // para el trato fue el campo de nombre.
+    expect(nombreConTitulo('Dra.', 'Dra. Mariana Cervantes')).toBe('Dra. Mariana Cervantes');
+    expect(nombreConTitulo('Dr.', 'dr. Carlos López')).toBe('dr. Carlos López');
+  });
+
+  it('sin título configurado devuelve el nombre tal cual', () => {
+    expect(nombreConTitulo(null, 'Guadalupe Villa')).toBe('Guadalupe Villa');
+    // Las recetas emitidas antes de que existiera el campo no lo traen.
+    expect(nombreConTitulo(undefined, 'Guadalupe Villa')).toBe('Guadalupe Villa');
+  });
+
+  it('no confunde un nombre que empieza parecido', () => {
+    expect(nombreConTitulo('Dr.', 'Draco Ramírez')).toBe('Dr. Draco Ramírez');
+  });
+});
+
+describe('emisorDe (congelado del membrete)', () => {
+  const contexto = (over: Partial<ContextoEmision> = {}): ContextoEmision => ({
+    medicoNombre: 'Guadalupe Villa',
+    cedulaProfesional: '1234567',
+    cedulaEspecialidad: null,
+    especialidad: 'Podiatría',
+    institucionTitulo: 'Universidad Autónoma de Sinaloa',
+    titulo: 'Dra.',
+    configReceta: { ...CONFIG_RECETA_DEFAULT, colorAcento: '#1d4ed8', logoTamano: 'grande' },
+    nombreClinica: 'Unidad Médica Pisada Sana',
+    direccionClinica: 'Av. Francisco I. Madero #1327',
+    telefonoClinica: '686 554 1920',
+    logoStorageKey: 'tenant/x/logo/abc.png',
+    leyendaPie: 'Horario: 9:00 a 18:00',
+    pacienteNombre: 'Sonia Lara',
+    pacienteFechaNacimiento: '1964-01-01',
+    pacienteSexo: 'femenino',
+    pacienteAlergias: [],
+    ...over,
+  });
+
+  it('congela la apariencia vigente al emitir', () => {
+    const emisor = emisorDe(contexto());
+
+    // Si esto dejara de copiarse y se resolviera al leer, cambiar el diseño de
+    // la clínica reescribiría el aspecto de todas las recetas ya firmadas.
+    expect(emisor.config).toEqual(
+      expect.objectContaining({ colorAcento: '#1d4ed8', logoTamano: 'grande' }),
+    );
+    expect(emisor.titulo).toBe('Dra.');
+  });
+
+  it('el snapshot no cambia si la clínica cambia su diseño después', () => {
+    const emisor = emisorDe(contexto());
+    const despues = contexto({
+      configReceta: { ...CONFIG_RECETA_DEFAULT, colorAcento: '#9d174d', logoTamano: 'chico' },
+    });
+    const emisorNuevo = emisorDe(despues);
+
+    expect(emisor.config?.colorAcento).toBe('#1d4ed8');
+    expect(emisorNuevo.config?.colorAcento).toBe('#9d174d');
   });
 });

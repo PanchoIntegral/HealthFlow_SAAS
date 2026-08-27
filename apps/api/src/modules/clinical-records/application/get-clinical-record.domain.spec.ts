@@ -33,7 +33,8 @@ function vistaConDosNotas(): ClinicalRecordView {
           planTerapeutico: 'Paracetamol 500mg cada 8h',
         },
         cerradoEn: '2026-01-02T00:00:00.000Z',
-        createdAt: '2026-01-02T00:00:00.000Z',
+        correcciones: [],
+    createdAt: '2026-01-02T00:00:00.000Z',
       },
       {
         id: 'nota-2',
@@ -49,7 +50,8 @@ function vistaConDosNotas(): ClinicalRecordView {
           planTerapeutico: '',
         },
         cerradoEn: null,
-        createdAt: '2026-02-01T00:00:00.000Z',
+        correcciones: [],
+    createdAt: '2026-02-01T00:00:00.000Z',
       },
     ],
   };

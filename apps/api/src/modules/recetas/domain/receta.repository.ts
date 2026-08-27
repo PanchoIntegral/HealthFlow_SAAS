@@ -1,4 +1,9 @@
-import type { RecetaDetalle, RecetaView, SexoPaciente } from '@healthflow/shared-types';
+import type {
+  ConfigReceta,
+  RecetaDetalle,
+  RecetaView,
+  SexoPaciente,
+} from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { Receta } from './receta.entity';
 
@@ -12,6 +17,10 @@ export interface ContextoEmision {
   cedulaEspecialidad: string | null;
   especialidad: string | null;
   institucionTitulo: string | null;
+  /** 'Dr.' | 'Dra.' del médico que emite. null = sin título en el membrete. */
+  titulo: string | null;
+  /** Apariencia configurada de la clínica, ya fusionada con los defaults. */
+  configReceta: ConfigReceta;
   nombreClinica: string;
   direccionClinica: string | null;
   telefonoClinica: string | null;

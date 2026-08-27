@@ -122,14 +122,25 @@ function formatearFolio(serie: string, anio: number, numero: number): string {
 }
 
 /**
+ * Exportada para poder probar el CONGELADO del membrete sin montar el caso de
+ * uso entero: que la receta guarde el diseño del momento —y no lo resuelva al
+ * leer— es lo que hace que reimprimir una receta vieja salga como se firmó.
+ *
  * Los campos que la ley exige pero la base permite vacíos se pasan como cadena
  * vacía en vez de omitirse: así el validador los reporta por nombre
  * ('emisor.institucionTitulo') y la UI puede decir exactamente qué capturar en
  * Ajustes, en lugar de fallar con un error genérico.
  */
-function emisorDe(c: ContextoEmision): EmisorReceta {
+export function emisorDe(c: ContextoEmision): EmisorReceta {
   return {
     medicoNombre: c.medicoNombre,
+    // No participa en la validación de RIS art. 64: la ley pide nombre y
+    // cédula, no el trato. Es preferencia de membrete, así que null es válido.
+    titulo: (c.titulo as EmisorReceta['titulo']) ?? null,
+    // Se congela junto al resto del membrete: reimprimir esta receta dentro
+    // de un año debe verse como el día que se firmó, no como el diseño que
+    // la clínica tenga entonces.
+    config: c.configReceta,
     cedulaProfesional: c.cedulaProfesional ?? '',
     cedulaEspecialidad: c.cedulaEspecialidad,
     especialidad: c.especialidad,

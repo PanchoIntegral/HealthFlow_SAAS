@@ -1,4 +1,5 @@
 import type {
+  CorreccionNota,
   ClinicalNoteType,
   ClinicalRecordView,
   EspecialidadKey,
@@ -73,6 +74,25 @@ export interface ClinicalRecordRepository {
    * accesible — se recorre por páginas, no se recorta.
    */
   getRecordView(tx: Tx, patientId: string, page: PaginaNotas): Promise<ClinicalRecordView | null>;
+
+  /** Estatus de una nota, para decidir si admite corrección. null si no existe en el tenant. */
+  getNotaBasica(tx: Tx, noteId: string): Promise<{ id: string; estatus: string } | null>;
+
+  /**
+   * Agrega una corrección (adenda) a una nota cerrada. NUNCA modifica la nota:
+   * la NOM-004 prohíbe enmendaduras, así que la rectificación se guarda al
+   * lado, con la firma congelada de quien la hace.
+   */
+  crearCorreccion(tx: Tx, input: NuevaCorreccionInput): Promise<CorreccionNota>;
+
+  /** Correcciones de UNA nota, en orden cronológico. */
+  getCorrecciones(tx: Tx, noteId: string): Promise<CorreccionNota[]>;
+}
+
+export interface NuevaCorreccionInput {
+  clinicalNoteId: string;
+  autorId: string;
+  texto: string;
 }
 
 /** Ventana del historial a devolver. `cursor` null = primera página. */

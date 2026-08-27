@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import { CONFIG_RECETA_DEFAULT, type ConfigReceta } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 
 export interface DatosClinica {
+  nombreClinica: string;
+  /** Ya fusionada con los valores por omisión: nunca llega parcial a la UI. */
+  configReceta: ConfigReceta;
   direccion: string | null;
   telefono: string | null;
   /** Texto libre para el pie de la receta impresa. */
@@ -25,10 +29,13 @@ export interface DatosClinica {
 export class DatosClinicaReader {
   async leer(tx: Tx): Promise<DatosClinica> {
     const result = await tx.execute(sql`
-      SELECT direccion, telefono, leyenda_pie, logo_storage_key FROM tenants LIMIT 1
+      SELECT nombre_clinica, direccion, telefono, leyenda_pie, logo_storage_key, config_receta
+        FROM tenants LIMIT 1
     `);
     const row = (
       result.rows as unknown as {
+        nombre_clinica: string;
+        config_receta: Partial<ConfigReceta> | null;
         direccion: string | null;
         telefono: string | null;
         leyenda_pie: string | null;
@@ -36,6 +43,10 @@ export class DatosClinicaReader {
       }[]
     )[0];
     return {
+      nombreClinica: row?.nombre_clinica ?? '',
+      // Fusión con los defaults: una clave que falte (config vieja, opción
+      // nueva) toma el valor con el que la receta se imprimía antes.
+      configReceta: { ...CONFIG_RECETA_DEFAULT, ...(row?.config_receta ?? {}) },
       direccion: row?.direccion ?? null,
       telefono: row?.telefono ?? null,
       leyendaPie: row?.leyenda_pie ?? null,

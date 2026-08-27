@@ -38,6 +38,10 @@ export class GetConsultationNoteUseCase {
         contenido: { ...s.contenido, especialidad },
         cerradoEn: s.cerradoEn ? s.cerradoEn.toISOString() : null,
         createdAt: s.createdAt.toISOString(),
+        // Un borrador no puede tener correcciones (todavía no se firma), así
+        // que no se consulta la tabla en el caso más frecuente.
+        correcciones:
+          s.estatus === 'cerrada' ? await this.records.getCorrecciones(tx, s.id) : [],
       };
     });
   }

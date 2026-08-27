@@ -76,15 +76,17 @@ export class AccountsController {
   }
 
   /**
-   * Dirección, teléfono, logo (resuelto a URL firmada) y leyenda de pie. No
+   * Nombre, apariencia, dirección, teléfono, logo (resuelto a URL firmada) y
+   * leyenda de pie — todo lo que arma el membrete impreso. No
    * expone `logoStorageKey`: es un detalle de storage, no algo que el cliente
    * necesite conocer para mostrar el preview.
    */
   @Get('clinica')
   @RequirePolicy('manage', 'Cuenta')
   async obtenerClinica(): Promise<DatosClinicaView> {
-    const { direccion, telefono, leyendaPie, logoUrl } = await this.obtenerDatosClinica.execute();
-    return { direccion, telefono, leyendaPie, logoUrl };
+    const { nombreClinica, configReceta, direccion, telefono, leyendaPie, logoUrl } =
+      await this.obtenerDatosClinica.execute();
+    return { nombreClinica, configReceta, direccion, telefono, leyendaPie, logoUrl };
   }
 
   /** Paso 1 de subir el logo: política de subida directa a storage. */

@@ -10,6 +10,7 @@ import {
   type ClinicalNoteType,
   type ClinicalNoteStatus,
   type ClinicalRecordView,
+  type CorreccionNota,
   type EspecialidadKey,
   type NotaEvolucionContent,
   type Odontograma,
@@ -21,6 +22,7 @@ import { ClinicalNote } from '../domain/clinical-note.entity';
 import type {
   ClinicalRecordRepository,
   CreateDraftNoteInput,
+  NuevaCorreccionInput,
   PaginaNotas,
 } from '../domain/clinical-record.repository';
 
@@ -64,6 +66,25 @@ interface NoteRow {
  * con tenant fijado: RLS aísla las lecturas y el DEFAULT current_tenant_id()
  * rellena tenant_id en los inserts.
  */
+interface CorreccionRow {
+  id: string;
+  clinical_note_id: string;
+  texto: string;
+  autor_nombre: string;
+  autor_cedula: string | null;
+  created_at: Date;
+}
+
+function toCorreccion(row: CorreccionRow): CorreccionNota {
+  return {
+    id: row.id,
+    texto: row.texto,
+    autorNombre: row.autor_nombre,
+    autorCedula: row.autor_cedula,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
 @Injectable()
 export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository {
   async ensureRecordForPatient(tx: Tx, patientId: string): Promise<string> {
@@ -257,6 +278,13 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     const pagina = hayMas ? filas.slice(0, page.limit) : filas;
     const ultima = pagina[pagina.length - 1];
 
+    // Correcciones de TODAS las notas de la página en una sola consulta: una
+    // por nota sería un N+1 en la pantalla que más se abre del sistema.
+    const correccionesPorNota = await this.correccionesDe(
+      tx,
+      pagina.map((f) => f.id),
+    );
+
     // El total es del expediente entero, no de la página: la cabecera dice
     // "N notas" y ahí un número parcial sería engañoso.
     const totalRes = await tx.execute(sql`
@@ -283,6 +311,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         contenido: row.contenido_nom004,
         cerradoEn: row.cerrado_en ? new Date(row.cerrado_en).toISOString() : null,
         createdAt: new Date(row.created_at).toISOString(),
+        correcciones: correccionesPorNota.get(row.id) ?? [],
       })),
       historial: {
         sinAlergiasConocidas: record.sin_alergias_conocidas,
@@ -293,5 +322,57 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         sexo: record.sexo,
       },
     };
+  }
+
+  /** Correcciones agrupadas por nota, en orden cronológico. */
+  private async correccionesDe(
+    tx: Tx,
+    noteIds: string[],
+  ): Promise<Map<string, CorreccionNota[]>> {
+    const porNota = new Map<string, CorreccionNota[]>();
+    if (noteIds.length === 0) return porNota;
+
+    const res = await tx.execute(sql`
+      SELECT id, clinical_note_id, texto, autor_nombre, autor_cedula, created_at
+        FROM notas_correccion
+       WHERE clinical_note_id IN (${sql.join(
+         noteIds.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+       ORDER BY created_at ASC
+    `);
+
+    for (const row of res.rows as unknown as CorreccionRow[]) {
+      const lista = porNota.get(row.clinical_note_id) ?? [];
+      lista.push(toCorreccion(row));
+      porNota.set(row.clinical_note_id, lista);
+    }
+    return porNota;
+  }
+
+  async getCorrecciones(tx: Tx, noteId: string): Promise<CorreccionNota[]> {
+    return (await this.correccionesDe(tx, [noteId])).get(noteId) ?? [];
+  }
+
+  async getNotaBasica(tx: Tx, noteId: string): Promise<{ id: string; estatus: string } | null> {
+    const res = await tx.execute(sql`
+      SELECT id, estatus FROM clinical_notes WHERE id = ${noteId} LIMIT 1
+    `);
+    const row = (res.rows as unknown as { id: string; estatus: string }[])[0];
+    return row ?? null;
+  }
+
+  async crearCorreccion(tx: Tx, input: NuevaCorreccionInput): Promise<CorreccionNota> {
+    // El nombre y la cédula se COPIAN aquí, no se resuelven al leer: la firma
+    // de una adenda es la del momento en que se hizo (mismo criterio que la
+    // firma de la nota y el emisor de la receta).
+    const res = await tx.execute(sql`
+      INSERT INTO notas_correccion (clinical_note_id, autor_id, autor_nombre, autor_cedula, texto)
+      SELECT ${input.clinicalNoteId}, u.id, u.nombre, u.cedula_profesional, ${input.texto}
+        FROM users u
+       WHERE u.id = ${input.autorId}
+      RETURNING id, clinical_note_id, texto, autor_nombre, autor_cedula, created_at
+    `);
+    return toCorreccion((res.rows as unknown as CorreccionRow[])[0]!);
   }
 }

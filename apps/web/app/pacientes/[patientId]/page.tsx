@@ -17,6 +17,8 @@ import { EditorHistorial } from '../../../components/editor-historial';
 import { PresupuestoPanel } from '../../../components/presupuesto-panel';
 import { ConsentimientoPanel } from '../../../components/consentimiento-panel';
 import { RadiografiaPanel } from '../../../components/radiografia-panel';
+import { Podograma } from '../../../components/podograma';
+import { CorregirNotaModal } from '../../../components/corregir-nota-modal';
 import { OrdenesPlantillasPanel } from '../../../components/ordenes-plantillas-panel';
 import { RecetaPanel } from '../../../components/receta-panel';
 import { FichaPaciente } from '../../../components/ficha-paciente';
@@ -198,7 +200,15 @@ function ExpedientePageInner({ patientId }: { patientId: string }) {
             ) : (
               <div className="flex flex-col gap-4">
                 {notas.map((nota) => (
-                  <NotaCard key={nota.id} nota={nota} />
+                  <NotaCard
+                    key={nota.id}
+                    nota={nota}
+                    token={token}
+                    patientId={patientId}
+                    // Escribir una aclaración clínica firmada es acto médico:
+                    // el asistente lee el expediente, pero no firma en él.
+                    puedeCorregir={user.rol === 'medico' || user.rol === 'admin'}
+                  />
                 ))}
 
                 {record.hasNextPage && (
@@ -221,9 +231,20 @@ function ExpedientePageInner({ patientId }: { patientId: string }) {
   );
 }
 
-function NotaCard({ nota }: { nota: ClinicalNoteView }) {
+function NotaCard({
+  nota,
+  token,
+  patientId,
+  puedeCorregir,
+}: {
+  nota: ClinicalNoteView;
+  token: string;
+  patientId: string;
+  puedeCorregir: boolean;
+}) {
   const c = nota.contenido;
   const cerrada = nota.estatus === 'cerrada';
+  const [corrigiendo, setCorrigiendo] = useState(false);
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -299,11 +320,66 @@ function NotaCard({ nota }: { nota: ClinicalNoteView }) {
         </Section>
       )}
 
+      {/*
+        Mapa de pies de la nota. Se muestra en el expediente y no solo durante
+        la consulta porque es el hallazgo principal de podiatría: una nota de
+        esta especialidad sin su diagrama es ilegible para quien la consulta
+        después. Solo lectura — la nota cerrada es inmutable (NOM-004).
+      */}
+      {c.podograma && c.podograma.marcas.length > 0 && (
+        <Section title="Mapa de pies">
+          {/* El componente ya trae su propio resumen escrito de las marcas
+              (ResumenPodograma): no se agrega otro aquí. */}
+          <Podograma valor={c.podograma} onChange={() => {}} readOnly />
+        </Section>
+      )}
+
       {c.firma && (
         <footer className="mt-3 border-t border-slate-100 pt-2 text-xs text-slate-500">
           Firmada por <strong>{c.firma.medicoNombre}</strong>
           {c.firma.cedula ? ` · Céd. prof. ${c.firma.cedula}` : ''}
         </footer>
+      )}
+
+      {/*
+        Correcciones posteriores al cierre. Van DEBAJO de la nota y su firma,
+        nunca mezcladas con el texto original: quien lee el expediente debe
+        poder distinguir de un vistazo qué se asentó en la consulta y qué se
+        aclaró después (NOM-004: sin enmendaduras).
+      */}
+      {nota.correcciones.length > 0 && (
+        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+          {nota.correcciones.map((corr) => (
+            <div key={corr.id} className="rounded-lg bg-amber-50/60 px-3 py-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                Corrección
+              </p>
+              <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{corr.texto}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {fecha(corr.createdAt)} · {corr.autorNombre}
+                {corr.autorCedula ? ` · Céd. prof. ${corr.autorCedula}` : ''}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {cerrada && puedeCorregir && (
+        <button
+          onClick={() => setCorrigiendo(true)}
+          className="mt-3 text-xs font-medium text-brand-blue hover:underline"
+        >
+          + Agregar corrección
+        </button>
+      )}
+
+      {corrigiendo && (
+        <CorregirNotaModal
+          token={token}
+          noteId={nota.id}
+          patientId={patientId}
+          onClose={() => setCorrigiendo(false)}
+        />
       )}
     </article>
   );

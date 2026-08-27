@@ -725,6 +725,13 @@ export interface UserProfile {
    */
   cedulaProfesional: string | null;
   /**
+   * Título con el que firma sus documentos impresos ("Dr." / "Dra."). null =
+   * sin título en el membrete, que es como se imprimieron todas las recetas
+   * anteriores a este campo. Es del MÉDICO y no de la clínica: en el mismo
+   * consultorio firman un doctor y una doctora.
+   */
+  titulo: TituloMedico | null;
+  /**
    * Cédula de ESPECIALIDAD, distinta de la profesional: certifica la
    * especialidad concreta (podiatría, cardiología…), no el ejercicio general
    * de la medicina. Un médico puede tener la profesional sin esta. Solo se usa
@@ -888,6 +895,8 @@ export interface UserProfileMe extends UserProfile {
 export interface UpdatePerfilRequest {
   especialidadKey: EspecialidadKey;
   especialidad?: string;
+  /** 'Dr.' | 'Dra.' | cadena vacía para quitar el título del membrete. */
+  titulo?: TituloMedico | '';
   /** Cadena vacía = borrar la cédula guardada. */
   cedulaProfesional?: string;
   /** Cadena vacía = borrar la cédula guardada. */
@@ -907,11 +916,90 @@ export type UpdateEspecialidadRequest = UpdatePerfilRequest;
  * el resto de `/cuentas`: es configuración de la clínica, no del médico que
  * mira. Cadena vacía = borrar el dato guardado, igual que las cédulas.
  */
+/** Tamaños del logo en el membrete. Cerrado: el médico elige, no teclea píxeles. */
+export const TAMANOS_LOGO = ['chico', 'mediano', 'grande'] as const;
+export type TamanoLogo = (typeof TAMANOS_LOGO)[number];
+
+/**
+ * Apariencia de la receta impresa.
+ *
+ * Toca CÓMO SE VE, nunca QUÉ DATOS lleva. El artículo 64 del RIS obliga a
+ * imprimir nombre, cédula, institución del título y domicilio del
+ * establecimiento: nada de eso es ocultable desde aquí, porque una receta
+ * legalmente incompleta saldría con nuestro software y con la firma del
+ * médico. Lo que sí se puede ocultar es lo que la ley no pide (la
+ * especialidad, la leyenda del pie).
+ */
+export interface ConfigReceta {
+  logoTamano: TamanoLogo;
+  /** La especialidad no la exige el art. 64: es del gusto de cada quien. */
+  mostrarEspecialidad: boolean;
+  mostrarLeyendaPie: boolean;
+  /**
+   * Color de los acentos (línea del membrete y títulos de sección). null =
+   * el gris por omisión. Solo acentos, nunca el texto del contenido: una
+   * receta se imprime a menudo en blanco y negro y en fax de farmacia, y el
+   * contenido tiene que leerse igual.
+   */
+  colorAcento: string | null;
+  /**
+   * El consultorio ya imprime en hojas con su membrete. Reserva el espacio
+   * superior y omite logo, nombre y domicilio de la clínica, que el papel ya
+   * trae. Los datos del MÉDICO se siguen imprimiendo siempre.
+   */
+  papelMembretado: boolean;
+}
+
+/**
+ * Valores por omisión: reproducen EXACTAMENTE la receta tal como se imprimía
+ * antes de que esto fuera configurable. Es lo que se usa al leer una receta
+ * emitida sin configuración guardada, de modo que ningún documento histórico
+ * cambie de aspecto por una función nueva.
+ */
+export const CONFIG_RECETA_DEFAULT: ConfigReceta = {
+  logoTamano: 'mediano',
+  mostrarEspecialidad: true,
+  mostrarLeyendaPie: true,
+  colorAcento: null,
+  papelMembretado: false,
+};
+
 export interface ActualizarDatosClinicaRequest {
+  /** Nombre comercial del consultorio, tal como sale en el membrete. */
+  nombreClinica?: string;
   direccion?: string;
   telefono?: string;
+  /** Se manda completa o no se manda: no hay actualización parcial de la apariencia. */
+  configReceta?: ConfigReceta;
   /** Texto libre para el pie de la receta impresa. Cadena vacía = borrar. */
   leyendaPie?: string;
+}
+
+/**
+ * Títulos con los que un médico puede firmar el membrete impreso. Lista
+ * cerrada y no texto libre: es lo que se imprime junto al nombre en un
+ * documento legal, y un catálogo evita "dr", "DR." y "Doctora" conviviendo en
+ * las recetas de la misma clínica.
+ */
+export const TITULOS_MEDICO = ['Dr.', 'Dra.'] as const;
+export type TituloMedico = (typeof TITULOS_MEDICO)[number];
+
+/**
+ * Compone el nombre del membrete impreso.
+ *
+ * No concatena a ciegas: durante mucho tiempo el único lugar para el trato fue
+ * el propio campo de nombre, así que hay cuentas capturadas como "Dra. Mariana
+ * Cervantes". Anteponerle el título otra vez imprimiría "Dra. Dra. Mariana
+ * Cervantes" en una receta —un documento que sale del consultorio en manos del
+ * paciente—, y el médico no tendría forma de entender por qué.
+ */
+export function nombreConTitulo(
+  titulo: TituloMedico | null | undefined,
+  nombre: string,
+): string {
+  if (!titulo) return nombre;
+  const yaLoTrae = /^\s*(dr|dra)\.?\s/i.test(nombre);
+  return yaLoTrae ? nombre : `${titulo} ${nombre}`;
 }
 
 /** Tipos MIME aceptados para el logo de la clínica (mismo criterio que radiografías). */
@@ -941,6 +1029,8 @@ export interface LogoClinicaView {
 
 /** GET /cuentas/clinica — lo que pinta Ajustes → Receta. */
 export interface DatosClinicaView {
+  nombreClinica: string;
+  configReceta: ConfigReceta;
   direccion: string | null;
   telefono: string | null;
   leyendaPie: string | null;
@@ -1608,6 +1698,30 @@ export const EMPTY_HISTORIA_CLINICA: NotaEvolucionContent = {
   antecedentesPersonalesNoPatologicos: '',
 };
 
+/**
+ * Anotación aclaratoria sobre una nota YA CERRADA.
+ *
+ * La NOM-004 no admite enmendaduras: una nota firmada no se reescribe. La
+ * corrección se agrega al lado, firmada y fechada por quien la hace, y la
+ * original se conserva intacta — que es justo lo que un perito espera ver.
+ */
+export interface CorreccionNota {
+  id: string;
+  texto: string;
+  /** Congelados al firmar: si el médico corrige su cédula después, esta adenda no cambia. */
+  autorNombre: string;
+  autorCedula: string | null;
+  createdAt: string;
+}
+
+/** Mínimo de caracteres de una corrección: obliga a explicar, no solo a teclear. */
+export const CORRECCION_TEXTO_MIN = 10;
+export const CORRECCION_TEXTO_MAX = 2000;
+
+export interface CrearCorreccionRequest {
+  texto: string;
+}
+
 export interface ClinicalNoteView {
   id: string;
   appointmentId: string;
@@ -1617,6 +1731,12 @@ export interface ClinicalNoteView {
   contenido: NotaEvolucionContent;
   cerradoEn: string | null;
   createdAt: string;
+  /**
+   * Correcciones posteriores al cierre, en orden cronológico. Viajan CON la
+   * nota y no en una petición aparte: leer una nota corregida sin ver su
+   * corrección sería leer información que el médico ya rectificó.
+   */
+  correcciones: CorreccionNota[];
 }
 
 /** Tamaño de página por omisión y tope duro del historial del expediente. */
@@ -3181,6 +3301,21 @@ export type ViaAdministracion = (typeof VIAS_ADMINISTRACION)[number];
  */
 export interface EmisorReceta {
   medicoNombre: string;
+  /**
+   * OPCIONAL a propósito: este tipo describe un snapshot ya persistido en el
+   * jsonb de cada receta emitida, y las anteriores a este campo no lo traen.
+   * Volverlo obligatorio haría ilegibles las recetas históricas — mismo
+   * criterio que se aplicó al no extender `FirmaMedica`.
+   */
+  titulo?: TituloMedico | null;
+  /**
+   * Apariencia con la que se imprimió ESTA receta. Opcional por lo mismo que
+   * `titulo`: las emitidas antes de existir el campo no la traen y se leen
+   * con CONFIG_RECETA_DEFAULT. Se congela al emitir a propósito — si el
+   * médico cambia su diseño en marzo, la receta de enero debe reimprimirse
+   * como se firmó, no como se ve hoy.
+   */
+  config?: ConfigReceta | null;
   cedulaProfesional: string;
   /** Null si el médico no tiene especialidad certificada: el art. 65 solo la pide a especialistas. */
   cedulaEspecialidad: string | null;

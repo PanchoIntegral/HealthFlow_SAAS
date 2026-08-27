@@ -34,6 +34,7 @@ import type {
   RequestLogoUploadUrlRequest,
   RequestLogoUploadUrlResponse,
   ConsentimientoView,
+  CorreccionNota,
   CrearConsentimientoRequest,
   CrearPresupuestoRequest,
   EstatusPartida,
@@ -256,6 +257,17 @@ export const api = {
       method: 'POST',
       token,
       body: JSON.stringify({ contenido }),
+    }),
+
+  /**
+   * Agrega una corrección a una nota ya cerrada. No edita la nota: la NOM-004
+   * prohíbe enmendaduras, así que la aclaración se guarda al lado, firmada.
+   */
+  corregirNota: (token: string, noteId: string, texto: string) =>
+    request<CorreccionNota>(`/notas/${noteId}/correcciones`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ texto }),
     }),
 
   /** Abre (o CREA) la orden de plantillas de esta consulta. Solo esta llamada necesita el appointmentId. */

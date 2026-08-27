@@ -9,6 +9,7 @@ import { SaveNoteDraftUseCase } from './application/save-note-draft.use-case';
 import { FinishConsultationUseCase } from './application/finish-consultation.use-case';
 import { GetClinicalRecordUseCase } from './application/get-clinical-record.use-case';
 import { GetConsultationNoteUseCase } from './application/get-consultation-note.use-case';
+import { CorregirNotaUseCase } from './application/corregir-nota.use-case';
 import { DrizzleClinicalRecordRepository } from './infrastructure/clinical-record.drizzle-repo';
 import { ConsultationsController } from './infrastructure/consultations.controller';
 
@@ -26,6 +27,7 @@ import { ConsultationsController } from './infrastructure/consultations.controll
     FinishConsultationUseCase,
     GetClinicalRecordUseCase,
     GetConsultationNoteUseCase,
+    CorregirNotaUseCase,
     CaslAbilityFactory,
     PoliciesGuard,
     { provide: CLINICAL_RECORD_REPOSITORY, useClass: DrizzleClinicalRecordRepository },

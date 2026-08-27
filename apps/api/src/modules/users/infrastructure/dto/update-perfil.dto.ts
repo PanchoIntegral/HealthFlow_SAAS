@@ -1,5 +1,10 @@
 import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
-import { ESPECIALIDADES, type EspecialidadKey } from '@healthflow/shared-types';
+import {
+  ESPECIALIDADES,
+  TITULOS_MEDICO,
+  type EspecialidadKey,
+  type TituloMedico,
+} from '@healthflow/shared-types';
 
 export class UpdatePerfilDto {
   @IsIn(ESPECIALIDADES)
@@ -9,6 +14,15 @@ export class UpdatePerfilDto {
   @IsString()
   @MaxLength(120)
   especialidad?: string;
+
+  /**
+   * Título del membrete impreso. Catálogo cerrado y no texto libre: es lo que
+   * se imprime junto al nombre en un documento legal. La cadena vacía se
+   * permite y significa "sin título", igual que en las cédulas.
+   */
+  @IsOptional()
+  @IsIn([...TITULOS_MEDICO, ''])
+  titulo?: TituloMedico | '';
 
   /**
    * Cédula profesional. Se valida la FORMA, no la existencia: el registro real

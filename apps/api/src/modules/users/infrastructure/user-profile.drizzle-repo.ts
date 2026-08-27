@@ -14,6 +14,7 @@ interface UserProfileRow {
   rol: UserProfile['rol'];
   especialidad: string | null;
   especialidad_key: UserProfile['especialidadKey'];
+  titulo: UserProfile['titulo'];
   cedula_profesional: string | null;
   cedula_especialidad: string | null;
   institucion_titulo: string | null;
@@ -27,6 +28,7 @@ function toProfile(row: UserProfileRow): PerfilPersistido {
     rol: row.rol,
     especialidad: row.especialidad,
     especialidadKey: row.especialidad_key,
+    titulo: row.titulo,
     cedulaProfesional: row.cedula_profesional,
     cedulaEspecialidad: row.cedula_especialidad,
     institucionTitulo: row.institucion_titulo,
@@ -43,7 +45,7 @@ function toProfile(row: UserProfileRow): PerfilPersistido {
 export class DrizzleUserProfileRepository implements UserProfileRepository {
   async getById(tx: Tx, userId: string): Promise<PerfilPersistido | null> {
     const result = await tx.execute(sql`
-      SELECT id, nombre, rol, especialidad, especialidad_key,
+      SELECT id, nombre, rol, especialidad, especialidad_key, titulo,
              cedula_profesional, cedula_especialidad, institucion_titulo, formato_hora
         FROM users
        WHERE id = ${userId}
@@ -61,13 +63,14 @@ export class DrizzleUserProfileRepository implements UserProfileRepository {
     const result = await tx.execute(sql`
       UPDATE users
          SET especialidad = ${input.especialidad},
+             titulo = ${input.titulo},
              especialidad_key = ${input.especialidadKey},
              cedula_profesional = ${input.cedulaProfesional},
              cedula_especialidad = ${input.cedulaEspecialidad},
              institucion_titulo = ${input.institucionTitulo},
              formato_hora = ${input.formatoHora}
        WHERE id = ${userId}
-      RETURNING id, nombre, rol, especialidad, especialidad_key,
+      RETURNING id, nombre, rol, especialidad, especialidad_key, titulo,
                 cedula_profesional, cedula_especialidad, institucion_titulo, formato_hora
     `);
     const row = (result.rows as unknown as UserProfileRow[])[0];

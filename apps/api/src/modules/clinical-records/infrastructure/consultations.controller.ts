@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import type {
   ClinicalRecordView,
+  CorreccionNota,
   FinishConsultationResponse,
   StartConsultationResponse,
 } from '@healthflow/shared-types';
@@ -22,7 +23,9 @@ import { SaveNoteDraftUseCase } from '../application/save-note-draft.use-case';
 import { FinishConsultationUseCase } from '../application/finish-consultation.use-case';
 import { GetClinicalRecordUseCase } from '../application/get-clinical-record.use-case';
 import { GetConsultationNoteUseCase } from '../application/get-consultation-note.use-case';
+import { CorregirNotaUseCase } from '../application/corregir-nota.use-case';
 import { NoteContentDto } from './dto/note-content.dto';
+import { CrearCorreccionDto } from './dto/correccion.dto';
 import { ClinicalRecordQueryDto } from './dto/clinical-record-query.dto';
 
 /**
@@ -50,7 +53,26 @@ export class ConsultationsController {
     private readonly finishConsultation: FinishConsultationUseCase,
     private readonly getClinicalRecord: GetClinicalRecordUseCase,
     private readonly getConsultationNote: GetConsultationNoteUseCase,
+    private readonly corregirNota: CorregirNotaUseCase,
   ) {}
+
+  /**
+   * Agrega una corrección (adenda) a una nota ya cerrada. La nota original NO
+   * se toca: la NOM-004 prohíbe enmendaduras, y rectificar es agregar.
+   *
+   * Va bajo la política `write` de `Consultation` —médico/admin— y no bajo
+   * `Patient`: aunque se hace desde el expediente, escribir una aclaración
+   * clínica firmada es un acto médico, no captura de recepción. El asistente
+   * lee el expediente completo pero no firma nada dentro de él.
+   */
+  @Post('notas/:noteId/correcciones')
+  @RequirePolicy('write', 'Consultation')
+  corregir(
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Body() dto: CrearCorreccionDto,
+  ): Promise<CorreccionNota> {
+    return this.corregirNota.execute(noteId, dto.texto);
+  }
 
   /** Nota (borrador o cerrada) de una consulta, para hidratar el editor. */
   @Get('consultations/:appointmentId/note')

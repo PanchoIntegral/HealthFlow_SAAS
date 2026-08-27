@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { opcionesEspecialidad, type EspecialidadKey } from '@healthflow/shared-types';
+import {
+  TITULOS_MEDICO,
+  opcionesEspecialidad,
+  type EspecialidadKey,
+  type TituloMedico,
+} from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
@@ -127,6 +132,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
   const [cedulaGuardada, setCedulaGuardada] = useState<string | null>(null);
   const [cedulaEspecialidad, setCedulaEspecialidad] = useState('');
   const [institucionTitulo, setInstitucionTitulo] = useState('');
+  const [titulo, setTitulo] = useState<TituloMedico | ''>('');
   const [formatoHora, setFormatoHora] = useState<'12h' | '24h'>('24h');
   const [rol, setRol] = useState<string>('medico');
   /**
@@ -150,6 +156,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
         setCedulaGuardada(profile.cedulaProfesional);
         setCedulaEspecialidad(profile.cedulaEspecialidad ?? '');
         setInstitucionTitulo(profile.institucionTitulo ?? '');
+        setTitulo(profile.titulo ?? '');
         setFormatoHora(profile.formatoHora);
         setRol(profile.rol);
         setPerfilCargado(true);
@@ -173,6 +180,7 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
         cedulaProfesional: cedula.trim(),
         cedulaEspecialidad: cedulaEspecialidad.trim(),
         institucionTitulo: institucionTitulo.trim(),
+        titulo,
         formatoHora,
       });
       setCedulaGuardada(perfil.cedulaProfesional);
@@ -236,6 +244,27 @@ function PerfilSeccion({ token, esTitular }: { token: string; esTitular: boolean
             <span className="mt-1 block text-xs text-slate-400">
               Distinta de la profesional. Opcional — hoy solo se usa en el membrete de documentos
               impresos (la orden de plantillas ortopédicas).
+            </span>
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-600">Título</span>
+            <select
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value as TituloMedico | '')}
+              disabled={loading}
+              className={CAMPO}
+            >
+              <option value="">Sin título</option>
+              {TITULOS_MEDICO.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-slate-400">
+              Antecede a tu nombre en el membrete de las recetas que emitas de ahora en adelante.
+              Las ya emitidas no cambian: son documentos congelados.
             </span>
           </label>
 
