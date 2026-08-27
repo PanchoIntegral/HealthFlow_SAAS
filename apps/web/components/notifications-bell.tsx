@@ -77,8 +77,11 @@ export function NotificationsBell() {
         )}
       </button>
 
+      {/* En escritorio la campanita vive en la barra lateral y el panel sale
+          hacia la derecha; en la cabecera móvil está pegada al borde derecho,
+          así que ahí cuelga hacia abajo y se limita al ancho de la pantalla. */}
       {open && (
-        <div className="absolute left-full top-0 z-50 ml-2 w-96 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl lg:left-full lg:right-auto lg:top-0 lg:ml-2 lg:mt-0 lg:w-96">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <h3 className="text-sm font-semibold">Notificaciones</h3>
             {unread > 0 && (

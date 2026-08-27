@@ -438,8 +438,10 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Encabezado */}
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-3">
+      {/* En teléfono el encabezado se parte en dos filas: no cabe la fila
+          única de escritorio y provocaba scroll horizontal. */}
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
           <button onClick={() => router.push('/sala-de-espera')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50">
             ← Sala
           </button>
@@ -451,7 +453,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center justify-end gap-3 text-sm">
           {/* Solo si la clínica lo contrató y solo para quien firma la nota. */}
           {!readOnly && miPerfil.data?.asistenteIaActivo && user.rol !== 'asistente' && (
             <GrabadorIa
@@ -478,7 +480,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-5xl gap-6 px-6 py-6 lg:grid-cols-[1fr_280px]">
+      <div className="mx-auto grid max-w-5xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_280px]">
         {/* Columna del editor */}
         <div className="space-y-5">
           {/* Lo primero que se ve, antes que cualquier campo: si el paciente es
