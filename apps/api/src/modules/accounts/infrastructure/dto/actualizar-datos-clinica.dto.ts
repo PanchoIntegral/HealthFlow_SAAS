@@ -1,7 +1,9 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsIn,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -9,7 +11,31 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { TAMANOS_LOGO, type TamanoLogo } from '@healthflow/shared-types';
+import {
+  SECCIONES_RECETA,
+  TAMANOS_LOGO,
+  type SeccionReceta,
+  type TamanoLogo,
+} from '@healthflow/shared-types';
+
+/** Encabezados de los bloques. Se guardan tal cual y se imprimen en el documento. */
+export class EtiquetasRecetaDto {
+  @IsString()
+  @MaxLength(60)
+  diagnostico!: string;
+
+  @IsString()
+  @MaxLength(60)
+  indicaciones!: string;
+
+  @IsString()
+  @MaxLength(60)
+  prescripcion!: string;
+
+  @IsString()
+  @MaxLength(60)
+  firma!: string;
+}
 
 /**
  * Apariencia de la receta. Se valida campo por campo y no como jsonb libre:
@@ -36,6 +62,24 @@ export class ConfigRecetaDto {
 
   @IsBoolean()
   papelMembretado!: boolean;
+
+  /**
+   * Orden del cuerpo. Se valida que cada elemento sea una sección conocida;
+   * que estén todas y sin repetir lo garantiza `normalizarOrdenSecciones` al
+   * imprimir, porque este arreglo también llega desde configuraciones ya
+   * guardadas que el validador nunca vio.
+   */
+  @IsArray()
+  @IsIn(SECCIONES_RECETA, { each: true })
+  ordenSecciones!: SeccionReceta[];
+
+  @IsObject()
+  @ValidateNested()
+  @Type(() => EtiquetasRecetaDto)
+  etiquetas!: EtiquetasRecetaDto;
+
+  @IsIn(['encabezado', 'pie'])
+  posicionDomicilio!: 'encabezado' | 'pie';
 }
 
 export class ActualizarDatosClinicaDto {

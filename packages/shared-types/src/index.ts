@@ -930,8 +930,55 @@ export type TamanoLogo = (typeof TAMANOS_LOGO)[number];
  * médico. Lo que sí se puede ocultar es lo que la ley no pide (la
  * especialidad, la leyenda del pie).
  */
+/**
+ * Bloques reordenables del cuerpo de la receta.
+ *
+ * Solo el CUERPO: el membrete, la ficha del paciente y la firma tienen
+ * posición fija porque su lugar es parte de cómo se lee un documento médico.
+ * Lo que cada consultorio sí acomoda distinto es el orden en que expone el
+ * padecimiento y el tratamiento.
+ */
+export const SECCIONES_RECETA = ['diagnostico', 'indicaciones', 'prescripcion'] as const;
+export type SeccionReceta = (typeof SECCIONES_RECETA)[number];
+
+/** Encabezados por omisión de cada bloque. Cada clínica los renombra a su gusto. */
+export const ETIQUETAS_RECETA_DEFAULT: Record<SeccionReceta | 'firma', string> = {
+  diagnostico: 'Diagnóstico',
+  indicaciones: 'Indicaciones generales',
+  prescripcion: 'Prescripción',
+  firma: 'Firma autógrafa del médico',
+};
+
+/**
+ * Deja el orden en un estado siempre imprimible: quita repetidos y desconocidos
+ * y agrega al final los que falten.
+ *
+ * Existe porque este arreglo viaja en un jsonb que ya está guardado: una
+ * versión vieja, un cliente que mande de más o una sección nueva del catálogo
+ * no pueden hacer que una receta se imprima con un bloque duplicado o sin el
+ * diagnóstico.
+ */
+export function normalizarOrdenSecciones(orden: readonly string[] | undefined): SeccionReceta[] {
+  const vistas = new Set<SeccionReceta>();
+  for (const clave of orden ?? []) {
+    if ((SECCIONES_RECETA as readonly string[]).includes(clave)) vistas.add(clave as SeccionReceta);
+  }
+  for (const clave of SECCIONES_RECETA) vistas.add(clave);
+  return [...vistas];
+}
+
 export interface ConfigReceta {
   logoTamano: TamanoLogo;
+  /** Orden de los bloques del cuerpo, de arriba abajo. */
+  ordenSecciones: SeccionReceta[];
+  /** Encabezado de cada bloque y del pie de firma. Vacío = el de por omisión. */
+  etiquetas: Record<SeccionReceta | 'firma', string>;
+  /**
+   * Dónde se imprime el domicilio y el teléfono del consultorio. El art. 64
+   * del RIS exige el domicilio, no dice dónde: hay quien lo quiere arriba con
+   * el membrete y quien lo pone al pie junto al horario.
+   */
+  posicionDomicilio: 'encabezado' | 'pie';
   /** La especialidad no la exige el art. 64: es del gusto de cada quien. */
   mostrarEspecialidad: boolean;
   mostrarLeyendaPie: boolean;
@@ -958,6 +1005,9 @@ export interface ConfigReceta {
  */
 export const CONFIG_RECETA_DEFAULT: ConfigReceta = {
   logoTamano: 'mediano',
+  ordenSecciones: [...SECCIONES_RECETA],
+  etiquetas: { ...ETIQUETAS_RECETA_DEFAULT },
+  posicionDomicilio: 'encabezado',
   mostrarEspecialidad: true,
   mostrarLeyendaPie: true,
   colorAcento: null,

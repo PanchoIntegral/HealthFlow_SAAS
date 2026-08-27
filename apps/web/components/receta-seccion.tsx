@@ -12,6 +12,7 @@ import { api, ApiError } from '../lib/api';
 import { ErrorSubidaDirecta, subirArchivoDirecto } from '../lib/subida-directa';
 import {
   ControlesApariencia,
+  EtiquetasSecciones,
   PreviaReceta,
   recetaDeEjemplo,
 } from './receta-personalizacion';
@@ -238,7 +239,7 @@ export function RecetaSeccion({ token }: { token: string }) {
           institución de tu título y el domicilio del consultorio— se imprimen siempre.
         </p>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="grid gap-6 lg:grid-cols-2">
           <ControlesApariencia
             config={config}
             disabled={loading}
@@ -248,7 +249,26 @@ export function RecetaSeccion({ token }: { token: string }) {
             }}
           />
 
-          {perfil.data && (
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-slate-600">Títulos de la receta</h3>
+            <EtiquetasSecciones
+              config={config}
+              disabled={loading}
+              onChange={(actualizar) => {
+                setConfig(actualizar);
+                setGuardadoLeyenda(false);
+              }}
+            />
+            <p className="mt-2 text-xs text-slate-400">
+              Déjalos vacíos para usar los títulos por omisión.
+            </p>
+          </div>
+        </div>
+
+        {/* La previa va a lo ancho, debajo de los controles: es una hoja tamaño
+            carta, y en media columna se deformaba. */}
+        {perfil.data && (
+          <div className="mt-6">
             <PreviaReceta
               receta={recetaDeEjemplo(
                 {
@@ -267,8 +287,8 @@ export function RecetaSeccion({ token }: { token: string }) {
                 config,
               )}
             />
-          )}
-        </div>
+          </div>
+        )}
 
         <p className="mt-4 text-xs text-slate-400">
           Los cambios aplican a las recetas que emitas de ahora en adelante. Las ya emitidas

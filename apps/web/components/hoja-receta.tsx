@@ -2,10 +2,13 @@
 
 import {
   CONFIG_RECETA_DEFAULT,
+  ETIQUETAS_RECETA_DEFAULT,
   ETIQUETAS_SEXO,
   nombreConTitulo,
+  normalizarOrdenSecciones,
   type ConfigReceta,
   type RecetaDetalle,
+  type SeccionReceta,
 } from '@healthflow/shared-types';
 
 const fecha = (iso: string) =>
@@ -35,6 +38,16 @@ export function HojaReceta({ receta }: { receta: RecetaDetalle }) {
   // config: se imprimen con los valores de siempre.
   const config = emisor.config ?? CONFIG_RECETA_DEFAULT;
   const acento = config.colorAcento ?? undefined;
+  const orden = normalizarOrdenSecciones(config.ordenSecciones);
+  /** Etiqueta configurada, o la de por omisión si está vacía. */
+  const etiqueta = (clave: SeccionReceta | 'firma') =>
+    config.etiquetas?.[clave]?.trim() || ETIQUETAS_RECETA_DEFAULT[clave];
+  const domicilio = [
+    emisor.domicilioEstablecimiento,
+    emisor.telefonoClinica ? `Tel: ${emisor.telefonoClinica}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-8 text-sm print:rounded-none print:border-0 print:p-0">
@@ -79,15 +92,8 @@ export function HojaReceta({ receta }: { receta: RecetaDetalle }) {
           )}
           {/* Se omite la línea entera si faltan los datos, en vez de imprimir
               "—": un membrete con guiones se ve como un documento a medias. */}
-          {!config.papelMembretado && (emisor.domicilioEstablecimiento || emisor.telefonoClinica) && (
-            <p className="mt-0.5 text-xs text-slate-500">
-              {[
-                emisor.domicilioEstablecimiento,
-                emisor.telefonoClinica ? `Tel: ${emisor.telefonoClinica}` : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
+          {!config.papelMembretado && config.posicionDomicilio !== 'pie' && domicilio && (
+            <p className="mt-0.5 text-xs text-slate-500">{domicilio}</p>
           )}
 
           <div className="mt-3 flex items-end justify-between gap-6">
@@ -124,22 +130,11 @@ export function HojaReceta({ receta }: { receta: RecetaDetalle }) {
         <Dato label="Sexo">{ETIQUETAS_SEXO[paciente.sexo]}</Dato>
       </section>
 
-      {diagnosticos.length > 0 && (
-        <section className="mb-5">
-          <h2
-            className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400"
-            style={{ color: acento }}
-          >
-            Diagnóstico
-          </h2>
-          {diagnosticos.map((d) => (
-            <p key={d.cie10} className="text-slate-800">
-              {d.descripcion} <span className="text-slate-400">({d.cie10})</span>
-            </p>
-          ))}
-        </section>
-      )}
-
+      {/*
+        Alergias fuera del orden configurable, y siempre antes del cuerpo: es
+        una advertencia de seguridad para quien surte y para quien administra,
+        no una sección de contenido que se acomode al gusto.
+      */}
       {alergiasSnapshot.length > 0 && (
         <section className="mb-5 rounded-lg border border-red-300 px-3 py-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Alergias</p>
@@ -147,53 +142,79 @@ export function HojaReceta({ receta }: { receta: RecetaDetalle }) {
         </section>
       )}
 
-      <section className="mb-6">
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400"
-          style={{ color: acento }}
-        >
-          Prescripción
-        </h2>
-        <ol className="space-y-3">
-          {medicamentos.map((m, i) => (
-            // break-inside-avoid: un medicamento partido entre dos hojas es
-            // exactamente el error que causa una dosis mal leída.
-            <li key={i} className="break-inside-avoid border-l-2 border-slate-200 pl-3">
-              <p className="font-semibold text-slate-900">
-                {m.denominacionGenerica}
-                {m.denominacionDistintiva && (
-                  <span className="font-normal text-slate-500"> ({m.denominacionDistintiva})</span>
-                )}
-              </p>
-              <p className="text-slate-700">{m.presentacion}</p>
-              {/* Los datos del art. 29 en un renglón, en el orden en que se
-                  leen en voz alta al paciente. */}
-              <p className="text-slate-700">
-                {m.dosis} · vía {m.via.toLowerCase()} · {m.frecuencia} · {m.duracion}
-              </p>
-              {m.indicaciones && (
-                <p className="mt-0.5 text-xs italic text-slate-600">{m.indicaciones}</p>
-              )}
-            </li>
-          ))}
-        </ol>
-      </section>
+      {/* El cuerpo se imprime en el orden que configuró la clínica. */}
+      {orden.map((seccion) => {
+        if (seccion === 'diagnostico') {
+          return (
+            diagnosticos.length > 0 && (
+              <section key={seccion} className="mb-5">
+                <Titulo acento={acento}>{etiqueta('diagnostico')}</Titulo>
+                {diagnosticos.map((d) => (
+                  <p key={d.cie10} className="text-slate-800">
+                    {d.descripcion} <span className="text-slate-400">({d.cie10})</span>
+                  </p>
+                ))}
+              </section>
+            )
+          );
+        }
 
-      {indicacionesGenerales && (
-        <section className="mb-6 break-inside-avoid">
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Indicaciones generales
-          </h2>
-          <p className="whitespace-pre-line text-slate-800">{indicacionesGenerales}</p>
-        </section>
-      )}
+        if (seccion === 'indicaciones') {
+          return (
+            indicacionesGenerales && (
+              <section key={seccion} className="mb-6 break-inside-avoid">
+                <Titulo acento={acento}>{etiqueta('indicaciones')}</Titulo>
+                <p className="whitespace-pre-line text-slate-800">{indicacionesGenerales}</p>
+              </section>
+            )
+          );
+        }
+
+        return (
+          <section key={seccion} className="mb-6">
+            <Titulo acento={acento}>{etiqueta('prescripcion')}</Titulo>
+            <ol className="space-y-3">
+              {medicamentos.map((m, i) => (
+                // break-inside-avoid: un medicamento partido entre dos hojas es
+                // exactamente el error que causa una dosis mal leída.
+                <li key={i} className="break-inside-avoid border-l-2 border-slate-200 pl-3">
+                  <p className="font-semibold text-slate-900">
+                    {m.denominacionGenerica}
+                    {m.denominacionDistintiva && (
+                      <span className="font-normal text-slate-500">
+                        {' '}
+                        ({m.denominacionDistintiva})
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-slate-700">{m.presentacion}</p>
+                  {/* Los datos del art. 29 en un renglón, en el orden en que se
+                      leen en voz alta al paciente. */}
+                  <p className="text-slate-700">
+                    {m.dosis} · vía {m.via.toLowerCase()} · {m.frecuencia} · {m.duracion}
+                  </p>
+                  {m.indicaciones && (
+                    <p className="mt-0.5 text-xs italic text-slate-600">{m.indicaciones}</p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
+        );
+      })}
 
       <footer className="mt-16 break-inside-avoid">
         <div className="mx-auto w-72 border-t border-slate-400 pt-1 text-center text-xs text-slate-500">
-          Firma autógrafa del médico
+          {etiqueta('firma')}
         </div>
+
+        {/* Domicilio al pie: la variante que pidió más de un consultorio, para
+            que la dirección vaya junto al horario de atención. */}
+        {!config.papelMembretado && config.posicionDomicilio === 'pie' && domicilio && (
+          <p className="mt-8 text-center text-xs text-slate-500">{domicilio}</p>
+        )}
         {config.mostrarLeyendaPie && emisor.leyendaPie && (
-          <p className="mt-8 whitespace-pre-line text-center text-xs text-slate-400">
+          <p className="mt-2 whitespace-pre-line text-center text-xs text-slate-400">
             {emisor.leyendaPie}
           </p>
         )}
@@ -221,5 +242,17 @@ function Dato({
       <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
       <p className="text-slate-800">{children}</p>
     </div>
+  );
+}
+
+/** Encabezado de bloque. Toma el color de acento configurado, si hay. */
+function Titulo({ children, acento }: { children: React.ReactNode; acento?: string }) {
+  return (
+    <h2
+      className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400"
+      style={{ color: acento }}
+    >
+      {children}
+    </h2>
   );
 }
