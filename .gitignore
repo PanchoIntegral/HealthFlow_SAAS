@@ -20,3 +20,6 @@ apps/api/drizzle/meta/_journal_backup*
 
 # graphify (local knowledge graph, not part of the repo)
 graphify-out/
+
+# Archivos subidos en dev (adaptador de storage en disco)
+.storage/

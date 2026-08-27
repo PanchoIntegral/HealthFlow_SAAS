@@ -190,6 +190,29 @@ export const env = {
     return required('R2_BUCKET_NAME');
   },
 
+  /**
+   * Proveedor de almacenamiento: 'local' (disco, dev), 'fake' (en memoria,
+   * pruebas) o real (R2). Sin valor explícito: R2 en producción, disco fuera.
+   */
+  get storageProvider(): 'local' | 'fake' | 'r2' {
+    const raw = process.env.STORAGE_PROVIDER?.trim().toLowerCase();
+    if (raw === 'local' || raw === 'fake') return raw;
+    if (raw) return 'r2';
+    return this.isProduction ? 'r2' : 'local';
+  },
+  /** Carpeta donde el adaptador de disco guarda los archivos (dev). */
+  get storageLocalDir(): string {
+    return process.env.STORAGE_LOCAL_DIR ?? resolve(process.cwd(), '.storage');
+  },
+  /**
+   * URL pública del propio API. El adaptador de disco la usa para armar las
+   * URLs de subida/lectura que consume el navegador, así que debe ser la que
+   * el navegador puede alcanzar (no 'localhost' si pruebas desde el celular).
+   */
+  get apiPublicUrl(): string {
+    return (process.env.API_PUBLIC_URL ?? `http://localhost:${this.apiPort}`).replace(/\/$/, '');
+  },
+
   // ── Correo transaccional (Resend) ──────────────────────────────────
   /** Lazy: solo se exige si el adaptador real llega a instanciarse (EMAIL_PROVIDER=fake no la necesita). */
   get resendApiKey(): string {
