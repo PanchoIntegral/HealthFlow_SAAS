@@ -30,7 +30,7 @@ export class RequestLogoUploadUrlUseCase {
     const ext = EXTENSION_POR_MIME[input.mimeType] ?? 'bin';
     const storageKey = `tenant/${tenantId}/logo/${randomUUID()}.${ext}`;
 
-    const { url, fields } = await this.storage.presignedUploadPolicy(storageKey, input.mimeType);
-    return { uploadUrl: url, fields, storageKey };
+    const { url, headers } = await this.storage.presignedUploadUrl(storageKey, input.mimeType);
+    return { uploadUrl: url, headers, storageKey };
   }
 }

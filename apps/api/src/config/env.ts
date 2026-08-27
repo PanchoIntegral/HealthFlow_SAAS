@@ -196,7 +196,27 @@ export const env = {
    */
   get storageProvider(): 'local' | 'fake' | 'r2' {
     const raw = process.env.STORAGE_PROVIDER?.trim().toLowerCase();
-    if (raw === 'local' || raw === 'fake') return raw;
+    if (raw === 'local' || raw === 'fake') {
+      /**
+       * Ni 'fake' (memoria) ni 'local' (disco del proceso) sirven en
+       * producción: el primero acepta la subida y la tira, el segundo la
+       * pierde en el siguiente despliegue — pérdida de dato clínico
+       * silenciosa. Se IGNORA la variable y se deja constancia ruidosa.
+       *
+       * Ignorar y avisar, en vez de reventar el arranque: una variable mal
+       * puesta no debe tumbar la agenda, la consulta y el cobro de toda la
+       * clínica. Si además faltan las credenciales de R2, quien lo dice es el
+       * endpoint de subida con un 503 explícito (ver R2Adapter).
+       */
+      if (this.isProduction) {
+        console.error(
+          `[storage] STORAGE_PROVIDER='${raw}' IGNORADO en producción: los archivos no se guardarían. ` +
+            'Usando R2 — configura R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME.',
+        );
+        return 'r2';
+      }
+      return raw;
+    }
     if (raw) return 'r2';
     return this.isProduction ? 'r2' : 'local';
   },

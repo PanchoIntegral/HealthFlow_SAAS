@@ -4,15 +4,32 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MIME_TYPES_RADIOGRAFIA, type MimeTypeRadiografia, type RadiografiaView } from '@healthflow/shared-types';
 import { api, ApiError } from '../lib/api';
+import { ErrorSubidaDirecta, subirArchivoDirecto } from '../lib/subida-directa';
+
+/**
+ * Traduce el fallo a algo que el usuario pueda accionar, y deja el detalle
+ * técnico en la consola. Antes todo error no-ApiError caía en un genérico
+ * "No se pudo subir la radiografía": el usuario no sabía si era su archivo o
+ * la configuración del servidor, y soporte tampoco.
+ */
+function mensajeDeError(e: unknown): string {
+  if (e instanceof ErrorSubidaDirecta) {
+    console.error('[radiografias] subida fallida:', e.causa, e.detalle);
+    return e.message;
+  }
+  if (e instanceof ApiError) return e.message;
+  console.error('[radiografias] error inesperado al subir:', e);
+  return 'No se pudo subir la radiografía';
+}
 
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
 
 /**
  * Galería de radiografías del paciente. La subida NUNCA pasa por nuestro API
- * (el body JSON está limitado a 256kb a propósito): se pide una política
- * prefirmada, el navegador sube el archivo DIRECTO a R2, y solo entonces se
- * confirma la metadata.
+ * (el body JSON está limitado a 256kb a propósito): se pide una URL
+ * prefirmada, el navegador sube el archivo DIRECTO a R2 con un PUT, y solo
+ * entonces se confirma la metadata.
  */
 export function RadiografiaPanel({
   token,
@@ -59,24 +76,19 @@ export function RadiografiaPanel({
     setSubiendo(true);
     try {
       const mimeType = file.type as MimeTypeRadiografia;
-      const { uploadUrl, fields, storageKey } = await api.requestUploadUrl(token, {
+      const { uploadUrl, headers, storageKey } = await api.requestUploadUrl(token, {
         patientId,
         mimeType,
       });
 
-      // Subida directa al storage: FormData con los campos de la política
-      // prefirmada, sin Authorization (el storage no sabe nada de HealthFlow).
-      const form = new FormData();
-      for (const [key, value] of Object.entries(fields)) form.append(key, value);
-      form.append('file', file);
-
-      const res = await fetch(uploadUrl, { method: 'POST', body: form });
-      if (!res.ok) throw new Error('No se pudo subir el archivo al almacenamiento');
+      // Subida directa al storage, sin Authorization (el storage no sabe nada
+      // de HealthFlow): la autorización va en la firma de la URL.
+      await subirArchivoDirecto(uploadUrl, headers, file);
 
       await api.confirmRadiografia(token, { patientId, storageKey, mimeType });
       refrescar();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'No se pudo subir la radiografía');
+      setError(mensajeDeError(e));
     } finally {
       setSubiendo(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

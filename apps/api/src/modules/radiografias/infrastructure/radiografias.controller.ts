@@ -6,6 +6,7 @@ import { RequestUploadUrlUseCase } from '../application/request-upload-url.use-c
 import { ConfirmRadiografiaUseCase } from '../application/confirm-radiografia.use-case';
 import { ListarRadiografiasUseCase } from '../application/listar-radiografias.use-case';
 import { EliminarRadiografiaUseCase } from '../application/eliminar-radiografia.use-case';
+import { DiagnosticarStorageUseCase, type ReporteStorage } from '../application/diagnosticar-storage.use-case';
 import { RequestUploadUrlDto, ConfirmRadiografiaDto } from './dto/radiografia.dto';
 
 @Controller('radiografias')
@@ -16,7 +17,19 @@ export class RadiografiasController {
     private readonly confirmRadiografia: ConfirmRadiografiaUseCase,
     private readonly listar: ListarRadiografiasUseCase,
     private readonly eliminar: EliminarRadiografiaUseCase,
+    private readonly diagnosticar: DiagnosticarStorageUseCase,
   ) {}
+
+  /**
+   * Verifica el storage de punta a punta desde el servidor. Solo el titular
+   * de la cuenta ('Cuenta' no lo concede ningún rol: llega únicamente admin
+   * vía `manage all`) — el reporte dice qué infraestructura hay detrás.
+   */
+  @Get('diagnostico')
+  @RequirePolicy('read', 'Cuenta')
+  diagnosticoStorage(): Promise<ReporteStorage> {
+    return this.diagnosticar.execute();
+  }
 
   @Get()
   @RequirePolicy('read', 'Radiografia')

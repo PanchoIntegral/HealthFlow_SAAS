@@ -53,6 +53,8 @@ describe('RequestUploadUrlUseCase', () => {
 
     expect(result.storageKey).toMatch(/^tenant\/tenant-1\/patients\/pac-1\/.+\.jpg$/);
     expect(storage.objetos.has(result.storageKey)).toBe(true);
+    // El Content-Type viaja firmado: el cliente debe mandarlo tal cual.
+    expect(result.headers['Content-Type']).toBe('image/jpeg');
   });
 
   it('usa la extensión correcta según el mimeType', async () => {
@@ -68,16 +70,37 @@ describe('ConfirmRadiografiaUseCase', () => {
   it('registra la metadata cuando el storageKey corresponde al tenant/paciente', async () => {
     const storage = new FakeAlmacenamientoAdapter();
     const repo = new InMemoryRadiografiaRepo();
+    const key = 'tenant/tenant-1/patients/pac-1/abc.jpg';
+    // El objeto tiene que existir en storage: confirmar es el paso POSTERIOR
+    // a la subida, no un alta independiente.
+    await storage.presignedUploadUrl(key, 'image/jpeg');
     const useCase = new ConfirmRadiografiaUseCase(fakeTenantDb, fakeCtx, fakeAudit, storage, repo);
 
     const view = await useCase.execute({
       patientId: 'pac-1',
-      storageKey: 'tenant/tenant-1/patients/pac-1/abc.jpg',
+      storageKey: key,
       mimeType: 'image/jpeg',
     });
 
     expect(view.patientId).toBe('pac-1');
     expect(repo.filas).toHaveLength(1);
+  });
+
+  it('rechaza confirmar una imagen que nunca llegó al storage', async () => {
+    const storage = new FakeAlmacenamientoAdapter();
+    const repo = new InMemoryRadiografiaRepo();
+    const useCase = new ConfirmRadiografiaUseCase(fakeTenantDb, fakeCtx, fakeAudit, storage, repo);
+
+    // La subida se cortó a medias: sin esto quedaba registrada una radiografía
+    // que después no abre.
+    await expect(
+      useCase.execute({
+        patientId: 'pac-1',
+        storageKey: 'tenant/tenant-1/patients/pac-1/nunca-subida.jpg',
+        mimeType: 'image/jpeg',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(repo.filas).toHaveLength(0);
   });
 
   it('rechaza un storageKey que no corresponde al tenant/paciente de la petición', async () => {

@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type { AlmacenamientoPort, PoliticaSubida } from '../../domain/almacenamiento.port';
+import type {
+  AlmacenamientoPort,
+  ObjetoAlmacenado,
+  SubidaDirecta,
+} from '../../domain/almacenamiento.port';
 
 /**
  * Storage falso para desarrollo local y pruebas: no toca red ni R2 real. Se
@@ -11,9 +15,16 @@ export class FakeAlmacenamientoAdapter implements AlmacenamientoPort {
   /** Claves "subidas" en esta sesión, para que las pruebas puedan inspeccionar. */
   readonly objetos = new Set<string>();
 
-  async presignedUploadPolicy(key: string): Promise<PoliticaSubida> {
+  async presignedUploadUrl(key: string, mimeType: string): Promise<SubidaDirecta> {
     this.objetos.add(key);
-    return { url: `https://fake-storage.local/upload/${key}`, fields: { key } };
+    return {
+      url: `https://fake-storage.local/objeto/${key}`,
+      headers: { 'Content-Type': mimeType },
+    };
+  }
+
+  async verificarObjeto(key: string): Promise<ObjetoAlmacenado> {
+    return this.objetos.has(key) ? { existe: true, tamanoBytes: 1 } : { existe: false };
   }
 
   async presignedGetUrl(key: string): Promise<string> {

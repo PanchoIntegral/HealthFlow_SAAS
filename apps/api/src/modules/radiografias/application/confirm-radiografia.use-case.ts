@@ -6,6 +6,8 @@ import { AuditService } from '../../../common/audit/audit.service';
 import { ALMACENAMIENTO_PORT, type AlmacenamientoPort } from '../domain/almacenamiento.port';
 import { RADIOGRAFIA_REPOSITORY, type RadiografiaRepository } from '../domain/radiografia.repository';
 
+const MAX_BYTES_RADIOGRAFIA = 10 * 1024 * 1024;
+
 /**
  * Registra en Postgres una imagen que YA se subió a storage (paso de
  * confirmación tras la subida directa). Si el navegador nunca terminó de
@@ -31,6 +33,22 @@ export class ConfirmRadiografiaUseCase {
     const prefijoEsperado = `tenant/${tenantId}/patients/${input.patientId}/`;
     if (!input.storageKey.startsWith(prefijoEsperado)) {
       throw new BadRequestException('storageKey no corresponde a este paciente');
+    }
+
+    /**
+     * El objeto tiene que existir DE VERDAD. Antes se confiaba en que el
+     * navegador había subido lo que decía: una subida a medias dejaba una
+     * radiografía registrada que después no abría. Y el tope de tamaño ya no
+     * puede viajar firmado (era una condición del presigned POST, que R2 no
+     * soporta), así que se mide aquí, sobre el objeto real.
+     */
+    const objeto = await this.storage.verificarObjeto(input.storageKey);
+    if (!objeto.existe) {
+      throw new BadRequestException('La imagen no llegó al almacenamiento. Vuelve a intentarlo.');
+    }
+    if (objeto.tamanoBytes !== undefined && objeto.tamanoBytes > MAX_BYTES_RADIOGRAFIA) {
+      await this.storage.eliminar(input.storageKey);
+      throw new BadRequestException('La imagen no puede superar 10MB.');
     }
 
     return this.tenantDb.run(async (tx) => {

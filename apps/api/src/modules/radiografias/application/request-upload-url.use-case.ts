@@ -11,9 +11,9 @@ const EXTENSION_POR_MIME: Record<string, string> = {
 };
 
 /**
- * Genera la política de subida directa a storage. El mimeType ya viene
- * validado por el DTO (`@IsIn(MIME_TYPES_RADIOGRAFIA)`); aquí solo se arma la
- * clave del objeto y se delega la firma al puerto.
+ * Genera la URL de subida directa a storage. El mimeType ya viene validado
+ * por el DTO (`@IsIn(MIME_TYPES_RADIOGRAFIA)`); aquí solo se arma la clave del
+ * objeto y se delega la firma al puerto.
  */
 @Injectable()
 export class RequestUploadUrlUseCase {
@@ -27,7 +27,7 @@ export class RequestUploadUrlUseCase {
     const ext = EXTENSION_POR_MIME[input.mimeType] ?? 'bin';
     const storageKey = `tenant/${tenantId}/patients/${input.patientId}/${randomUUID()}.${ext}`;
 
-    const { url, fields } = await this.storage.presignedUploadPolicy(storageKey, input.mimeType);
-    return { uploadUrl: url, fields, storageKey };
+    const { url, headers } = await this.storage.presignedUploadUrl(storageKey, input.mimeType);
+    return { uploadUrl: url, headers, storageKey };
   }
 }

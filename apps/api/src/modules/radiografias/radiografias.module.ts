@@ -9,6 +9,7 @@ import { RequestUploadUrlUseCase } from './application/request-upload-url.use-ca
 import { ConfirmRadiografiaUseCase } from './application/confirm-radiografia.use-case';
 import { ListarRadiografiasUseCase } from './application/listar-radiografias.use-case';
 import { EliminarRadiografiaUseCase } from './application/eliminar-radiografia.use-case';
+import { DiagnosticarStorageUseCase } from './application/diagnosticar-storage.use-case';
 import { DrizzleRadiografiaRepository } from './infrastructure/radiografia.drizzle-repo';
 import { R2Adapter } from './infrastructure/storage/r2.adapter';
 import { FakeAlmacenamientoAdapter } from './infrastructure/storage/fake-almacenamiento.adapter';
@@ -44,6 +45,7 @@ const AdaptadorStorage = {
     ConfirmRadiografiaUseCase,
     ListarRadiografiasUseCase,
     EliminarRadiografiaUseCase,
+    DiagnosticarStorageUseCase,
     CaslAbilityFactory,
     PoliciesGuard,
     { provide: RADIOGRAFIA_REPOSITORY, useClass: DrizzleRadiografiaRepository },

@@ -922,10 +922,10 @@ export interface RequestLogoUploadUrlRequest {
   mimeType: MimeTypeLogoClinica;
 }
 
-/** Misma forma que RequestUploadUrlResponse (radiografías): política de subida directa a storage. */
+/** Misma forma que RequestUploadUrlResponse (radiografías): subida directa a storage. */
 export interface RequestLogoUploadUrlResponse {
   uploadUrl: string;
-  fields: Record<string, string>;
+  headers: Record<string, string>;
   storageKey: string;
 }
 
@@ -1454,10 +1454,14 @@ export interface RequestUploadUrlRequest {
   mimeType: MimeTypeRadiografia;
 }
 
-/** Campos de un formulario `multipart/form-data` de subida directa a S3/R2 (presigned POST). */
+/**
+ * Instrucciones de subida directa al storage: un PUT con el archivo como body
+ * y estas cabeceras exactas (van firmadas). No es un formulario multipart —
+ * el presigned POST de S3 no existe en R2.
+ */
 export interface RequestUploadUrlResponse {
   uploadUrl: string;
-  fields: Record<string, string>;
+  headers: Record<string, string>;
   storageKey: string;
 }
 

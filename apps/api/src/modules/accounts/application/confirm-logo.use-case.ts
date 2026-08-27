@@ -7,6 +7,8 @@ import { AuditService } from '../../../common/audit/audit.service';
 import { ALMACENAMIENTO_PORT, type AlmacenamientoPort } from '../../radiografias/domain/almacenamiento.port';
 import { DatosClinicaReader } from './datos-clinica.reader';
 
+const MAX_BYTES_LOGO = 10 * 1024 * 1024;
+
 /**
  * Registra en `tenants` el logo que YA se subió a storage (paso de
  * confirmación tras la subida directa) — mismo patrón que
@@ -28,6 +30,17 @@ export class ConfirmLogoUseCase {
     const prefijoEsperado = `tenant/${tenantId}/logo/`;
     if (!input.storageKey.startsWith(prefijoEsperado)) {
       throw new BadRequestException('storageKey no corresponde a esta clínica');
+    }
+
+    // Mismo criterio que ConfirmRadiografiaUseCase: no registrar un logo que
+    // no llegó al storage, ni uno que exceda el tope (ya no lo impone la firma).
+    const objeto = await this.storage.verificarObjeto(input.storageKey);
+    if (!objeto.existe) {
+      throw new BadRequestException('La imagen no llegó al almacenamiento. Vuelve a intentarlo.');
+    }
+    if (objeto.tamanoBytes !== undefined && objeto.tamanoBytes > MAX_BYTES_LOGO) {
+      await this.storage.eliminar(input.storageKey);
+      throw new BadRequestException('El logo no puede superar 10MB.');
     }
 
     return this.tenantDb.run(async (tx) => {

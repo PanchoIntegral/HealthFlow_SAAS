@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MIME_TYPES_LOGO_CLINICA, type MimeTypeLogoClinica } from '@healthflow/shared-types';
 import { api, ApiError } from '../lib/api';
+import { ErrorSubidaDirecta, subirArchivoDirecto } from '../lib/subida-directa';
 
 const CAMPO =
   'w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/20 disabled:bg-slate-50';
@@ -66,19 +67,17 @@ export function RecetaSeccion({ token }: { token: string }) {
     setSubiendo(true);
     try {
       const mimeType = file.type as MimeTypeLogoClinica;
-      const { uploadUrl, fields, storageKey } = await api.requestLogoUploadUrl(token, { mimeType });
+      const { uploadUrl, headers, storageKey } = await api.requestLogoUploadUrl(token, { mimeType });
 
-      const form = new FormData();
-      for (const [key, value] of Object.entries(fields)) form.append(key, value);
-      form.append('file', file);
-
-      const res = await fetch(uploadUrl, { method: 'POST', body: form });
-      if (!res.ok) throw new Error('No se pudo subir el archivo al almacenamiento');
+      await subirArchivoDirecto(uploadUrl, headers, file);
 
       await api.confirmLogo(token, { storageKey, mimeType });
       refrescar();
     } catch (e) {
-      setErrorLogo(e instanceof ApiError ? e.message : 'No se pudo subir el logo');
+      if (e instanceof ErrorSubidaDirecta) console.error('[logo] subida fallida:', e.causa, e.detalle);
+      setErrorLogo(
+        e instanceof ErrorSubidaDirecta || e instanceof ApiError ? e.message : 'No se pudo subir el logo',
+      );
     } finally {
       setSubiendo(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

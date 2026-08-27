@@ -1,9 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, unlink } from 'node:fs/promises';
+import { mkdir, stat, unlink } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { env } from '../../../../config/env';
-import type { AlmacenamientoPort, PoliticaSubida } from '../../domain/almacenamiento.port';
+import type {
+  AlmacenamientoPort,
+  ObjetoAlmacenado,
+  SubidaDirecta,
+} from '../../domain/almacenamiento.port';
 
 const UPLOAD_TTL_SEGUNDOS = 5 * 60;
 const GET_TTL_SEGUNDOS = 60 * 60;
@@ -24,18 +28,19 @@ const GET_TTL_SEGUNDOS = 60 * 60;
  */
 @Injectable()
 export class LocalDiskAlmacenamientoAdapter implements AlmacenamientoPort {
-  async presignedUploadPolicy(key: string, mimeType: string): Promise<PoliticaSubida> {
+  async presignedUploadUrl(key: string, mimeType: string): Promise<SubidaDirecta> {
     const exp = expiraEn(UPLOAD_TTL_SEGUNDOS);
+    const params = new URLSearchParams({
+      key,
+      exp: String(exp),
+      firma: firmar('upload', key, exp),
+    });
+    // Mismo método y misma forma que R2 (PUT con el archivo como body): si dev
+    // y producción no suben igual, dev deja de probar lo que importa — que es
+    // exactamente cómo se coló el bug de la subida contra R2.
     return {
-      url: `${env.apiPublicUrl}/api/dev-storage/upload`,
-      // Mismos nombres de campo que usa la política prefirmada de S3/R2, para
-      // que el cliente no tenga que saber con qué storage está hablando.
-      fields: {
-        key,
-        'Content-Type': mimeType,
-        exp: String(exp),
-        firma: firmar('upload', key, exp),
-      },
+      url: `${env.apiPublicUrl}/api/dev-storage/objeto?${params.toString()}`,
+      headers: { 'Content-Type': mimeType },
     };
   }
 
@@ -43,6 +48,15 @@ export class LocalDiskAlmacenamientoAdapter implements AlmacenamientoPort {
     const exp = expiraEn(GET_TTL_SEGUNDOS);
     const params = new URLSearchParams({ key, exp: String(exp), firma: firmar('get', key, exp) });
     return `${env.apiPublicUrl}/api/dev-storage/objeto?${params.toString()}`;
+  }
+
+  async verificarObjeto(key: string): Promise<ObjetoAlmacenado> {
+    try {
+      const info = await stat(rutaAbsoluta(key));
+      return { existe: true, tamanoBytes: info.size };
+    } catch {
+      return { existe: false };
+    }
   }
 
   async eliminar(key: string): Promise<void> {
