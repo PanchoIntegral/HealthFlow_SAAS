@@ -149,6 +149,9 @@ function CampoControl({
         // Ojo: `?? ''` y no `|| ''`. El cero es un valor clínico válido (un
         // CPOD de 0 cariados es un hallazgo), y `||` lo borraría de la pantalla.
         value={valor ?? ''}
+        min={campo.min}
+        max={campo.max}
+        step={campo.step}
         onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
         disabled={readOnly}
         className={base}

@@ -109,6 +109,11 @@ function camposExtraDetalle(campos: readonly CampoExtra[]): string {
     if (c.tipo === 'seleccion' && c.opciones?.length) {
       partes.push(`valor EXACTO de esta lista: ${c.opciones.join(' | ')}`);
     }
+    if (c.tipo === 'multi-seleccion' && c.opciones?.length) {
+      partes.push(
+        `cero o más valores EXACTOS de esta lista, separados por coma: ${c.opciones.join(' | ')}`,
+      );
+    }
     if (c.tipo === 'numero') partes.push(`número${c.unidad ? ` en ${c.unidad}` : ''}`);
     if (c.tipo === 'texto-rico') partes.push('HTML simple');
     if (c.ayuda) partes.push(c.ayuda);

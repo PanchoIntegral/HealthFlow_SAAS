@@ -60,6 +60,18 @@ export class EspecialidadValidator {
       // campo exacto sin que choque con los nombres de los campos base.
       .map((campo) => `extension.${campo.key}`);
 
+    const numerosFueraDeRango = camposDeNota(perfil.camposExtra, content.tipoNota)
+      .filter((campo) => {
+        if (campo.tipo !== 'numero') return false;
+        const valor = extension[campo.key];
+        if (valor === null || valor === undefined || valor === '') return false;
+        if (typeof valor !== 'number' || !Number.isFinite(valor)) return true;
+        if (campo.min !== undefined && valor < campo.min) return true;
+        if (campo.max !== undefined && valor > campo.max) return true;
+        return false;
+      })
+      .map((campo) => `extension.${campo.key}`);
+
     // NOM-004 exige antecedentes completos en la primera visita. Son claves
     // planas (sin prefijo), igual que padecimientoActual/planTerapeutico.
     const faltantesHistoria =
@@ -67,7 +79,7 @@ export class EspecialidadValidator {
         ? CAMPOS_HISTORIA_CLINICA.filter((campo) => !hasText(content[campo]))
         : [];
 
-    return [...base, ...faltantesEspecialidad, ...faltantesHistoria];
+    return [...base, ...faltantesEspecialidad, ...numerosFueraDeRango, ...faltantesHistoria];
   }
 }
 

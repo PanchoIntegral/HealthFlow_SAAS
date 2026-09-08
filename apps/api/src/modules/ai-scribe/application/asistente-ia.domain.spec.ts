@@ -28,6 +28,15 @@ describe('Asistente de IA · prompt', () => {
     expect(prompt).toContain('Buena | Regular | Deficiente');
   });
 
+  it('describe la valoración de heridas y sus listas de selección múltiple', () => {
+    const prompt = construirPrompt(PERFILES.heridas_estomas, {});
+
+    expect(prompt).toContain('Clínica de heridas y estomas');
+    expect(prompt).toContain('her_localizacion');
+    expect(prompt).toContain('her_datos_infeccion');
+    expect(prompt).toContain('Dolor aumentado | Calor local | Eritema');
+  });
+
   it('prohíbe inventar y exige devolver vacío lo no mencionado', () => {
     const prompt = construirPrompt(PERFILES.general, {});
 
@@ -154,6 +163,36 @@ describe('Asistente de IA · respuesta del modelo', () => {
     );
 
     expect(contenido.extension).toEqual({ odo_higiene: 'Buena' });
+  });
+
+  it('normaliza y filtra una selección múltiple de la valoración de heridas', () => {
+    const { contenido } = mapearRespuesta(
+      JSON.stringify({
+        extension: {
+          her_datos_infeccion: 'eritema, MAL OLOR, dato inventado, eritema',
+        },
+      }),
+      PERFILES.heridas_estomas,
+    );
+
+    expect(contenido.extension).toEqual({
+      her_datos_infeccion: 'Eritema,Mal olor',
+    });
+  });
+
+  it('descarta mediciones de herida fuera del rango clínico', () => {
+    const { contenido } = mapearRespuesta(
+      JSON.stringify({
+        extension: {
+          her_dolor_eva: 15,
+          her_tejido_granulacion: 120,
+          her_profundidad: 1.5,
+        },
+      }),
+      PERFILES.heridas_estomas,
+    );
+
+    expect(contenido.extension).toEqual({ her_profundidad: 1.5 });
   });
 
   it('quita etiquetas HTML peligrosas del texto rico', () => {

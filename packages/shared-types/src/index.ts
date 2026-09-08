@@ -2080,6 +2080,7 @@ export const ESPECIALIDADES = [
   'psiquiatria',
   'endocrinologia',
   'nutricion',
+  'heridas_estomas',
   'podologia',
 ] as const;
 
@@ -2106,6 +2107,10 @@ export interface CampoExtra {
   tipo: 'texto' | 'texto-rico' | 'numero' | 'seleccion' | 'multi-seleccion';
   opciones?: readonly string[];
   unidad?: string;
+  /** Límites clínicos del control numérico; también se validan al cerrar y al transcribir. */
+  min?: number;
+  max?: number;
+  step?: number;
   /** Si es true, el cierre de la nota lo exige (además de la base NOM-004). */
   obligatorio?: boolean;
   ayuda?: string;
@@ -2646,6 +2651,311 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       { key: 'nut_prescripcion', label: 'Prescripción nutricional', tipo: 'texto-rico', ayuda: 'Energía, distribución de nutrimentos y estrategia acordada.' },
       { key: 'nut_metas_medibles', label: 'Metas medibles', tipo: 'texto-rico' },
       { key: 'nut_monitoreo_evaluacion', label: 'Monitoreo y evaluación', tipo: 'texto-rico', ayuda: 'Indicadores, resultado esperado y fecha de reevaluación.' },
+    ],
+  },
+
+  /**
+   * Valoración integral y seguimiento de heridas y estomas.
+   *
+   * Sigue la secuencia de la hoja clínica aportada por el consultorio:
+   * paciente → herida → lecho → exudado/infección → borde/piel perilesional →
+   * tratamiento. Los campos de estoma son opcionales para que el mismo perfil
+   * atienda ambas líneas clínicas sin contaminar una valoración solo de herida.
+   */
+  heridas_estomas: {
+    key: 'heridas_estomas',
+    nombre: 'Clínica de heridas y estomas',
+    rangosCie10: [
+      { desde: 'L89', hasta: 'L89' },
+      { desde: 'L97', hasta: 'L98' },
+      { desde: 'S00', hasta: 'T14' },
+      { desde: 'Z43', hasta: 'Z43' },
+      { desde: 'Z93', hasta: 'Z93' },
+    ],
+    signosVitales: VITALES_COMPLETOS,
+    etiquetas: {
+      padecimientoActual: {
+        label: 'Motivo de atención y evolución de la herida',
+        placeholder:
+          'Inicio, causa, evolución, tratamientos anteriores y cambios desde la última valoración…',
+      },
+      hallazgos: {
+        label: 'Valoración integral de la herida o estoma',
+        placeholder:
+          'Localización, dimensiones, lecho, exudado, infección, bordes y piel circundante…',
+      },
+      planTerapeutico: {
+        label: 'Plan de manejo de la herida',
+        placeholder:
+          'Limpieza, desbridamiento, apósito, descarga/compresión, frecuencia de curación e indicaciones…',
+      },
+    },
+    camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
+
+      // ── Valoración integral del paciente ────────────────────────
+      { key: 'her_glucosa_capilar', label: 'Glucosa capilar', tipo: 'numero', unidad: 'mg/dL' },
+      {
+        key: 'her_estado_nutricional',
+        label: 'Estado nutricional',
+        tipo: 'seleccion',
+        opciones: ['Normal', 'Bajo peso', 'Sobrepeso', 'Obesidad', 'No valorado'],
+      },
+      {
+        key: 'her_movilidad',
+        label: 'Estado de movilidad',
+        tipo: 'seleccion',
+        opciones: ['Independiente', 'Limitada', 'Postrado', 'No valorado'],
+      },
+      {
+        key: 'her_tabaquismo',
+        label: 'Tabaquismo',
+        tipo: 'seleccion',
+        opciones: ['No', 'Sí', 'Exfumador', 'No especificado'],
+      },
+      { key: 'her_cigarrillos_dia', label: 'Cigarrillos al día', tipo: 'numero' },
+      { key: 'her_alcohol_semana', label: 'Consumo de alcohol', tipo: 'numero', unidad: 'veces/semana' },
+      { key: 'her_patologia_base', label: 'Patología de base', tipo: 'texto-rico' },
+      { key: 'her_comorbilidades', label: 'Comorbilidades', tipo: 'texto-rico' },
+      {
+        key: 'her_medicamentos',
+        label: 'Medicamentos actuales',
+        tipo: 'texto-rico',
+        ayuda:
+          'Incluye anticoagulantes, esteroides, antibióticos y fármacos que afecten la cicatrización.',
+      },
+
+      // ── Descripción y dimensiones ───────────────────────────────
+      {
+        key: 'her_identificador',
+        label: 'Identificador de la herida',
+        tipo: 'texto',
+        ayuda: 'Permite distinguirla cuando el paciente tiene más de una herida.',
+      },
+      {
+        key: 'her_tipo',
+        label: 'Tipo de herida',
+        tipo: 'seleccion',
+        opciones: [
+          'Por presión',
+          'Venosa',
+          'Arterial',
+          'Pie diabético',
+          'Quirúrgica',
+          'Traumática',
+          'Por humedad',
+          'Quemadura',
+          'Neoplásica',
+          'Otra',
+        ],
+      },
+      { key: 'her_duracion', label: 'Duración de la herida', tipo: 'texto' },
+      { key: 'her_tratamientos_previos', label: 'Tratamientos anteriores', tipo: 'texto-rico' },
+      {
+        key: 'her_zona_corporal',
+        label: 'Zona corporal',
+        tipo: 'seleccion',
+        opciones: [
+          'Cabeza o cuello',
+          'Tórax',
+          'Abdomen',
+          'Espalda',
+          'Región sacra o glútea',
+          'Extremidad superior',
+          'Mano',
+          'Cadera o muslo',
+          'Rodilla o pierna',
+          'Tobillo o talón',
+          'Pie o dedos',
+          'Otra',
+        ],
+      },
+      {
+        key: 'her_localizacion',
+        label: 'Localización anatómica',
+        tipo: 'texto',
+        obligatorio: true,
+      },
+      {
+        key: 'her_lateralidad',
+        label: 'Lateralidad',
+        tipo: 'seleccion',
+        opciones: ['Derecha', 'Izquierda', 'Bilateral', 'Línea media', 'No aplica'],
+      },
+      { key: 'her_longitud', label: 'Longitud', tipo: 'numero', unidad: 'cm', min: 0, step: 0.1 },
+      { key: 'her_ancho', label: 'Ancho', tipo: 'numero', unidad: 'cm', min: 0, step: 0.1 },
+      { key: 'her_profundidad', label: 'Profundidad', tipo: 'numero', unidad: 'cm', min: 0, step: 0.1 },
+      {
+        key: 'her_socavacion_tuneles',
+        label: 'Socavación, túneles o cavidades',
+        tipo: 'texto',
+        ayuda: 'Describe profundidad y posición con referencias horarias cuando aplique.',
+      },
+      { key: 'her_dolor_eva', label: 'Dolor (EVA)', tipo: 'numero', unidad: '/10', min: 0, max: 10 },
+      {
+        key: 'her_categoria_presion',
+        label: 'Categoría de lesión por presión',
+        tipo: 'seleccion',
+        opciones: [
+          'No aplica',
+          'Categoría 1',
+          'Categoría 2',
+          'Categoría 3',
+          'Categoría 4',
+          'No clasificable',
+          'Lesión de tejido profundo',
+        ],
+      },
+
+      // ── Lecho y exudado ─────────────────────────────────────────
+      { key: 'her_tejido_necrotico', label: 'Tejido necrótico', tipo: 'numero', unidad: '%', min: 0, max: 100 },
+      { key: 'her_tejido_esfacelar', label: 'Tejido esfacelar', tipo: 'numero', unidad: '%', min: 0, max: 100 },
+      {
+        key: 'her_tejido_granulacion',
+        label: 'Tejido de granulación',
+        tipo: 'numero',
+        unidad: '%',
+        min: 0,
+        max: 100,
+      },
+      { key: 'her_tejido_epitelial', label: 'Tejido epitelial', tipo: 'numero', unidad: '%', min: 0, max: 100 },
+      {
+        key: 'her_nivel_exudado',
+        label: 'Nivel de exudado',
+        tipo: 'seleccion',
+        opciones: ['Nulo', 'Bajo', 'Moderado', 'Alto'],
+      },
+      {
+        key: 'her_tipo_exudado',
+        label: 'Tipo de exudado',
+        tipo: 'seleccion',
+        opciones: [
+          'Acuoso',
+          'Seroso',
+          'Sanguinolento',
+          'Serosanguinolento',
+          'Espeso/turbio',
+          'Purulento',
+        ],
+      },
+      { key: 'her_olor', label: 'Olor', tipo: 'texto' },
+      {
+        key: 'her_datos_infeccion',
+        label: 'Datos de infección o deterioro',
+        tipo: 'multi-seleccion',
+        opciones: [
+          'Dolor aumentado',
+          'Calor local',
+          'Eritema',
+          'Edema',
+          'Exudado aumentado',
+          'Mal olor',
+          'Tejido friable',
+          'Cicatrización detenida',
+          'Cavitación',
+          'Celulitis',
+          'Fiebre o malestar sistémico',
+        ],
+      },
+
+      // ── Borde y piel perilesional ───────────────────────────────
+      {
+        key: 'her_borde',
+        label: 'Borde de la herida',
+        tipo: 'multi-seleccion',
+        opciones: ['Íntegro', 'Macerado', 'Deshidratado', 'Despegado', 'Engrosado', 'Enrollado'],
+      },
+      {
+        key: 'her_piel_perilesional',
+        label: 'Piel perilesional',
+        tipo: 'multi-seleccion',
+        opciones: [
+          'Íntegra',
+          'Macerada',
+          'Excoriada',
+          'Seca',
+          'Hiperqueratósica',
+          'Con callos',
+          'Con eccema',
+          'Con edema',
+        ],
+      },
+      {
+        key: 'her_extension_perilesional',
+        label: 'Extensión de la afectación perilesional',
+        tipo: 'numero',
+        unidad: 'cm',
+        min: 0,
+        step: 0.1,
+      },
+      {
+        key: 'her_evolucion',
+        label: 'Evolución respecto a la valoración anterior',
+        tipo: 'seleccion',
+        opciones: ['Primera valoración', 'Mejoría', 'Sin cambio', 'Deterioro'],
+      },
+      {
+        key: 'her_fotografia',
+        label: 'Fotografía clínica',
+        tipo: 'seleccion',
+        opciones: ['No realizada', 'Realizada con consentimiento', 'No fue posible realizarla'],
+      },
+
+      // ── Curación y tratamiento ──────────────────────────────────
+      {
+        key: 'her_limpieza_desbridamiento',
+        label: 'Limpieza y desbridamiento',
+        tipo: 'texto-rico',
+      },
+      { key: 'her_aposito', label: 'Apósito primario y secundario', tipo: 'texto-rico' },
+      { key: 'her_frecuencia_curacion', label: 'Frecuencia de curación', tipo: 'texto' },
+      {
+        key: 'her_manejo_causa',
+        label: 'Manejo de la causa',
+        tipo: 'texto-rico',
+        ayuda:
+          'Descarga, redistribución de presión, compresión, control vascular o metabólico.',
+      },
+      {
+        key: 'her_educacion',
+        label: 'Educación al paciente y cuidador',
+        tipo: 'texto-rico',
+      },
+
+      // ── Estoma (solo cuando aplique) ────────────────────────────
+      {
+        key: 'est_tipo',
+        label: 'Tipo de estoma',
+        tipo: 'seleccion',
+        opciones: [
+          'No aplica',
+          'Colostomía',
+          'Ileostomía',
+          'Urostomía',
+          'Gastrostomía',
+          'Traqueostomía',
+          'Otro',
+        ],
+      },
+      { key: 'est_localizacion', label: 'Localización del estoma', tipo: 'texto' },
+      {
+        key: 'est_apariencia',
+        label: 'Apariencia, color y protrusión del estoma',
+        tipo: 'texto-rico',
+      },
+      { key: 'est_union_mucocutanea', label: 'Unión mucocutánea', tipo: 'texto-rico' },
+      { key: 'est_piel_periestomal', label: 'Piel periestomal', tipo: 'texto-rico' },
+      {
+        key: 'est_efluente',
+        label: 'Efluente: tipo, cantidad y consistencia',
+        tipo: 'texto-rico',
+      },
+      {
+        key: 'est_dispositivo',
+        label: 'Dispositivo, ajuste y tiempo de uso',
+        tipo: 'texto-rico',
+      },
+      { key: 'est_fugas', label: 'Fugas y complicaciones', tipo: 'texto-rico' },
     ],
   },
 

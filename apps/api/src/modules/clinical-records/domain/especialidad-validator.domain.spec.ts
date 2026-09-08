@@ -20,10 +20,10 @@ describe('EspecialidadValidator', () => {
   describe('catálogo ampliado de notas', () => {
     const excluidas = new Set(['odontologia', 'podologia']);
 
-    it('agrega los complementos médicos a las otras 12 especialidades', () => {
+    it('agrega los complementos médicos a todas salvo odontología y podiatría', () => {
       const medicas = ESPECIALIDADES.filter((key) => !excluidas.has(key));
 
-      expect(medicas).toHaveLength(12);
+      expect(medicas).toHaveLength(ESPECIALIDADES.length - excluidas.size);
       for (const key of medicas) {
         const claves = PERFILES[key].camposExtra.map((campo) => campo.key);
         expect(claves).toEqual(
@@ -34,6 +34,30 @@ describe('EspecialidadValidator', () => {
           ]),
         );
       }
+    });
+
+    it('la clínica de heridas exige identificar la localización anatómica', () => {
+      const nota = notaBaseCompleta({ especialidad: 'heridas_estomas' });
+
+      expect(EspecialidadValidator.validar(nota)).toEqual(['extension.her_localizacion']);
+      nota.extension = { her_localizacion: 'Maléolo medial derecho' };
+      expect(EspecialidadValidator.validar(nota)).toEqual([]);
+    });
+
+    it('rechaza EVA y porcentajes fuera de sus límites clínicos', () => {
+      const nota = notaBaseCompleta({
+        especialidad: 'heridas_estomas',
+        extension: {
+          her_localizacion: 'Región sacra',
+          her_dolor_eva: 11,
+          her_tejido_granulacion: 101,
+        },
+      });
+
+      expect(EspecialidadValidator.validar(nota)).toEqual([
+        'extension.her_dolor_eva',
+        'extension.her_tejido_granulacion',
+      ]);
     });
 
     it('mantiene odontología y podiatría fuera del bloque común', () => {

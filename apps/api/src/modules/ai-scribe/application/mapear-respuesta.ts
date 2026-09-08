@@ -172,7 +172,11 @@ function extensionDe(
 
     if (campo.tipo === 'numero') {
       const n = typeof v === 'number' ? v : Number(v);
-      if (Number.isFinite(n)) salida[campo.key] = n;
+      const dentroDeRango =
+        Number.isFinite(n) &&
+        (campo.min === undefined || n >= campo.min) &&
+        (campo.max === undefined || n <= campo.max);
+      if (dentroDeRango) salida[campo.key] = n;
       continue;
     }
 
@@ -183,6 +187,21 @@ function extensionDe(
     if (campo.tipo === 'seleccion') {
       const opcion = campo.opciones?.find((o) => o.toLowerCase() === v.trim().toLowerCase());
       if (opcion) salida[campo.key] = opcion;
+      continue;
+    }
+
+    // El formulario persiste una selección múltiple como opciones canónicas
+    // separadas por coma. El modelo puede cambiar mayúsculas, pero no inventar
+    // valores fuera del catálogo ni repetir una misma opción.
+    if (campo.tipo === 'multi-seleccion') {
+      const elegidas: string[] = [];
+      for (const cruda of v.split(',')) {
+        const opcion = campo.opciones?.find(
+          (o) => o.toLowerCase() === cruda.trim().toLowerCase(),
+        );
+        if (opcion && !elegidas.includes(opcion)) elegidas.push(opcion);
+      }
+      if (elegidas.length > 0) salida[campo.key] = elegidas.join(',');
       continue;
     }
 
