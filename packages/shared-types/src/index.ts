@@ -2179,6 +2179,35 @@ export interface PerfilEspecialidad {
 
 const VITALES_COMPLETOS = ['ta', 'fc', 'fr', 'temp', 'spo2', 'peso', 'talla'] as const;
 
+/**
+ * Complementos de la nota ambulatoria que comparten las especialidades médicas.
+ *
+ * Se mantienen opcionales: documentan los apartados que suelen faltar en una
+ * nota breve (estudios, pronóstico y seguimiento) sin volver imposible cerrar
+ * una consulta en la que no aplican. Odontología y podiatría conservan sus
+ * flujos propios y NO incluyen este bloque.
+ */
+const CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS: readonly CampoExtra[] = [
+  {
+    key: 'com_resultados_estudios',
+    label: 'Resultados relevantes de estudios',
+    tipo: 'texto-rico',
+    ayuda: 'Laboratorio, gabinete o pruebas revisadas en esta consulta, con fecha cuando se conozca.',
+  },
+  {
+    key: 'com_pronostico',
+    label: 'Pronóstico',
+    tipo: 'texto',
+    ayuda: 'Pronóstico clínico y funcional, condicionado al diagnóstico y a la respuesta esperada.',
+  },
+  {
+    key: 'com_seguimiento',
+    label: 'Seguimiento y signos de alarma',
+    tipo: 'texto-rico',
+    ayuda: 'Plazo de revisión, criterios para adelantarla y referencias indicadas.',
+  },
+];
+
 export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
   /**
    * El default y la salida de emergencia: la nota exactamente como era antes de
@@ -2190,7 +2219,21 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
     nombre: 'Medicina general',
     rangosCie10: [],
     signosVitales: VITALES_COMPLETOS,
-    camposExtra: [],
+    camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
+      {
+        key: 'gen_conciliacion_medicamentos',
+        label: 'Conciliación de medicamentos',
+        tipo: 'texto-rico',
+        ayuda: 'Nombre, dosis, vía y frecuencia; incluye medicamentos sin receta y suplementos relevantes.',
+      },
+      {
+        key: 'gen_alergias_revisadas',
+        label: 'Alergias revisadas',
+        tipo: 'seleccion',
+        opciones: ['Sin alergias conocidas', 'Confirmadas sin cambios', 'Actualizadas en esta consulta', 'No fue posible verificar'],
+      },
+    ],
   },
 
   /**
@@ -2275,9 +2318,11 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       },
     },
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'ped_perimetro_cefalico', label: 'Perímetro cefálico', tipo: 'numero', unidad: 'cm' },
       { key: 'ped_percentil_peso', label: 'Percentil de peso', tipo: 'numero', unidad: '%' },
       { key: 'ped_percentil_talla', label: 'Percentil de talla', tipo: 'numero', unidad: '%' },
+      { key: 'ped_percentil_imc', label: 'Percentil de IMC', tipo: 'numero', unidad: '%' },
       {
         key: 'ped_esquema_vacunacion',
         label: 'Esquema de vacunación',
@@ -2287,6 +2332,18 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       },
       { key: 'ped_desarrollo', label: 'Desarrollo psicomotor', tipo: 'texto-rico' },
       { key: 'ped_alimentacion', label: 'Alimentación', tipo: 'texto' },
+      {
+        key: 'ped_tamizaje_desarrollo',
+        label: 'Tamizaje de desarrollo o conducta',
+        tipo: 'texto-rico',
+        ayuda: 'Instrumento, fecha, resultado, interpretación y acción derivada.',
+      },
+      {
+        key: 'ped_orientacion_anticipatoria',
+        label: 'Orientación anticipatoria',
+        tipo: 'texto-rico',
+        ayuda: 'Prevención, seguridad, alimentación y temas acordes con la edad.',
+      },
     ],
   },
 
@@ -2300,13 +2357,32 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
     ],
     signosVitales: VITALES_COMPLETOS,
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'gin_fum', label: 'Fecha de última menstruación', tipo: 'texto' },
+      { key: 'gin_fpp', label: 'Fecha probable de parto', tipo: 'texto' },
       { key: 'gin_gestas', label: 'Gestas', tipo: 'numero' },
       { key: 'gin_partos', label: 'Partos', tipo: 'numero' },
       { key: 'gin_cesareas', label: 'Cesáreas', tipo: 'numero' },
       { key: 'gin_abortos', label: 'Abortos', tipo: 'numero' },
       { key: 'gin_sdg', label: 'Semanas de gestación', tipo: 'numero', unidad: 'SDG' },
+      { key: 'gin_dias_gestacion', label: 'Días adicionales de gestación', tipo: 'numero', unidad: 'días' },
+      { key: 'gin_altura_uterina', label: 'Altura uterina', tipo: 'numero', unidad: 'cm' },
+      { key: 'gin_fcf', label: 'Frecuencia cardiaca fetal', tipo: 'numero', unidad: 'lpm' },
+      { key: 'gin_movimientos_fetales', label: 'Movimientos fetales', tipo: 'texto' },
+      {
+        key: 'gin_datos_alarma_obstetrica',
+        label: 'Datos de alarma obstétrica',
+        tipo: 'texto-rico',
+        ayuda: 'Sangrado, pérdida de líquido, contracciones, cefalea, fosfenos u otros síntomas relevantes.',
+      },
       { key: 'gin_metodo_planificacion', label: 'Método de planificación', tipo: 'texto' },
+      {
+        key: 'gin_antecedentes_obstetricos',
+        label: 'Antecedentes obstétricos detallados',
+        tipo: 'texto-rico',
+        soloHistoriaClinica: true,
+        ayuda: 'Edad gestacional, vía de resolución, peso neonatal y complicaciones de cada embarazo.',
+      },
     ],
   },
 
@@ -2316,8 +2392,22 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
     rangosCie10: [],
     signosVitales: VITALES_COMPLETOS,
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'mi_comorbilidades', label: 'Comorbilidades', tipo: 'texto-rico' },
       { key: 'mi_medicacion_cronica', label: 'Medicación crónica actual', tipo: 'texto-rico' },
+      {
+        key: 'mi_lista_problemas',
+        label: 'Evaluación por problema',
+        tipo: 'texto-rico',
+        ayuda: 'Estado, evidencia, objetivo y plan para cada problema activo.',
+      },
+      { key: 'mi_estado_funcional', label: 'Estado funcional', tipo: 'texto-rico' },
+      {
+        key: 'mi_conciliacion_medicamentos',
+        label: 'Conciliación de medicamentos',
+        tipo: 'texto-rico',
+        ayuda: 'Nombre, dosis, vía, frecuencia, adherencia y cambios realizados.',
+      },
     ],
   },
 
@@ -2336,6 +2426,7 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       },
     },
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'tra_region', label: 'Región anatómica', tipo: 'texto', obligatorio: true },
       {
         key: 'tra_lateralidad',
@@ -2343,8 +2434,21 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
         tipo: 'seleccion',
         opciones: ['Derecha', 'Izquierda', 'Bilateral', 'No aplica'],
       },
+      { key: 'tra_fecha_lesion', label: 'Fecha de lesión o inicio', tipo: 'texto' },
+      { key: 'tra_mecanismo_lesion', label: 'Mecanismo de lesión', tipo: 'texto-rico' },
+      { key: 'tra_dolor_eva', label: 'Dolor (EVA)', tipo: 'numero', unidad: '/10' },
+      { key: 'tra_inspeccion_palpacion', label: 'Inspección y palpación', tipo: 'texto-rico' },
       { key: 'tra_arcos_movilidad', label: 'Arcos de movilidad', tipo: 'texto' },
-      { key: 'tra_estudios_imagen', label: 'Estudios de imagen', tipo: 'texto-rico' },
+      { key: 'tra_fuerza', label: 'Fuerza muscular', tipo: 'texto' },
+      { key: 'tra_pruebas_especiales', label: 'Pruebas y maniobras especiales', tipo: 'texto-rico' },
+      {
+        key: 'tra_estado_neurovascular',
+        label: 'Estado neurovascular distal',
+        tipo: 'texto-rico',
+        ayuda: 'Sensibilidad, movilidad, pulsos y llenado capilar distales.',
+      },
+      { key: 'tra_estudios_imagen', label: 'Estudios de imagen e interpretación', tipo: 'texto-rico' },
+      { key: 'tra_restricciones', label: 'Carga, inmovilización y restricciones', tipo: 'texto-rico' },
     ],
   },
 
@@ -2360,10 +2464,24 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       },
     },
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'der_topografia', label: 'Topografía de la lesión', tipo: 'texto', obligatorio: true },
       { key: 'der_morfologia', label: 'Morfología', tipo: 'texto' },
+      { key: 'der_distribucion', label: 'Distribución', tipo: 'texto' },
+      { key: 'der_numero_tamano', label: 'Número y tamaño de lesiones', tipo: 'texto' },
+      { key: 'der_evolucion_sintomas', label: 'Evolución y síntomas', tipo: 'texto-rico' },
+      { key: 'der_exposiciones', label: 'Exposiciones y desencadenantes', tipo: 'texto-rico' },
       { key: 'der_fototipo', label: 'Fototipo (Fitzpatrick)', tipo: 'seleccion', opciones: ['I', 'II', 'III', 'IV', 'V', 'VI'] },
       { key: 'der_dermatoscopia', label: 'Dermatoscopia', tipo: 'texto-rico' },
+      { key: 'der_abcde', label: 'Evaluación ABCDE', tipo: 'texto-rico' },
+      { key: 'der_diagnostico_diferencial', label: 'Diagnóstico diferencial', tipo: 'texto-rico' },
+      { key: 'der_biopsia', label: 'Biopsia o procedimiento', tipo: 'texto-rico' },
+      {
+        key: 'der_fotografia_consentimiento',
+        label: 'Fotografía clínica',
+        tipo: 'seleccion',
+        opciones: ['No realizada', 'Realizada con consentimiento', 'Realizada sin identificar al paciente'],
+      },
     ],
   },
 
@@ -2373,6 +2491,7 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
     rangosCie10: [{ desde: 'I00', hasta: 'I99' }],
     signosVitales: VITALES_COMPLETOS,
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       {
         key: 'car_clase_funcional',
         label: 'Clase funcional (NYHA)',
@@ -2381,8 +2500,13 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       },
       { key: 'car_ta_brazo_der', label: 'T/A brazo derecho', tipo: 'texto' },
       { key: 'car_ta_brazo_izq', label: 'T/A brazo izquierdo', tipo: 'texto' },
-      { key: 'car_ecg', label: 'Electrocardiograma', tipo: 'texto-rico' },
+      { key: 'car_sintomas', label: 'Síntomas cardiovasculares', tipo: 'texto-rico', ayuda: 'Dolor torácico, disnea, ortopnea, edema, síncope y palpitaciones.' },
+      { key: 'car_exploracion', label: 'Exploración cardiovascular', tipo: 'texto-rico', ayuda: 'Ritmo, soplos, ingurgitación yugular, pulsos y edema.' },
+      { key: 'car_ecg', label: 'Electrocardiograma', tipo: 'texto-rico', ayuda: 'Fecha, ritmo, frecuencia, intervalos y hallazgos relevantes.' },
+      { key: 'car_fraccion_eyeccion', label: 'Fracción de eyección', tipo: 'numero', unidad: '%' },
       { key: 'car_riesgo', label: 'Factores de riesgo cardiovascular', tipo: 'texto-rico' },
+      { key: 'car_riesgo_ascvd', label: 'Riesgo cardiovascular calculado', tipo: 'texto' },
+      { key: 'car_adherencia', label: 'Adherencia, tolerancia y contraindicaciones', tipo: 'texto-rico' },
     ],
   },
 
@@ -2392,12 +2516,23 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
     rangosCie10: [{ desde: 'H00', hasta: 'H59' }],
     signosVitales: ['ta', 'fc'],
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'oft_agudeza_od', label: 'Agudeza visual OD', tipo: 'texto', obligatorio: true },
       { key: 'oft_agudeza_oi', label: 'Agudeza visual OI', tipo: 'texto', obligatorio: true },
+      { key: 'oft_metodo_correccion', label: 'Método y corrección de agudeza visual', tipo: 'texto', ayuda: 'Distancia, cartilla, sin/con corrección y agujero estenopeico.' },
       { key: 'oft_presion_od', label: 'Presión intraocular OD', tipo: 'numero', unidad: 'mmHg' },
       { key: 'oft_presion_oi', label: 'Presión intraocular OI', tipo: 'numero', unidad: 'mmHg' },
+      { key: 'oft_pupilas_rapd', label: 'Pupilas y RAPD', tipo: 'texto' },
+      { key: 'oft_motilidad_alineacion', label: 'Motilidad y alineación', tipo: 'texto' },
+      { key: 'oft_campos_visuales', label: 'Campos visuales', tipo: 'texto' },
+      { key: 'oft_vision_color', label: 'Visión de color', tipo: 'texto' },
+      { key: 'oft_examen_externo', label: 'Examen externo', tipo: 'texto-rico' },
       { key: 'oft_segmento_anterior', label: 'Segmento anterior', tipo: 'texto-rico' },
       { key: 'oft_fondo_ojo', label: 'Fondo de ojo', tipo: 'texto-rico' },
+      { key: 'oft_nervio_copa_disco', label: 'Nervio óptico y relación copa/disco', tipo: 'texto' },
+      { key: 'oft_macula_periferia', label: 'Mácula y retina periférica', tipo: 'texto-rico' },
+      { key: 'oft_estudios', label: 'OCT, campimetría y otros estudios', tipo: 'texto-rico' },
+      { key: 'oft_dilatacion', label: 'Dilatación', tipo: 'texto', ayuda: 'Fármacos, concentración y hora cuando se realizó.' },
     ],
   },
 
@@ -2410,10 +2545,17 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
     ],
     signosVitales: ['ta', 'fc', 'temp'],
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
+      { key: 'orl_lateralidad', label: 'Lateralidad', tipo: 'seleccion', opciones: ['Derecha', 'Izquierda', 'Bilateral', 'No aplica'] },
       { key: 'orl_otoscopia', label: 'Otoscopia', tipo: 'texto-rico' },
+      { key: 'orl_membrana_timpanica', label: 'Membrana timpánica y movilidad', tipo: 'texto-rico' },
+      { key: 'orl_weber_rinne', label: 'Weber y Rinne', tipo: 'texto' },
       { key: 'orl_rinoscopia', label: 'Rinoscopia', tipo: 'texto-rico' },
       { key: 'orl_faringe', label: 'Orofaringe', tipo: 'texto' },
+      { key: 'orl_cuello', label: 'Cuello', tipo: 'texto-rico' },
+      { key: 'orl_voz_deglucion_via_aerea', label: 'Voz, deglución y vía aérea', tipo: 'texto-rico' },
       { key: 'orl_audiometria', label: 'Audiometría', tipo: 'texto-rico' },
+      { key: 'orl_nasofibroscopia', label: 'Nasofibroscopia o laringoscopia', tipo: 'texto-rico', ayuda: 'Indicación, anestésico/descongestionante, estructuras examinadas y hallazgos.' },
     ],
   },
 
@@ -2431,6 +2573,7 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       },
     },
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'psi_examen_mental', label: 'Examen mental', tipo: 'texto-rico', obligatorio: true },
       {
         key: 'psi_riesgo_suicida',
@@ -2440,7 +2583,15 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
         obligatorio: true,
         ayuda: 'Su registro en cada consulta es un respaldo médico-legal.',
       },
+      { key: 'psi_ideacion_plan_intencion', label: 'Ideación, plan e intención suicida', tipo: 'texto-rico' },
+      { key: 'psi_acceso_medios', label: 'Acceso a medios', tipo: 'texto' },
+      { key: 'psi_factores_riesgo_proteccion', label: 'Factores de riesgo y protección', tipo: 'texto-rico' },
+      { key: 'psi_autolesion_violencia', label: 'Autolesión y riesgo de violencia', tipo: 'texto-rico' },
+      { key: 'psi_escalas', label: 'Escalas clínicas', tipo: 'texto-rico', ayuda: 'Instrumento, fecha, puntuación e interpretación.' },
       { key: 'psi_adherencia', label: 'Adherencia al tratamiento', tipo: 'texto' },
+      { key: 'psi_respuesta_efectos_adversos', label: 'Respuesta y efectos adversos', tipo: 'texto-rico' },
+      { key: 'psi_consumo_sustancias', label: 'Consumo de sustancias', tipo: 'texto-rico' },
+      { key: 'psi_plan_seguridad', label: 'Plan de seguridad y red de apoyo', tipo: 'texto-rico' },
     ],
   },
 
@@ -2450,11 +2601,18 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
     rangosCie10: [{ desde: 'E00', hasta: 'E90' }],
     signosVitales: VITALES_COMPLETOS,
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'end_imc', label: 'IMC', tipo: 'numero', unidad: 'kg/m²' },
       { key: 'end_circunferencia_cintura', label: 'Circunferencia de cintura', tipo: 'numero', unidad: 'cm' },
       { key: 'end_glucosa', label: 'Glucosa', tipo: 'numero', unidad: 'mg/dL' },
       { key: 'end_hba1c', label: 'HbA1c', tipo: 'numero', unidad: '%' },
-      { key: 'end_pies_diabeticos', label: 'Exploración de pies', tipo: 'texto' },
+      { key: 'end_objetivos_metabolicos', label: 'Objetivos metabólicos individualizados', tipo: 'texto-rico' },
+      { key: 'end_hipoglucemia', label: 'Hipoglucemia y riesgo asociado', tipo: 'texto-rico' },
+      { key: 'end_complicaciones', label: 'Complicaciones y comorbilidades', tipo: 'texto-rico' },
+      { key: 'end_funcion_renal', label: 'Función renal y albuminuria', tipo: 'texto-rico' },
+      { key: 'end_retina_neuropatia', label: 'Retinopatía y neuropatía', tipo: 'texto-rico' },
+      { key: 'end_pies_diabeticos', label: 'Exploración de pies', tipo: 'texto-rico', ayuda: 'Integridad de piel, deformidades, pulsos, sensibilidad y monofilamento de 10 g.' },
+      { key: 'end_dispositivos', label: 'Monitoreo y dispositivos', tipo: 'texto-rico', ayuda: 'Glucómetro, CGM, bomba, tiempo en rango y revisión de datos.' },
     ],
   },
 
@@ -2470,12 +2628,24 @@ export const PERFILES: Record<EspecialidadKey, PerfilEspecialidad> = {
       planTerapeutico: { label: 'Plan nutricional', placeholder: 'Aporte calórico, distribución de macronutrientes, recomendaciones…' },
     },
     camposExtra: [
+      ...CAMPOS_NOTA_MEDICA_COMPLEMENTARIOS,
       { key: 'nut_imc', label: 'IMC', tipo: 'numero', unidad: 'kg/m²' },
       { key: 'nut_porcentaje_grasa', label: 'Porcentaje de grasa', tipo: 'numero', unidad: '%' },
       { key: 'nut_masa_muscular', label: 'Masa muscular', tipo: 'numero', unidad: 'kg' },
       { key: 'nut_circunferencia_cintura', label: 'Circunferencia de cintura', tipo: 'numero', unidad: 'cm' },
       { key: 'nut_recordatorio_24h', label: 'Recordatorio de 24 horas', tipo: 'texto-rico' },
       { key: 'nut_objetivo', label: 'Objetivo del paciente', tipo: 'texto' },
+      { key: 'nut_indicadores_bioquimicos', label: 'Indicadores bioquímicos', tipo: 'texto-rico' },
+      { key: 'nut_actividad_conducta', label: 'Actividad física y conducta alimentaria', tipo: 'texto-rico' },
+      {
+        key: 'nut_diagnostico_pes',
+        label: 'Diagnóstico nutricional (PES)',
+        tipo: 'texto-rico',
+        ayuda: 'Problema relacionado con etiología, evidenciado por signos y síntomas.',
+      },
+      { key: 'nut_prescripcion', label: 'Prescripción nutricional', tipo: 'texto-rico', ayuda: 'Energía, distribución de nutrimentos y estrategia acordada.' },
+      { key: 'nut_metas_medibles', label: 'Metas medibles', tipo: 'texto-rico' },
+      { key: 'nut_monitoreo_evaluacion', label: 'Monitoreo y evaluación', tipo: 'texto-rico', ayuda: 'Indicadores, resultado esperado y fecha de reevaluación.' },
     ],
   },
 

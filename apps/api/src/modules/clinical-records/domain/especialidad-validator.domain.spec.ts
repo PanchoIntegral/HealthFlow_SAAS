@@ -1,4 +1,4 @@
-import type { NotaEvolucionContent } from '@healthflow/shared-types';
+import { ESPECIALIDADES, PERFILES, type NotaEvolucionContent } from '@healthflow/shared-types';
 import { EspecialidadValidator } from './especialidad-validator';
 
 /** Nota que cumple la base NOM-004: cualquier faltante viene de la especialidad. */
@@ -17,6 +17,39 @@ function notaBaseCompleta(over: Partial<NotaEvolucionContent> = {}): NotaEvoluci
 }
 
 describe('EspecialidadValidator', () => {
+  describe('catálogo ampliado de notas', () => {
+    const excluidas = new Set(['odontologia', 'podologia']);
+
+    it('agrega los complementos médicos a las otras 12 especialidades', () => {
+      const medicas = ESPECIALIDADES.filter((key) => !excluidas.has(key));
+
+      expect(medicas).toHaveLength(12);
+      for (const key of medicas) {
+        const claves = PERFILES[key].camposExtra.map((campo) => campo.key);
+        expect(claves).toEqual(
+          expect.arrayContaining([
+            'com_resultados_estudios',
+            'com_pronostico',
+            'com_seguimiento',
+          ]),
+        );
+      }
+    });
+
+    it('mantiene odontología y podiatría fuera del bloque común', () => {
+      for (const key of ['odontologia', 'podologia'] as const) {
+        expect(PERFILES[key].camposExtra.some((campo) => campo.key.startsWith('com_'))).toBe(false);
+      }
+    });
+
+    it('no repite claves dentro de ningún perfil', () => {
+      for (const perfil of Object.values(PERFILES)) {
+        const claves = perfil.camposExtra.map((campo) => campo.key);
+        expect(new Set(claves).size).toBe(claves.length);
+      }
+    });
+  });
+
   describe('la base NOM-004 aplica a todos', () => {
     it('sigue exigiendo los cuatro campos de siempre en medicina general', () => {
       const vacia: NotaEvolucionContent = {
