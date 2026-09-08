@@ -12,6 +12,7 @@ import {
   type ClinicalRecordView,
   type CorreccionNota,
   type EspecialidadKey,
+  type MapaCorporal,
   type NotaEvolucionContent,
   type Odontograma,
   type Podograma,
@@ -112,6 +113,9 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       // Mismo criterio para el pie: una úlcera que lleva meses no se vuelve a
       // marcar de cero en cada consulta.
       ...(input.podograma ? { podograma: input.podograma } : {}),
+      // Las heridas continúan entre curaciones; se parte de la última
+      // localización firmada y el médico ajusta lo que cambió.
+      ...(input.mapaCorporal ? { mapaCorporal: input.mapaCorporal } : {}),
     } satisfies NotaEvolucionContent);
     const result = await tx.execute(sql`
       INSERT INTO clinical_notes (clinical_record_id, appointment_id, doctor_id, tipo_nota, contenido_nom004, estatus)
@@ -191,6 +195,10 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     return this.ultimoInstrumento<Podograma>(tx, clinicalRecordId, 'podograma');
   }
 
+  async getUltimoMapaCorporal(tx: Tx, clinicalRecordId: string): Promise<MapaCorporal | null> {
+    return this.ultimoInstrumento<MapaCorporal>(tx, clinicalRecordId, 'mapaCorporal');
+  }
+
   /**
    * Último valor cerrado de un instrumento gráfico del expediente.
    *
@@ -204,7 +212,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
   private async ultimoInstrumento<T>(
     tx: Tx,
     clinicalRecordId: string,
-    llave: 'odontograma' | 'podograma',
+    llave: 'odontograma' | 'podograma' | 'mapaCorporal',
   ): Promise<T | null> {
     const result = await tx.execute(sql`
       SELECT contenido_nom004->${llave} AS valor

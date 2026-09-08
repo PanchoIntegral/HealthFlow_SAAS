@@ -528,6 +528,87 @@ export function resumirPodograma(podograma: Podograma): string[] {
   });
 }
 
+// ── Mapa corporal (clínica de heridas y estomas) ──────────────────
+//
+// Las coordenadas se guardan normalizadas de 0 a 1000. Así la marca sigue
+// apuntando al mismo sitio aunque el SVG se vea grande en escritorio, pequeño
+// en teléfono o se renderice después en un documento impreso.
+
+export const VISTAS_CORPORALES = ['anterior', 'posterior'] as const;
+export type VistaCorporal = (typeof VISTAS_CORPORALES)[number];
+
+export const ETIQUETA_VISTA_CORPORAL: Record<VistaCorporal, string> = {
+  anterior: 'Vista anterior',
+  posterior: 'Vista posterior',
+};
+
+export const TIPOS_MARCA_CORPORAL = [
+  { key: 'herida', label: 'Herida', color: '#dc2626' },
+  { key: 'lesion_presion', label: 'Lesión por presión', color: '#7c3aed' },
+  { key: 'estoma', label: 'Estoma', color: '#0891b2' },
+  { key: 'otro', label: 'Otro', color: '#d97706' },
+] as const;
+
+export type TipoMarcaCorporal = (typeof TIPOS_MARCA_CORPORAL)[number]['key'];
+
+export function tipoMarcaCorporalPorKey(key: string) {
+  return TIPOS_MARCA_CORPORAL.find((tipo) => tipo.key === key);
+}
+
+/** Un punto anatómico de una herida o estoma dentro de ESTA nota. */
+export interface MarcaCorporal {
+  /** Identidad estable: permite editar o retirar una marca sin depender del orden. */
+  id: string;
+  vista: VistaCorporal;
+  /** Posición normalizada dentro del lienzo, en el intervalo cerrado 0–1000. */
+  x: number;
+  y: number;
+  tipo: TipoMarcaCorporal;
+  /** Precisión escrita: p. ej. "maléolo medial derecho". */
+  descripcion?: string;
+}
+
+export interface MapaCorporal {
+  marcas: MarcaCorporal[];
+}
+
+export const MAPA_CORPORAL_VACIO: MapaCorporal = { marcas: [] };
+
+/** Rechaza coordenadas/catálogos adulterados recibidos de otro cliente. */
+export function marcaCorporalValida(marca: MarcaCorporal | null | undefined): boolean {
+  return (
+    typeof marca === 'object' &&
+    marca !== null &&
+    typeof marca.id === 'string' &&
+    marca.id.trim().length > 0 &&
+    VISTAS_CORPORALES.includes(marca.vista) &&
+    Number.isFinite(marca.x) &&
+    marca.x >= 0 &&
+    marca.x <= 1000 &&
+    Number.isFinite(marca.y) &&
+    marca.y >= 0 &&
+    marca.y <= 1000 &&
+    tipoMarcaCorporalPorKey(marca.tipo) !== undefined &&
+    (marca.descripcion === undefined || typeof marca.descripcion === 'string')
+  );
+}
+
+export function mapaCorporalValido(mapa: MapaCorporal | null | undefined): boolean {
+  if (!mapa || !Array.isArray(mapa.marcas) || mapa.marcas.length === 0) return false;
+  const ids = mapa.marcas.map((marca) => marca.id);
+  return new Set(ids).size === ids.length && mapa.marcas.every(marcaCorporalValida);
+}
+
+/** Resumen textual para que el dato siga siendo legible sin depender del SVG. */
+export function resumirMapaCorporal(mapa: MapaCorporal): string[] {
+  return mapa.marcas.map((marca, indice) => {
+    const tipo = tipoMarcaCorporalPorKey(marca.tipo)?.label ?? marca.tipo;
+    const vista = ETIQUETA_VISTA_CORPORAL[marca.vista] ?? marca.vista;
+    const sitio = marca.descripcion?.trim();
+    return `${indice + 1}. ${tipo} · ${vista}${sitio ? ` · ${sitio}` : ''}`;
+  });
+}
+
 export interface AntecedentesPaciente {
   /** Claves de BANDERAS_CLINICAS activas en este paciente. */
   banderas: string[];
@@ -1715,6 +1796,12 @@ export interface NotaEvolucionContent {
    * cambió.
    */
   podograma?: Podograma;
+  /**
+   * Localización visual de heridas y estomas en vistas anterior/posterior.
+   * Vive en la nota por la misma razón que odontograma y podograma: al firmar
+   * queda congelado el estado anatómico documentado en esa consulta.
+   */
+  mapaCorporal?: MapaCorporal;
   /**
    * Antecedentes de la HISTORIA CLÍNICA inicial (NOM-004), presentes solo
    * cuando `tipoNota === 'historia_clinica'`. Viven como campos planos en la

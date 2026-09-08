@@ -5,14 +5,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   EMPTY_NOTA_EVOLUCION,
+  MAPA_CORPORAL_VACIO,
   ODONTOGRAMA_VACIO,
   PODOGRAMA_VACIO,
   camposDeNota,
+  mapaCorporalValido,
   partidasDesdeOdontograma,
   perfilDe,
   type CampoBaseKey,
   type CampoSugeribleIa,
   type Odontograma as OdontogramaData,
+  type MapaCorporal as MapaCorporalData,
   type Podograma as PodogramaData,
   type DiagnosticoCie10,
   type EspecialidadKey,
@@ -34,6 +37,7 @@ import { IconClipboardList, IconPill } from '../../../components/icons';
 import { RecetaModal } from '../../../components/receta-modal';
 import { Odontograma } from '../../../components/odontograma';
 import { Podograma } from '../../../components/podograma';
+import { MapaCorporal } from '../../../components/mapa-corporal';
 import { NuevoPresupuestoModal } from '../../../components/nuevo-presupuesto-modal';
 import { Modal } from '../../../components/modal';
 import { GrabadorIa } from '../../../components/grabador-ia';
@@ -427,6 +431,13 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
   const setPodograma = (actualizar: (previo: PodogramaData) => PodogramaData) =>
     setContent((c) => ({ ...c, podograma: actualizar(c.podograma ?? PODOGRAMA_VACIO) }));
 
+  /** El mapa corporal también usa actualización funcional para no perder puntos consecutivos. */
+  const setMapaCorporal = (actualizar: (previo: MapaCorporalData) => MapaCorporalData) =>
+    setContent((c) => ({
+      ...c,
+      mapaCorporal: actualizar(c.mapaCorporal ?? MAPA_CORPORAL_VACIO),
+    }));
+
   /** Al desmarcar se limpia el motivo: no debe quedar huérfano en la nota. */
   const setOmision = (activo: boolean) =>
     setContent((c) => ({
@@ -687,6 +698,25 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
                 onChange={setPodograma}
                 readOnly={readOnly}
               />
+            </Section>
+          )}
+
+          {perfil.key === 'heridas_estomas' && (
+            <Section
+              title="Ubicación anatómica de heridas y estomas"
+              required
+              missing={isMissing('mapaCorporal')}
+            >
+              <MapaCorporal
+                valor={content.mapaCorporal ?? MAPA_CORPORAL_VACIO}
+                onChange={setMapaCorporal}
+                readOnly={readOnly}
+              />
+              {isMissing('mapaCorporal') && (
+                <p className="mt-2 text-xs font-medium text-red-600">
+                  Marca al menos una ubicación anatómica para cerrar la nota.
+                </p>
+              )}
             </Section>
           )}
 
@@ -1214,6 +1244,9 @@ function computeProgress(
     ...perfil.camposExtra
       .filter((campo) => campo.obligatorio)
       .map((campo) => tieneValor(extension[campo.key])),
+    ...(perfil.key === 'heridas_estomas'
+      ? [mapaCorporalValido(c.mapaCorporal)]
+      : []),
     ...(c.tipoNota === 'historia_clinica'
       ? [
           tieneValor(c.antecedentesHeredofamiliares),

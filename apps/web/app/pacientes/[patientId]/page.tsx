@@ -18,6 +18,7 @@ import { PresupuestoPanel } from '../../../components/presupuesto-panel';
 import { ConsentimientoPanel } from '../../../components/consentimiento-panel';
 import { RadiografiaPanel } from '../../../components/radiografia-panel';
 import { Podograma } from '../../../components/podograma';
+import { MapaCorporal } from '../../../components/mapa-corporal';
 import { CorregirNotaModal } from '../../../components/corregir-nota-modal';
 import { OrdenesPlantillasPanel } from '../../../components/ordenes-plantillas-panel';
 import { RecetaPanel } from '../../../components/receta-panel';
@@ -331,6 +332,14 @@ function NotaCard({
           {/* El componente ya trae su propio resumen escrito de las marcas
               (ResumenPodograma): no se agrega otro aquí. */}
           <Podograma valor={c.podograma} onChange={() => {}} readOnly />
+        </Section>
+      )}
+
+      {/* La localización visual forma parte de la nota firmada y debe poder
+          consultarse desde el expediente, no sólo durante la curación. */}
+      {c.mapaCorporal && c.mapaCorporal.marcas.length > 0 && (
+        <Section title="Ubicación anatómica de heridas y estomas">
+          <MapaCorporal valor={c.mapaCorporal} onChange={() => {}} readOnly />
         </Section>
       )}
 

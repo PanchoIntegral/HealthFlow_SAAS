@@ -1,5 +1,6 @@
 import {
   camposDeNota,
+  mapaCorporalValido,
   perfilDe,
   type NotaEvolucionContent,
   type PerfilEspecialidad,
@@ -79,7 +80,21 @@ export class EspecialidadValidator {
         ? CAMPOS_HISTORIA_CLINICA.filter((campo) => !hasText(content[campo]))
         : [];
 
-    return [...base, ...faltantesEspecialidad, ...numerosFueraDeRango, ...faltantesHistoria];
+    // La hoja clínica de heridas exige marcar la ubicación en la silueta.
+    // Además de existir al menos un punto, se revisan coordenadas, catálogos
+    // e ids para no firmar un mapa adulterado por otro cliente.
+    const faltantesMapaCorporal =
+      perfil.key === 'heridas_estomas' && !mapaCorporalValido(content.mapaCorporal)
+        ? ['mapaCorporal']
+        : [];
+
+    return [
+      ...base,
+      ...faltantesEspecialidad,
+      ...numerosFueraDeRango,
+      ...faltantesHistoria,
+      ...faltantesMapaCorporal,
+    ];
   }
 }
 

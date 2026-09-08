@@ -3,6 +3,7 @@ import type {
   ClinicalNoteType,
   ClinicalRecordView,
   EspecialidadKey,
+  MapaCorporal,
   Odontograma,
   Podograma,
 } from '@healthflow/shared-types';
@@ -25,6 +26,8 @@ export interface CreateDraftNoteInput {
   odontograma?: Odontograma;
   /** Mapa podológico heredado de la última nota cerrada; ausente en la primera visita. */
   podograma?: Podograma;
+  /** Ubicaciones de heridas heredadas de la última nota cerrada. */
+  mapaCorporal?: MapaCorporal;
 }
 
 /**
@@ -63,6 +66,12 @@ export interface ClinicalRecordRepository {
    * lo que cambió en vez de volver a marcarlo todo.
    */
   getUltimoPodograma(tx: Tx, clinicalRecordId: string): Promise<Podograma | null>;
+
+  /**
+   * Mapa corporal de la última nota CERRADA: una herida suele requerir varias
+   * curaciones y el médico sólo debe ajustar altas, cierres o sitios nuevos.
+   */
+  getUltimoMapaCorporal(tx: Tx, clinicalRecordId: string): Promise<MapaCorporal | null>;
 
   /**
    * Expediente de un paciente con UNA PÁGINA de su historial, de la nota más

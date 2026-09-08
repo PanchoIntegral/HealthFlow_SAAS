@@ -1,4 +1,11 @@
-import { ESPECIALIDADES, PERFILES, type NotaEvolucionContent } from '@healthflow/shared-types';
+import {
+  ESPECIALIDADES,
+  PERFILES,
+  mapaCorporalValido,
+  resumirMapaCorporal,
+  type MapaCorporal,
+  type NotaEvolucionContent,
+} from '@healthflow/shared-types';
 import { EspecialidadValidator } from './especialidad-validator';
 
 /** Nota que cumple la base NOM-004: cualquier faltante viene de la especialidad. */
@@ -13,6 +20,22 @@ function notaBaseCompleta(over: Partial<NotaEvolucionContent> = {}): NotaEvoluci
     diagnosticos: [{ cie10: 'K02.1', descripcion: 'Caries de la dentina' }],
     planTerapeutico: '<p>Amoxicilina 500 mg VO c/8h por 7 días</p>',
     ...over,
+  };
+}
+
+function mapaCorporalCompleto(over: Partial<MapaCorporal['marcas'][number]> = {}): MapaCorporal {
+  return {
+    marcas: [
+      {
+        id: 'herida-1',
+        vista: 'anterior',
+        x: 235,
+        y: 610,
+        tipo: 'herida',
+        descripcion: 'Maléolo medial derecho',
+        ...over,
+      },
+    ],
   };
 }
 
@@ -39,9 +62,27 @@ describe('EspecialidadValidator', () => {
     it('la clínica de heridas exige identificar la localización anatómica', () => {
       const nota = notaBaseCompleta({ especialidad: 'heridas_estomas' });
 
-      expect(EspecialidadValidator.validar(nota)).toEqual(['extension.her_localizacion']);
+      expect(EspecialidadValidator.validar(nota)).toEqual([
+        'extension.her_localizacion',
+        'mapaCorporal',
+      ]);
       nota.extension = { her_localizacion: 'Maléolo medial derecho' };
+      nota.mapaCorporal = mapaCorporalCompleto();
       expect(EspecialidadValidator.validar(nota)).toEqual([]);
+    });
+
+    it('rechaza mapas vacíos, coordenadas fuera del cuerpo e ids duplicados', () => {
+      expect(mapaCorporalValido({ marcas: [] })).toBe(false);
+      expect(mapaCorporalValido({} as MapaCorporal)).toBe(false);
+      expect(mapaCorporalValido(mapaCorporalCompleto({ x: 1001 }))).toBe(false);
+      const repetida = mapaCorporalCompleto().marcas[0]!;
+      expect(mapaCorporalValido({ marcas: [repetida, { ...repetida }] })).toBe(false);
+    });
+
+    it('produce un resumen clínico legible sin depender del dibujo', () => {
+      expect(resumirMapaCorporal(mapaCorporalCompleto())).toEqual([
+        '1. Herida · Vista anterior · Maléolo medial derecho',
+      ]);
     });
 
     it('rechaza EVA y porcentajes fuera de sus límites clínicos', () => {
@@ -52,6 +93,7 @@ describe('EspecialidadValidator', () => {
           her_dolor_eva: 11,
           her_tejido_granulacion: 101,
         },
+        mapaCorporal: mapaCorporalCompleto(),
       });
 
       expect(EspecialidadValidator.validar(nota)).toEqual([
