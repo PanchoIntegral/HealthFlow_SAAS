@@ -237,6 +237,62 @@ describe('Directorio público de reservas', () => {
     });
   });
 
+  describe('horarios disponibles', () => {
+    /**
+     * Regresión: la CTE `days` aliaba una columna como `day` sin `AS`, y `day`
+     * es palabra reservada en Postgres (`interval '1' day`). La consulta era un
+     * error de sintaxis, así que /availability respondía 500 SIEMPRE — y la
+     * página de reservas lo mostraba como «No hay espacios en los próximos
+     * siete días», que es lo que hizo que el bug pasara meses inadvertido.
+     */
+    it('devuelve slots reales cuando el médico tiene horario', async () => {
+      const servicio = (await admin.db.execute(sql`
+        SELECT id FROM booking_services WHERE tenant_id = ${tenantVisible}::uuid LIMIT 1
+      `)).rows[0] as { id: string };
+      // Lunes a viernes, 9 a 14, para el médico ya asociado al servicio.
+      for (const weekday of [0, 1, 2, 3, 4, 5, 6]) {
+        await admin.db.execute(sql`
+          INSERT INTO doctor_availability (tenant_id, doctor_id, weekday, inicio_local, fin_local)
+          VALUES (${tenantVisible}::uuid, ${doctorVisible}::uuid, ${weekday}, '09:00', '14:00')
+        `);
+      }
+
+      const ahora = Date.now();
+      const { body } = await visitante(`/api/public/booking/${slugVisible}/availability`)
+        .query({
+          serviceId: servicio.id,
+          from: new Date(ahora).toISOString(),
+          to: new Date(ahora + 7 * 86_400_000 - 1000).toISOString(),
+        })
+        .expect(200);
+
+      expect(body.length).toBeGreaterThan(0);
+      expect(body[0]).toEqual(expect.objectContaining({ doctorId: doctorVisible }));
+    });
+
+    /**
+     * El tope de siete días es estricto (`> 7 días` → 400). La página de
+     * reservas leía el reloj dos veces para armar el rango, así que lo excedía
+     * por milisegundos y el 400 también se veía como «no hay espacios».
+     */
+    it('acepta exactamente siete días y rechaza más', async () => {
+      const servicio = (await admin.db.execute(sql`
+        SELECT id FROM booking_services WHERE tenant_id = ${tenantVisible}::uuid LIMIT 1
+      `)).rows[0] as { id: string };
+      const ahora = Date.now();
+      const rango = (ms: number) => ({
+        serviceId: servicio.id,
+        from: new Date(ahora).toISOString(),
+        to: new Date(ahora + ms).toISOString(),
+      });
+
+      await visitante(`/api/public/booking/${slugVisible}/availability`)
+        .query(rango(7 * 86_400_000)).expect(200);
+      await visitante(`/api/public/booking/${slugVisible}/availability`)
+        .query(rango(7 * 86_400_000 + 1)).expect(400);
+    });
+  });
+
   describe('planes admitidos', () => {
     /**
      * La reserva pública fue exclusiva del plan Consultorio hasta 0041. La

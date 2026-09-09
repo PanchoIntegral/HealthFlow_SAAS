@@ -57,8 +57,8 @@ export class BookingServiceApp {
         WITH cfg AS (SELECT * FROM booking_settings LIMIT 1), svc AS
           (SELECT * FROM booking_services WHERE id=${serviceId} AND activo AND publico),
         eligible AS (SELECT u.id,u.nombre FROM users u JOIN booking_service_doctors x ON x.doctor_id=u.id JOIN svc ON svc.id=x.service_id WHERE u.activo ${doctorId?sql`AND u.id=${doctorId}`:sql``}),
-        days AS (SELECT d::date day FROM cfg CROSS JOIN LATERAL generate_series((${start.toISOString()}::timestamptz AT TIME ZONE cfg.timezone)::date,(${end.toISOString()}::timestamptz AT TIME ZONE cfg.timezone)::date,interval '1 day') d),
-        windows AS (SELECT e.id doctor_id,e.nombre doctor_name,d.day,a.inicio_local,a.fin_local,svc.duracion_minutos,cfg.timezone FROM eligible e CROSS JOIN days d JOIN doctor_availability a ON a.doctor_id=e.id AND a.weekday=extract(dow FROM d.day) CROSS JOIN svc CROSS JOIN cfg),
+        days AS (SELECT d::date AS day FROM cfg CROSS JOIN LATERAL generate_series((${start.toISOString()}::timestamptz AT TIME ZONE cfg.timezone)::date,(${end.toISOString()}::timestamptz AT TIME ZONE cfg.timezone)::date,interval '1 day') d),
+        windows AS (SELECT e.id AS doctor_id,e.nombre AS doctor_name,d.day,a.inicio_local,a.fin_local,svc.duracion_minutos,cfg.timezone FROM eligible e CROSS JOIN days d JOIN doctor_availability a ON a.doctor_id=e.id AND a.weekday=extract(dow FROM d.day) CROSS JOIN svc CROSS JOIN cfg),
         slots AS (SELECT w.*,g AS starts_at,g+(w.duracion_minutos||' minutes')::interval AS ends_at FROM windows w CROSS JOIN LATERAL generate_series((w.day+w.inicio_local) AT TIME ZONE w.timezone,((w.day+w.fin_local) AT TIME ZONE w.timezone)-(w.duracion_minutos||' minutes')::interval,(w.duracion_minutos||' minutes')::interval) g)
         SELECT starts_at,ends_at,doctor_id,doctor_name FROM slots s
          WHERE starts_at>=greatest(${start.toISOString()}::timestamptz,now()+(SELECT anticipacion_minima_horas FROM cfg)*interval '1 hour')
