@@ -11,12 +11,36 @@ export default function BookingSettingsPage(){const{token,user,ready}=useAuth();
 useEffect(()=>{if(ready&&!token)router.replace('/login');if(token&&user?.rol==='admin')Promise.all([api.bookingSettings(token),api.bookingServices(token),api.listDoctors(token),api.messagingDeliveries(token),api.bookingMetrics(token),api.bookingReadiness(token)]).then(([s,sv,d,dl,m,r])=>{setSettings(s);setServices(sv);setDoctors(d);setDeliveries(dl);setMetrics(m);setReadiness(r);setScheduleDoctor(d[0]?.id??'');}).catch(e=>setError(e instanceof ApiError?e.message:'No se pudieron cargar los ajustes'));},[ready,token,user,router]);if(!ready||!token||!user)return null;if(user.rol!=='admin')return <AppShell><p className="p-8">Solo el administrador puede publicar la agenda.</p></AppShell>;
 async function saveSettings(e:React.FormEvent){e.preventDefault();if(!settings)return;setError('');try{setSettings(await api.updateBookingSettings(token!,settings));setReadiness(await api.bookingReadiness(token!));setSaved('Configuración guardada');}catch(e){setError(e instanceof ApiError?e.message:'No se pudo guardar');}}
 async function addService(e:React.FormEvent){e.preventDefault();try{const x=await api.createBookingService(token!,{nombre:name,duracionMinutos:duration,precioCentavos:price?Math.round(Number(price)*100):null,publico:true,activo:true,orden:services.length,doctorIds:selectedDoctors});setServices([...services,x]);setName('');setPrice('');setSelectedDoctors([]);setReadiness(await api.bookingReadiness(token!));}catch(e){setError(e instanceof ApiError?e.message:'No se pudo crear el servicio');}}
+/**
+ * Cambia el estado de un servicio reenviando el objeto completo: el endpoint es
+ * un PUT de reemplazo, no un parche. Se refresca el diagnóstico porque pausar o
+ * dar de baja el último servicio público saca a la clínica del directorio.
+ */
+async function cambiarServicio(s:BookingService,cambios:Partial<Pick<BookingService,'publico'|'activo'>>){
+  setError('');
+  try{
+    const{id,...resto}=s;
+    const actualizado=await api.updateBookingService(token!,id,{...resto,...cambios});
+    setServices(services.map(x=>x.id===id?actualizado:x));
+    setReadiness(await api.bookingReadiness(token!));
+  }catch(e){setError(e instanceof ApiError?e.message:'No se pudo actualizar el servicio');}
+}
+async function darDeBaja(s:BookingService){
+  if(!confirm(`¿Dar de baja «${s.nombre}»?\n\nDejará de ofrecerse en la página pública. Las citas ya agendadas con este servicio se conservan, y puedes reactivarlo después.`))return;
+  setError('');
+  try{
+    const actualizado=await api.deleteBookingService(token!,s.id);
+    setServices(services.map(x=>x.id===s.id?actualizado:x));
+    setReadiness(await api.bookingReadiness(token!));
+    setSaved(`«${s.nombre}» se dio de baja`);
+  }catch(e){setError(e instanceof ApiError?e.message:'No se pudo dar de baja el servicio');}
+}
 async function saveSchedule(){if(!scheduleDoctor)return;await api.replaceBookingAvailability(token!,scheduleDoctor,[1,2,3,4,5].map(weekday=>({weekday,inicioLocal:from,finLocal:to})));setSaved('Horario de lunes a viernes guardado');}
 return <AppShell><main className="mx-auto max-w-6xl space-y-7 p-6 sm:p-8"><header><button onClick={()=>router.push('/ajustes')} className="text-sm text-blue-700">← Ajustes</button><h1 className="mt-2 text-2xl font-bold">Reservas y mensajería</h1><p className="text-slate-500">Publica tu agenda, configura servicios y vigila las entregas.</p></header>{error&&<p className="rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}{saved&&<p className="rounded-lg bg-emerald-50 p-3 text-emerald-700">{saved}</p>}
 {metrics&&<section className="grid grid-cols-2 gap-3 md:grid-cols-6">{Object.entries({Reservas:metrics.publicBookings,Entregados:metrics.delivered,Confirmadas:metrics.confirmed,Canceladas:metrics.cancelled,Reprogramadas:metrics.rescheduled,'No-shows':metrics.noShows}).map(([k,v])=><div key={k} className="rounded-xl border bg-white p-4"><p className="text-2xl font-bold">{v}</p><p className="text-xs text-slate-500">{k}</p></div>)}</section>}
 {readiness&&<PublicacionChecklist r={readiness}/>}
 {settings&&<form onSubmit={saveSettings} className="rounded-2xl border bg-white p-6"><div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Página pública</h2><p className="text-sm text-slate-500">Disponible en /reservar/{settings.slug}</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={settings.publicado} onChange={e=>setSettings({...settings,publicado:e.target.checked})}/>Publicada</label></div><div className="grid gap-4 md:grid-cols-3"><label className="text-sm">Slug<input className={input} value={settings.slug} onChange={e=>setSettings({...settings,slug:e.target.value.toLowerCase()})}/></label><label className="text-sm">Zona horaria<input className={input} value={settings.timezone} onChange={e=>setSettings({...settings,timezone:e.target.value})}/></label><label className="text-sm">Horizonte (días)<input className={input} type="number" value={settings.horizonteDias} onChange={e=>setSettings({...settings,horizonteDias:Number(e.target.value)})}/></label><label className="text-sm">Anticipación mínima (h)<input className={input} type="number" value={settings.anticipacionMinimaHoras} onChange={e=>setSettings({...settings,anticipacionMinimaHoras:Number(e.target.value)})}/></label><label className="text-sm">Límite cancelación (h)<input className={input} type="number" value={settings.limiteCancelacionHoras} onChange={e=>setSettings({...settings,limiteCancelacionHoras:Number(e.target.value)})}/></label><label className="text-sm">Recordatorios (h, separados por coma)<input className={input} value={settings.recordatoriosHoras.join(', ')} onChange={e=>setSettings({...settings,recordatoriosHoras:e.target.value.split(',').map(Number).filter(x=>x>0)})}/></label></div><div className="mt-4 grid gap-3"><label className="flex gap-2 text-sm"><input type="checkbox" checked={settings.directorioPublico} onChange={e=>setSettings({...settings,directorioPublico:e.target.checked})}/>Publicar el nombre y la dirección de la clínica, así como los nombres y especialidades de sus médicos, en el directorio</label><label className="flex gap-2 text-sm"><input type="checkbox" checked={settings.featureActiva} onChange={e=>setSettings({...settings,featureActiva:e.target.checked})}/>Activar feature flag para esta clínica</label></div><button className={`${btn} mt-4`}>Guardar configuración</button></form>}
-<section className="grid gap-6 lg:grid-cols-2"><form onSubmit={addService} className="rounded-2xl border bg-white p-6"><h2 className="mb-4 font-semibold">Nuevo servicio</h2><div className="space-y-3"><input className={input} required placeholder="Ej. Limpieza dental" value={name} onChange={e=>setName(e.target.value)}/><div className="grid grid-cols-2 gap-3"><input className={input} type="number" min={10} value={duration} onChange={e=>setDuration(Number(e.target.value))}/><input className={input} type="number" min={0} step="0.01" placeholder="Precio informativo" value={price} onChange={e=>setPrice(e.target.value)}/></div><div>{doctors.map(d=><label key={d.id} className="mr-4 inline-flex gap-2 text-sm"><input type="checkbox" checked={selectedDoctors.includes(d.id)} onChange={e=>setSelectedDoctors(e.target.checked?[...selectedDoctors,d.id]:selectedDoctors.filter(x=>x!==d.id))}/>{d.nombre}</label>)}</div><button className={btn}>Agregar servicio</button></div><div className="mt-5 space-y-2">{services.map(s=><div key={s.id} className="rounded-lg bg-slate-50 p-3 text-sm"><b>{s.nombre}</b> · {s.duracionMinutos} min · {s.activo?'Activo':'Inactivo'}</div>)}</div></form>
+<section className="grid gap-6 lg:grid-cols-2"><form onSubmit={addService} className="rounded-2xl border bg-white p-6"><h2 className="mb-4 font-semibold">Nuevo servicio</h2><div className="space-y-3"><input className={input} required placeholder="Ej. Limpieza dental" value={name} onChange={e=>setName(e.target.value)}/><div className="grid grid-cols-2 gap-3"><input className={input} type="number" min={10} value={duration} onChange={e=>setDuration(Number(e.target.value))}/><input className={input} type="number" min={0} step="0.01" placeholder="Precio informativo" value={price} onChange={e=>setPrice(e.target.value)}/></div><div>{doctors.map(d=><label key={d.id} className="mr-4 inline-flex gap-2 text-sm"><input type="checkbox" checked={selectedDoctors.includes(d.id)} onChange={e=>setSelectedDoctors(e.target.checked?[...selectedDoctors,d.id]:selectedDoctors.filter(x=>x!==d.id))}/>{d.nombre}</label>)}</div><button className={btn}>Agregar servicio</button></div><div className="mt-5 space-y-2">{services.map(s=><ServicioRow key={s.id} s={s} onCambiar={cambiarServicio} onBaja={darDeBaja}/>)}</div></form>
 <div className="rounded-2xl border bg-white p-6"><h2 className="mb-4 font-semibold">Horario habitual</h2><p className="mb-3 text-sm text-slate-500">Aplicar el mismo horario de lunes a viernes.</p><select className={input} value={scheduleDoctor} onChange={e=>setScheduleDoctor(e.target.value)}>{doctors.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}</select><div className="my-3 grid grid-cols-2 gap-3"><input className={input} type="time" value={from} onChange={e=>setFrom(e.target.value)}/><input className={input} type="time" value={to} onChange={e=>setTo(e.target.value)}/></div><button type="button" className={btn} onClick={saveSchedule}>Guardar horario</button><div className="mt-6 border-t pt-5"><h3 className="text-sm font-semibold">Vacación, festivo o bloqueo</h3><div className="mt-2 flex gap-2"><input className={input} type="date" value={exceptionDate} onChange={e=>setExceptionDate(e.target.value)}/><button type="button" disabled={!scheduleDoctor||!exceptionDate} className={btn} onClick={async()=>{await api.createBookingException(token!,{doctorId:scheduleDoctor,fecha:exceptionDate,disponible:false,nota:'Bloqueo desde ajustes'});setExceptionDate('');setSaved('Día bloqueado');}}>Bloquear día</button></div></div></div></section>
 <section className="rounded-2xl border bg-white p-6"><h2 className="font-semibold">Entregas recientes</h2><div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="text-slate-500"><th className="py-2">Canal</th><th>Tipo</th><th>Estado</th><th>Intentos</th><th></th></tr></thead><tbody>{deliveries.map(d=><tr key={d.id} className="border-t"><td className="py-3">{d.channel}</td><td>{d.kind}</td><td>{d.status}</td><td>{d.attempts}</td><td>{['failed','dead'].includes(d.status)&&<button className="text-blue-700 underline" onClick={async()=>{await api.retryDelivery(token!,d.id);setDeliveries(await api.messagingDeliveries(token!));}}>Reintentar</button>}</td></tr>)}</tbody></table></div></section></main></AppShell>}
 
@@ -54,4 +78,42 @@ function PublicacionChecklist({r}:{r:BookingReadiness}){
       </li>)}
     </ul>
   </section>;
+}
+
+/**
+ * Un servicio tiene tres estados visibles, y conviene distinguirlos porque
+ * significan cosas distintas para el paciente: «Público» se puede reservar en
+ * línea; «Pausado» sigue existiendo pero no se ofrece —útil para vacaciones o
+ * para dejar de tomar citas un rato—; «Dado de baja» se retiró del catálogo.
+ * Ninguno borra datos: las citas ya agendadas conservan su servicio.
+ */
+function ServicioRow({s,onCambiar,onBaja}:{
+  s:BookingService;
+  onCambiar:(s:BookingService,cambios:Partial<Pick<BookingService,'publico'|'activo'>>)=>void;
+  onBaja:(s:BookingService)=>void;
+}){
+  const estado=!s.activo?{texto:'Dado de baja',clase:'bg-slate-200 text-slate-600'}
+    :s.publico?{texto:'Público',clase:'bg-emerald-100 text-emerald-800'}
+    :{texto:'Pausado',clase:'bg-amber-100 text-amber-800'};
+  const accion='text-sm font-medium text-blue-700 hover:underline';
+  return <div className="rounded-lg bg-slate-50 p-3 text-sm">
+    <div className="flex flex-wrap items-center gap-2">
+      <b className={s.activo?undefined:'text-slate-500 line-through'}>{s.nombre}</b>
+      <span className="text-slate-500">· {s.duracionMinutos} min</span>
+      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${estado.clase}`}>{estado.texto}</span>
+    </div>
+    <div className="mt-2 flex flex-wrap gap-4">
+      {!s.activo
+        ? <button type="button" className={accion} onClick={()=>onCambiar(s,{activo:true,publico:false})}>Reactivar</button>
+        : <>
+            <button type="button" className={accion} onClick={()=>onCambiar(s,{publico:!s.publico})}>
+              {s.publico?'Pausar':'Reanudar'}
+            </button>
+            <button type="button" className="text-sm font-medium text-red-700 hover:underline" onClick={()=>onBaja(s)}>
+              Dar de baja
+            </button>
+          </>}
+    </div>
+    {!s.activo&&<p className="mt-2 text-xs text-slate-500">Al reactivarlo vuelve como «Pausado»; publícalo cuando quieras ofrecerlo.</p>}
+  </div>;
 }

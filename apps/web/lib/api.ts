@@ -147,6 +147,9 @@ export const api = {
   bookingServices: (token:string) => request<BookingService[]>('/booking/services',{token}),
   createBookingService: (token:string,body:Omit<BookingService,'id'>) => request<BookingService>('/booking/services',{method:'POST',token,body:JSON.stringify(body)}),
   updateBookingService: (token:string,id:string,body:Omit<BookingService,'id'>) => request<BookingService>(`/booking/services/${id}`,{method:'PUT',token,body:JSON.stringify(body)}),
+  // Baja lógica: el servicio queda inactivo y no público, pero se conserva para
+  // que las citas ya agendadas sigan apuntando a un servicio existente.
+  deleteBookingService: (token:string,id:string) => request<BookingService>(`/booking/services/${id}`,{method:'DELETE',token}),
   bookingAvailabilityRules: (token:string) => request<{doctor_id:string;weekday:number;inicio_local:string;fin_local:string}[]>('/booking/availability',{token}),
   replaceBookingAvailability: (token:string,doctorId:string,rules:{weekday:number;inicioLocal:string;finLocal:string}[]) => request<{ok:true}>(`/booking/doctors/${doctorId}/availability`,{method:'PUT',token,body:JSON.stringify({rules})}),
   createBookingException: (token:string,body:{doctorId:string;fecha:string;disponible:boolean;nota?:string}) => request<{id:string}>('/booking/exceptions',{method:'POST',token,body:JSON.stringify(body)}),
