@@ -4,14 +4,31 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@healthflow/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@healthflow/web",
+        "dev"
+      ],
       "port": 3000
     },
     {
       "name": "api",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@healthflow/api", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@healthflow/api",
+        "dev"
+      ],
       "port": 3001
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/jorge/LD_HEALTHFLOW && npm run dev"
+      ],
+      "port": 3100
     }
   ]
 }

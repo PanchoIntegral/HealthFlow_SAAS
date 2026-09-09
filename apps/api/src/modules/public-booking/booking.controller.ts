@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { AvailabilitySlot, BookingService, BookingSettings, PublicAppointmentSummary, PublicBookingPage, PublicDirectoryPage } from '@healthflow/shared-types';
+import type { AvailabilitySlot, BookingService, BookingSettings, PublicAppointmentSummary, PublicBookingPage, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PoliciesGuard, RequirePolicy } from '../auth/casl/policies.guard';
 import { BookingServiceApp } from './booking.service';
@@ -11,7 +11,10 @@ export class PublicBookingController {
   constructor(private readonly booking:BookingServiceApp){}
 
   @Get('directory') @Throttle({default:{limit:30,ttl:60000},burst:{limit:5,ttl:1000}})
-  directory(@Query() query:PublicDirectoryQueryDto):Promise<PublicDirectoryPage>{return this.booking.directory(query.q,query.page,query.pageSize);}
+  directory(@Query() query:PublicDirectoryQueryDto):Promise<PublicDirectoryPage>{return this.booking.directory(query.q,query.specialty,query.page,query.pageSize);}
+
+  @Get('directory/specialties') @Throttle({default:{limit:30,ttl:60000},burst:{limit:5,ttl:1000}})
+  directorySpecialties():Promise<PublicDirectorySpecialty[]>{return this.booking.directorySpecialties();}
 
   @Get('booking/:slug') @Throttle({default:{limit:60,ttl:60000},burst:{limit:10,ttl:1000}})
   page(@Param('slug') slug:string):Promise<PublicBookingPage>{return this.booking.publicPage(slug);}

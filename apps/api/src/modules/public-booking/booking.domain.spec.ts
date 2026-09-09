@@ -29,11 +29,38 @@ describe('reserva pública y privacidad de mensajería', () => {
     }]})};
     const booking=new BookingServiceApp(db as never,{} as never,{} as never);
 
-    await expect(booking.directory(' pediatría ',1,100)).resolves.toEqual({
+    await expect(booking.directory(' pediatría ','Pediatría',1,100)).resolves.toEqual({
       items:[{clinicName:'Clínica Centro',clinicAddress:'Zona Río',slug:'clinica-centro',
         doctorId:'8b38ee56-d68b-4cc4-8528-97ab4823fa27',doctorName:'Dra. Ana López',specialty:'Pediatría'}],
       total:1,page:1,pageSize:24,
     });
     expect(db.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('convierte una especialidad vacía en NULL para no filtrar de más', async () => {
+    const db={execute:jest.fn().mockResolvedValue({rows:[]})};
+    const booking=new BookingServiceApp(db as never,{} as never,{} as never);
+
+    await expect(booking.directory('centro','   ',1,12)).resolves.toEqual({
+      items:[],total:0,page:1,pageSize:12,
+    });
+    // El parámetro debe viajar como NULL, no como cadena vacía: la función SQL
+    // distingue "sin filtro" de "especialidad literalmente vacía".
+    // En el `sql` de drizzle los trozos literales son StringChunk (value: string[])
+    // y los parámetros van crudos; nos quedamos con estos últimos.
+    const bound=(db.execute.mock.calls[0][0] as {queryChunks:unknown[]}).queryChunks
+      .filter(chunk=>!Array.isArray((chunk as {value?:unknown})?.value));
+    expect(bound).toEqual(['centro',null,12,0]);
+  });
+
+  it('mapea el catálogo de especialidades con totales numéricos', async () => {
+    const db={execute:jest.fn().mockResolvedValue({rows:[
+      {specialty:'Pediatría',total:'3'},{specialty:'Cardiología',total:1},
+    ]})};
+    const booking=new BookingServiceApp(db as never,{} as never,{} as never);
+
+    await expect(booking.directorySpecialties()).resolves.toEqual([
+      {specialty:'Pediatría',total:3},{specialty:'Cardiología',total:1},
+    ]);
   });
 });

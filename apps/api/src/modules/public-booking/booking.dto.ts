@@ -39,6 +39,7 @@ export class UpdateBookingSettingsDto {
 
 export class PublicDirectoryQueryDto {
   @IsOptional() @IsString() @MaxLength(100) q?:string;
+  @IsOptional() @IsString() @MaxLength(80) specialty?:string;
   @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page:number=1;
   @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(24) pageSize:number=12;
 }

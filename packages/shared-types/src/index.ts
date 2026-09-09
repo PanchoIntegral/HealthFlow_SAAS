@@ -2057,6 +2057,17 @@ export interface PublicDirectoryPage {
   pageSize: number;
 }
 
+/**
+ * Especialidad publicada en el directorio, con cuántos profesionales la
+ * ejercen. Es un catálogo completo, no derivado de una página de resultados:
+ * el filtro de la landing debe ofrecer todas las opciones existentes aunque la
+ * primera página sólo muestre algunas.
+ */
+export interface PublicDirectorySpecialty {
+  specialty: string;
+  total: number;
+}
+
 export interface AvailabilitySlot {
   start: string;
   end: string;

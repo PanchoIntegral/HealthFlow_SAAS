@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID, createHmac } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import type { AvailabilitySlot, BookingService, BookingSettings, CreatePublicAppointmentRequest, PublicAppointmentSummary, PublicBookingPage, PublicDirectoryPage } from '@healthflow/shared-types';
+import type { AvailabilitySlot, BookingService, BookingSettings, CreatePublicAppointmentRequest, PublicAppointmentSummary, PublicBookingPage, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
 import { DB } from '../../db/drizzle.module';
 import { runInTenant, type Database, type Tx } from '../../db/drizzle';
 import { TenantDbService } from '../../common/tenant-context/tenant-db.service';
@@ -11,15 +11,22 @@ import type { AvailabilityExceptionDto, AvailabilityRuleDto, UpdateBookingSettin
 
 type SettingsRow={tenant_id:string;slug:string;publicado:boolean;directorio_publico:boolean;feature_activa:boolean;timezone:string;anticipacion_minima_horas:number;horizonte_dias:number;limite_cancelacion_horas:number;recordatorios_horas:number[];aviso_privacidad_version:string};
 type DirectoryRow={slug:string;clinic_name:string;clinic_address:string|null;doctor_id:string;doctor_name:string;specialty:string|null;total_count:string|number};
+type SpecialtyRow={specialty:string;total:string|number};
 
 @Injectable()
 export class BookingServiceApp {
   constructor(@Inject(DB) private readonly db:Database,private readonly tenantDb:TenantDbService,private readonly outbox:OutboxService){}
 
-  async directory(query:string|undefined,page:number,pageSize:number):Promise<PublicDirectoryPage>{
+  async directory(query:string|undefined,specialty:string|undefined,page:number,pageSize:number):Promise<PublicDirectoryPage>{
     const safePage=Math.max(1,page),safePageSize=Math.max(1,Math.min(pageSize,24)),offset=(safePage-1)*safePageSize;
-    const rows=(await this.db.execute(sql`SELECT * FROM search_public_booking_directory(${query?.trim()??''},${safePageSize},${offset})`)).rows as DirectoryRow[];
+    const rows=(await this.db.execute(sql`SELECT * FROM search_public_booking_directory(${query?.trim()??''},${specialty?.trim()||null},${safePageSize},${offset})`)).rows as DirectoryRow[];
     return {items:rows.map(x=>({clinicName:x.clinic_name,clinicAddress:x.clinic_address,slug:x.slug,doctorId:x.doctor_id,doctorName:x.doctor_name,specialty:x.specialty})),total:Number(rows[0]?.total_count??0),page:safePage,pageSize:safePageSize};
+  }
+
+  /** Catálogo completo de especialidades publicadas; alimenta el filtro de la landing. */
+  async directorySpecialties():Promise<PublicDirectorySpecialty[]>{
+    const rows=(await this.db.execute(sql`SELECT * FROM list_public_booking_specialties()`)).rows as SpecialtyRow[];
+    return rows.map(x=>({specialty:x.specialty,total:Number(x.total)}));
   }
 
   async publicPage(slug:string):Promise<PublicBookingPage>{
