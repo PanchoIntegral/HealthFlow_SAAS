@@ -7,6 +7,7 @@ import request from 'supertest';
 import { loadDotEnv, env } from '../src/config/env';
 import { createAdminDb } from '../src/db/drizzle';
 import { AppModule } from '../src/app.module';
+import { PLANES_CON_RESERVA } from '../src/modules/public-booking/booking.service';
 
 loadDotEnv();
 
@@ -37,23 +38,30 @@ describe('Directorio público de reservas', () => {
   let doctorVisible: string;
   let visitas = 0;
 
+  const nombreIndividual = `Directorio Individual ${randomUUID().slice(0, 8)}`;
+  const slugIndividual = `dir-individual-${randomUUID().slice(0, 8)}`;
+  let tenantIndividual: string;
+  // Especialidad propia: la del par visible/oculta mide el consentimiento y se
+  // enturbiaría si una tercera clínica la compartiera.
+  const especialidadIndividual = `Geriatría ${randomUUID().slice(0, 6)}`;
+
   /**
    * Crea una clínica lista para reservar en línea. `directorio` es lo único
    * que cambia entre las dos: así, cualquier diferencia en los resultados sólo
    * puede atribuirse al consentimiento.
    */
-  async function crearClinica(nombre: string, slug: string, directorio: boolean, nombreDoctor: string) {
+  async function crearClinica(nombre: string, slug: string, directorio: boolean, nombreDoctor: string, plan = 'consultorio', esp = especialidad) {
     const tenantId = randomUUID();
     const doctorId = randomUUID();
     const serviceId = randomUUID();
 
     await admin.db.execute(sql`
       INSERT INTO tenants (id, nombre_clinica, direccion, plan, subscription_status)
-      VALUES (${tenantId}::uuid, ${nombre}, 'Calle Falsa 123', 'consultorio', 'active')
+      VALUES (${tenantId}::uuid, ${nombre}, 'Calle Falsa 123', ${plan}, 'active')
     `);
     await admin.db.execute(sql`
       INSERT INTO users (id, tenant_id, email, password_hash, nombre, rol, es_medico, especialidad)
-      VALUES (${doctorId}::uuid, ${tenantId}::uuid, ${`${doctorId}@test.mx`}, 'x', ${nombreDoctor}, 'admin', true, ${especialidad})
+      VALUES (${doctorId}::uuid, ${tenantId}::uuid, ${`${doctorId}@test.mx`}, 'x', ${nombreDoctor}, 'admin', true, ${esp})
     `);
     await admin.db.execute(sql`
       INSERT INTO booking_settings (tenant_id, slug, publicado, feature_activa, directorio_publico)
@@ -76,6 +84,9 @@ describe('Directorio público de reservas', () => {
     ));
     ({ tenantId: tenantOculta } = await crearClinica(
       nombreOculta, slugOculta, false, 'Dr. Oculto',
+    ));
+    ({ tenantId: tenantIndividual } = await crearClinica(
+      nombreIndividual, slugIndividual, true, 'Dra. Individual', 'individual', especialidadIndividual,
     ));
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -101,7 +112,7 @@ describe('Directorio público de reservas', () => {
 
   afterAll(async () => {
     await app?.close();
-    for (const tenantId of [tenantVisible, tenantOculta]) {
+    for (const tenantId of [tenantVisible, tenantOculta, tenantIndividual]) {
       if (tenantId) await admin.db.execute(sql`DELETE FROM tenants WHERE id = ${tenantId}::uuid`);
     }
     await admin.pool.end();
@@ -223,6 +234,38 @@ describe('Directorio público de reservas', () => {
 
     it('rechaza recordatorios que no sean enteros en vez de llevarlos al SQL', async () => {
       await guardar({ ...ajustes(true), recordatoriosHoras: ['1); DROP TABLE users; --'] }).expect(400);
+    });
+  });
+
+  describe('planes admitidos', () => {
+    /**
+     * La reserva pública fue exclusiva del plan Consultorio hasta 0041. La
+     * decisión de producto es que cualquier plan de pago pueda publicar, así
+     * que una clínica en plan Individual debe ser tan visible como las demás.
+     */
+    it('una clínica en plan Individual aparece en el directorio', async () => {
+      const { body } = await visitante('/api/public/directory')
+        .query({ q: nombreIndividual, pageSize: 24 })
+        .expect(200);
+      expect(body.items.map((x: { slug: string }) => x.slug)).toContain(slugIndividual);
+    });
+
+    /**
+     * Aparecer en el buscador sin poder reservar sería peor que no aparecer:
+     * el filtro de plan vive en dos funciones SQL distintas y deben coincidir.
+     */
+    it('y su página de reservas resuelve, no da 404', async () => {
+      await visitante(`/api/public/booking/${slugIndividual}`).expect(200);
+    });
+
+    /**
+     * `PLANES_CON_RESERVA` sólo alimenta el diagnóstico de Ajustes, pero si se
+     * separa de la función SQL la pantalla mentiría sobre por qué una clínica
+     * no aparece. Esa lista ya había divergido de los planes reales una vez.
+     */
+    it('el diagnóstico de Ajustes usa la misma lista de planes que el SQL', async () => {
+      const { rows } = await admin.db.execute(sql`SELECT public_booking_plans() AS planes`);
+      expect((rows[0] as { planes: string[] }).planes.sort()).toEqual([...PLANES_CON_RESERVA].sort());
     });
   });
 

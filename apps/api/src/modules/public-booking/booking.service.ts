@@ -14,8 +14,13 @@ type DirectoryRow={slug:string;clinic_name:string;clinic_address:string|null;doc
 type SpecialtyRow={specialty:string;total:string|number};
 type ReadinessRow={publicado:boolean;directorio_publico:boolean;feature_activa:boolean;plan:string;subscription_status:string;grace_until:string|null;servicios:string|number;medicos:string|number};
 
-/** Debe coincidir con el filtro de plan de `resolve_public_booking_tenant` (0035). */
-const PLANES_CON_RESERVA=['consultorio','clinica','pro'];
+/**
+ * Espejo de `public_booking_plans()` (0041), que es la fuente de verdad para
+ * la reserva pública. Sólo se usa para explicar el diagnóstico en Ajustes; el
+ * acceso real siempre lo decide la función SQL. Una prueba de integración
+ * comprueba que ambas listas no se separen.
+ */
+export const PLANES_CON_RESERVA=['individual','consultorio','clinica','pro'];
 
 @Injectable()
 export class BookingServiceApp {

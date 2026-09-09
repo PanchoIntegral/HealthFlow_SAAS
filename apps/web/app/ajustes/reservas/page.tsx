@@ -30,7 +30,7 @@ function PublicacionChecklist({r}:{r:BookingReadiness}){
   const requisitos=[
     {ok:r.publicada,texto:'La página pública está marcada como «Publicada»',falta:'Marca la casilla «Publicada» aquí arriba y guarda.'},
     {ok:r.featureActiva,texto:'La feature de reservas está activa',falta:'Marca «Activar feature flag para esta clínica» y guarda.'},
-    {ok:r.planPermitido,texto:`El plan permite publicar agenda (actual: ${r.plan})`,falta:'La reserva pública requiere el plan Consultorio. Cambia de plan en Ajustes → Suscripción.'},
+    {ok:r.planPermitido,texto:`El plan permite publicar agenda (actual: ${r.plan})`,falta:'La reserva pública requiere un plan de pago. Elige uno en Ajustes → Suscripción.'},
     {ok:r.suscripcionVigente,texto:`La suscripción está vigente (estado: ${r.suscripcionEstatus})`,falta:'Regulariza el pago para volver a publicar la agenda.'},
     {ok:r.serviciosPublicos>0,texto:'Hay al menos un servicio activo y público',falta:'Crea un servicio en «Nuevo servicio».'},
     {ok:r.medicosPublicables>0,texto:'Hay al menos un médico activo asociado a un servicio público',falta:'Al crear el servicio, marca la casilla del médico que lo atiende.'},
