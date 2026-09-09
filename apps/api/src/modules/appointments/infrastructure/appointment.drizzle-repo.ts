@@ -32,6 +32,9 @@ interface AppointmentViewRow {
   inicio_programado: Date;
   fin_programado: Date;
   estatus: AppointmentStatus;
+  origen: 'interno' | 'publico';
+  estado_confirmacion: 'pendiente' | 'confirmada' | 'cancelada';
+  posible_duplicado: boolean;
 }
 
 /** Estados que NO bloquean el horario del médico al validar traslape. */
@@ -71,6 +74,9 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
         finReal: s.finReal,
       })
       .where(eq(appointments.id, s.id));
+    if (s.estatus === 'cancelada') {
+      await tx.execute(sql`UPDATE appointments SET estado_confirmacion='cancelada' WHERE id=${s.id}`);
+    }
   }
 
   async listWaitingRoom(tx: Tx): Promise<WaitingRoomEntry[]> {
@@ -137,7 +143,8 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const result = await tx.execute(sql`
       SELECT a.id, a.patient_id, p.nombre AS patient_nombre,
              a.doctor_id, u.nombre AS doctor_nombre,
-             a.motivo, a.inicio_programado, a.fin_programado, a.estatus
+             a.motivo, a.inicio_programado, a.fin_programado, a.estatus,
+             a.origen,a.estado_confirmacion,p.posible_duplicado
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
         JOIN users u ON u.id = a.doctor_id
@@ -152,7 +159,8 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     const result = await tx.execute(sql`
       SELECT a.id, a.patient_id, p.nombre AS patient_nombre,
              a.doctor_id, u.nombre AS doctor_nombre,
-             a.motivo, a.inicio_programado, a.fin_programado, a.estatus
+             a.motivo, a.inicio_programado, a.fin_programado, a.estatus,
+             a.origen,a.estado_confirmacion,p.posible_duplicado
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
         JOIN users u ON u.id = a.doctor_id
@@ -210,6 +218,9 @@ function mapViewRow(row: AppointmentViewRow): AppointmentView {
     inicioProgramado: new Date(row.inicio_programado).toISOString(),
     finProgramado: new Date(row.fin_programado).toISOString(),
     estatus: row.estatus,
+    origen: row.origen,
+    estadoConfirmacion: row.estado_confirmacion,
+    posibleDuplicado: row.posible_duplicado,
   };
 }
 

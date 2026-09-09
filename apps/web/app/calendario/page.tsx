@@ -644,6 +644,13 @@ function DetailModal({
         <Row label="Inicio" value={fechaHoraCita(appointment.inicioProgramado)} />
         <Row label="Fin" value={fechaHoraCita(appointment.finProgramado)} />
         <Row label="Estatus" value={STATUS_LABEL[appointment.estatus]} />
+        <Row label="Origen" value={appointment.origen === 'publico' ? 'Reserva pública' : 'Recepción'} />
+        <Row label="Confirmación" value={appointment.estadoConfirmacion === 'confirmada' ? 'Confirmó asistencia' : appointment.estadoConfirmacion === 'cancelada' ? 'Cancelada' : 'Pendiente'} />
+        {appointment.posibleDuplicado && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
+            Posible paciente duplicado: revisa la ficha antes de combinar expedientes.
+          </div>
+        )}
 
         {canCancel && !confirming && (
           <button

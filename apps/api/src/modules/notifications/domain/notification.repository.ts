@@ -9,12 +9,6 @@ export interface CreateNotificationInput {
   mensaje: string;
 }
 
-/** Notificación recién creada + su destinatario, para poder empujarla por WebSocket. */
-export interface NotificationForUser {
-  userId: string;
-  notification: NotificationView;
-}
-
 /**
  * Puerto (interface) del repositorio de notificaciones. El dominio/aplicación
  * dependen de esta abstracción, NO de Drizzle. El adaptador concreto vive en
@@ -31,13 +25,6 @@ export interface NotificationRepository {
 
   markAllRead(tx: Tx, userId: string): Promise<void>;
 
-  /**
-   * Detecta citas ('agendada'/'en_espera') que arrancan dentro de los
-   * próximos `windowMinutes` y no tienen aún un recordatorio 'cita_proxima'.
-   * Los crea y devuelve SOLO los recién insertados (para notificar en vivo).
-   * Sin cron: se llama en cada GET /notifications (ver notifications.module).
-   */
-  syncRemindersCitaProxima(tx: Tx, windowMinutes: number): Promise<NotificationForUser[]>;
 }
 
 export const NOTIFICATION_REPOSITORY = Symbol('NOTIFICATION_REPOSITORY');

@@ -14,6 +14,7 @@ import { ListDoctorsUseCase } from './application/list-doctors.use-case';
 import { DrizzleAppointmentRepository } from './infrastructure/appointment.drizzle-repo';
 import { AppointmentsController } from './infrastructure/appointments.controller';
 import { WaitingRoomGateway } from './infrastructure/waiting-room.gateway';
+import { MessagingModule } from '../messaging/messaging.module';
 
 /**
  * Cablea el módulo hexagonal: los casos de uso dependen de PUERTOS
@@ -22,7 +23,7 @@ import { WaitingRoomGateway } from './infrastructure/waiting-room.gateway';
  * cambiar solo estas dos líneas de `useClass`.
  */
 @Module({
-  imports: [AuthModule, NotificationsModule],
+  imports: [AuthModule, NotificationsModule, MessagingModule],
   controllers: [AppointmentsController],
   providers: [
     CheckInUseCase,

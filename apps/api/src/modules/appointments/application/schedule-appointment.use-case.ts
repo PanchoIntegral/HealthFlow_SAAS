@@ -1,4 +1,5 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
 import type {
   AppointmentView,
   CreateAppointmentRequest,
@@ -17,6 +18,7 @@ import {
   WAITING_ROOM_NOTIFIER,
   type WaitingRoomNotifier,
 } from './waiting-room-notifier.port';
+import { MESSAGE_SCHEDULER, type MessageScheduler } from '../../messaging/messaging.types';
 
 /**
  * Caso de uso: agendar una cita nueva. Valida el rango horario (dominio) y
@@ -34,6 +36,7 @@ export class ScheduleAppointmentUseCase {
     private readonly audit: AuditService,
     @Inject(APPOINTMENT_REPOSITORY) private readonly repo: AppointmentRepository,
     @Inject(WAITING_ROOM_NOTIFIER) private readonly notifier: WaitingRoomNotifier,
+    @Optional() @Inject(MESSAGE_SCHEDULER) private readonly messages?: MessageScheduler,
   ) {}
 
   async execute(input: CreateAppointmentRequest): Promise<AppointmentView> {
@@ -60,6 +63,20 @@ export class ScheduleAppointmentUseCase {
         accion: 'schedule',
         detalle: { patientId: input.patientId, doctorId: input.doctorId },
       });
+
+      if (this.messages) {
+        const contact = (await tx.execute(sql`
+          SELECT p.email,p.telefono_normalizado,p.whatsapp_opt_in_at,p.canal_preferido,
+                 coalesce(bs.recordatorios_horas,ARRAY[48,24]) recordatorios_horas
+            FROM patients p LEFT JOIN booking_settings bs ON true WHERE p.id=${input.patientId}
+        `)).rows[0] as any;
+        if (contact) await this.messages.schedule(tx, {
+          appointmentId:id,patientId:input.patientId,startsAt:inicioProgramado,
+          email:contact.email,phone:contact.telefono_normalizado,
+          whatsappOptIn:!!contact.whatsapp_opt_in_at,preferredChannel:contact.canal_preferido??'ninguno',
+          reminderHours:contact.recordatorios_horas??[48,24],
+        });
+      }
 
       const view = await this.repo.findView(tx, id);
       if (!view) throw new NotFoundException('Cita no encontrada tras agendarla');

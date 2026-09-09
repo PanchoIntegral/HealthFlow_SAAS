@@ -134,6 +134,15 @@ export const env = {
   get appDbPassword(): string {
     return process.env.APP_DB_PASSWORD ?? 'healthflow_app_pwd';
   },
+  get workerDatabaseUrl(): string {
+    const explicit=process.env.WORKER_DATABASE_URL;
+    if(explicit)return explicit;
+    if(this.isProduction)throw new Error('Falta la variable de entorno WORKER_DATABASE_URL');
+    const url=new URL(this.databaseUrl);url.username=this.workerDbUser;url.password=this.workerDbPassword;
+    return url.toString();
+  },
+  get workerDbUser(): string { return process.env.WORKER_DB_USER ?? 'healthflow_worker'; },
+  get workerDbPassword(): string { return process.env.WORKER_DB_PASSWORD ?? 'healthflow_worker_pwd'; },
   /**
    * Secret key del PAC (Facturapi). Getter LAZY a propósito: solo se exige si
    * el adaptador real llega a usarse (con PAC_PROVIDER=fake el arranque no la
@@ -242,4 +251,20 @@ export const env = {
   get emailFrom(): string {
     return process.env.EMAIL_FROM ?? 'HealthFlow <onboarding@resend.dev>';
   },
+  get messagingProvider(): 'fake' | 'live' {
+    return process.env.MESSAGING_PROVIDER === 'live' ? 'live' : 'fake';
+  },
+  get twilioAccountSid(): string { return required('TWILIO_ACCOUNT_SID'); },
+  get twilioAuthToken(): string { return required('TWILIO_AUTH_TOKEN'); },
+  get twilioWhatsappFrom(): string { return required('TWILIO_WHATSAPP_FROM').replace(/^whatsapp:/,''); },
+  twilioContentSid(kind:'confirmation'|'reminder'|'rescheduled'|'cancelled'):string {
+    return required(`TWILIO_CONTENT_SID_${kind.toUpperCase()}`);
+  },
+  get twilioStatusCallbackUrl(): string {
+    return process.env.TWILIO_STATUS_CALLBACK_URL ?? `${this.apiPublicUrl}/api/webhooks/twilio/status`;
+  },
+  get resendWebhookSecret(): string { return required('RESEND_WEBHOOK_SECRET'); },
+  /** Firma enlaces de acción enviados por mensajería; independiente del JWT de usuarios. */
+  get publicLinkSecret(): string { return process.env.PUBLIC_LINK_SECRET ?? this.jwtSecret; },
+  get workerPollMs(): number { return Math.max(500,Number(process.env.WORKER_POLL_MS ?? 5000)); },
 };

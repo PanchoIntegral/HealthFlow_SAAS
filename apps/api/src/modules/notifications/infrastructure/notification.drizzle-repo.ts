@@ -4,7 +4,6 @@ import type { NotificationType, NotificationView } from '@healthflow/shared-type
 import type { Tx } from '../../../db/drizzle';
 import type {
   CreateNotificationInput,
-  NotificationForUser,
   NotificationRepository,
 } from '../domain/notification.repository';
 
@@ -16,10 +15,6 @@ interface NotificationRow {
   appointment_id: string | null;
   leida_at: Date | null;
   created_at: Date;
-}
-
-interface NotificationForUserRow extends NotificationRow {
-  user_id: string;
 }
 
 /**
@@ -65,28 +60,6 @@ export class DrizzleNotificationRepository implements NotificationRepository {
     `);
   }
 
-  async syncRemindersCitaProxima(tx: Tx, windowMinutes: number): Promise<NotificationForUser[]> {
-    const result = await tx.execute(sql`
-      WITH candidatas AS (
-        SELECT a.id AS appointment_id, a.doctor_id, a.inicio_programado, p.nombre AS patient_nombre
-          FROM appointments a
-          JOIN patients p ON p.id = a.patient_id
-         WHERE a.estatus IN ('agendada', 'en_espera')
-           AND a.inicio_programado BETWEEN now() AND now() + (${windowMinutes} || ' minutes')::interval
-      )
-      INSERT INTO notifications (user_id, appointment_id, tipo, titulo, mensaje)
-      SELECT doctor_id, appointment_id, 'cita_proxima',
-             'Cita en ' || ${windowMinutes} || ' min',
-             patient_nombre || ' · ' || to_char(inicio_programado, 'HH24:MI')
-        FROM candidatas
-      ON CONFLICT (appointment_id) WHERE tipo = 'cita_proxima' DO NOTHING
-      RETURNING id, user_id, tipo, titulo, mensaje, appointment_id, leida_at, created_at
-    `);
-    return (result.rows as unknown as NotificationForUserRow[]).map((row) => ({
-      userId: row.user_id,
-      notification: mapRow(row),
-    }));
-  }
 }
 
 function mapRow(row: NotificationRow): NotificationView {

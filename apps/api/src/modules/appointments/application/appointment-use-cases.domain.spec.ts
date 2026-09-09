@@ -14,7 +14,6 @@ import { InvalidAppointmentTransitionError, DoctorDoubleBookedError } from '../d
 import type { AppointmentRepository, NewAppointmentInput } from '../domain/appointment.repository';
 import type {
   CreateNotificationInput,
-  NotificationForUser,
   NotificationRepository,
 } from '../../notifications/domain/notification.repository';
 import type { WaitingRoomNotifier } from './waiting-room-notifier.port';
@@ -69,6 +68,9 @@ class FakeAppointmentRepository implements AppointmentRepository {
       inicioProgramado,
       finProgramado,
       estatus: over.estatus ?? 'agendada',
+      origen: over.origen ?? 'interno',
+      estadoConfirmacion: over.estadoConfirmacion ?? 'pendiente',
+      posibleDuplicado: over.posibleDuplicado ?? false,
     });
     return id;
   }
@@ -179,9 +181,6 @@ class FakeNotificationRepository implements NotificationRepository {
 
   async markAllRead(): Promise<void> {}
 
-  async syncRemindersCitaProxima(): Promise<NotificationForUser[]> {
-    return [];
-  }
 }
 
 const fakeTenantDb = { run: <T>(fn: (tx: Tx) => Promise<T>) => fn({} as Tx) } as TenantDbService;

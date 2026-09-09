@@ -1979,6 +1979,9 @@ export interface AppointmentView {
   inicioProgramado: string; // ISO datetime
   finProgramado: string; // ISO datetime
   estatus: AppointmentStatus;
+  origen: 'interno' | 'publico';
+  estadoConfirmacion: ConfirmationStatus;
+  posibleDuplicado: boolean;
 }
 
 export interface CreateAppointmentRequest {
@@ -1997,6 +2000,116 @@ export interface DoctorSummary {
   id: string;
   nombre: string;
   especialidad: string | null;
+}
+
+// ── Reserva pública y mensajería ────────────────────────────────
+export type BookingChannel = 'whatsapp' | 'email' | 'ninguno';
+export type ConfirmationStatus = 'pendiente' | 'confirmada' | 'cancelada';
+
+export interface BookingSettings {
+  slug: string;
+  publicado: boolean;
+  directorioPublico: boolean;
+  featureActiva: boolean;
+  timezone: string;
+  anticipacionMinimaHoras: number;
+  horizonteDias: number;
+  limiteCancelacionHoras: number;
+  recordatoriosHoras: number[];
+  avisoPrivacidadVersion: string;
+}
+
+export interface BookingService {
+  id: string;
+  nombre: string;
+  duracionMinutos: number;
+  precioCentavos: number | null;
+  publico: boolean;
+  activo: boolean;
+  orden: number;
+  doctorIds: string[];
+}
+
+export interface PublicBookingPage {
+  clinicName: string;
+  timezone: string;
+  minNoticeHours: number;
+  horizonDays: number;
+  privacyNoticeVersion: string;
+  services: BookingService[];
+  doctors: DoctorSummary[];
+}
+
+/** Profesional publicado en el directorio de reservas de HealthFlow. */
+export interface PublicDirectoryResult {
+  clinicName: string;
+  clinicAddress: string | null;
+  slug: string;
+  doctorId: string;
+  doctorName: string;
+  specialty: string | null;
+}
+
+export interface PublicDirectoryPage {
+  items: PublicDirectoryResult[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AvailabilitySlot {
+  start: string;
+  end: string;
+  doctorId: string;
+  doctorName: string;
+}
+
+export interface PublicPatientInput {
+  nombre: string;
+  fechaNacimiento: string;
+  telefono: string;
+  email?: string;
+  canalPreferido: BookingChannel;
+  whatsappOptIn: boolean;
+  privacyNoticeAccepted: true;
+  privacyNoticeVersion: string;
+}
+
+export interface CreatePublicAppointmentRequest {
+  serviceId: string;
+  doctorId?: string;
+  start: string;
+  patient: PublicPatientInput;
+}
+
+export interface PublicAppointmentSummary {
+  clinicName: string;
+  doctorName: string;
+  start: string;
+  end: string;
+  status: AppointmentStatus;
+  confirmationStatus: ConfirmationStatus;
+  manageUrl?: string;
+}
+
+export interface MessagingDelivery {
+  id: string;
+  appointmentId: string;
+  channel: 'whatsapp' | 'email';
+  kind: 'confirmation' | 'reminder' | 'rescheduled' | 'cancelled';
+  status: string;
+  scheduledAt: string;
+  attempts: number;
+  lastErrorCode: string | null;
+}
+
+export interface BookingMetrics {
+  publicBookings: number;
+  delivered: number;
+  confirmed: number;
+  cancelled: number;
+  rescheduled: number;
+  noShows: number;
 }
 
 // ── Reportes ─────────────────────────────────────────────────────

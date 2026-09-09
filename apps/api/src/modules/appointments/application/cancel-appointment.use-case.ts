@@ -1,4 +1,5 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
 import type {
   AppointmentStatus,
   AppointmentView,
@@ -23,6 +24,7 @@ import {
   NOTIFICATIONS_NOTIFIER,
   type NotificationsNotifier,
 } from '../../notifications/application/notifications-notifier.port';
+import { MESSAGE_SCHEDULER, type MessageScheduler } from '../../messaging/messaging.types';
 
 /**
  * Cancela una cita: agendada → cancelada (única transición previa al check-in;
@@ -41,6 +43,7 @@ export class CancelAppointmentUseCase {
     @Inject(WAITING_ROOM_NOTIFIER) private readonly notifier: WaitingRoomNotifier,
     @Inject(NOTIFICATION_REPOSITORY) private readonly notifications: NotificationRepository,
     @Inject(NOTIFICATIONS_NOTIFIER) private readonly notificationsNotifier: NotificationsNotifier,
+    @Optional() @Inject(MESSAGE_SCHEDULER) private readonly messages?: MessageScheduler,
   ) {}
 
   async execute(appointmentId: string, motivo?: string | null): Promise<AppointmentView> {
@@ -58,6 +61,12 @@ export class CancelAppointmentUseCase {
         accion: 'cancel',
         detalle: { motivo: motivo ?? null },
       });
+
+      if (this.messages) {
+        await this.messages.cancelPending(tx, appointmentId);
+        const contact=(await tx.execute(sql`SELECT p.id,p.email,p.telefono_normalizado,p.whatsapp_opt_in_at,p.canal_preferido,a.inicio_programado FROM appointments a JOIN patients p ON p.id=a.patient_id WHERE a.id=${appointmentId}`)).rows[0] as any;
+        if(contact) await this.messages.schedule(tx,{appointmentId,patientId:contact.id,startsAt:new Date(contact.inicio_programado),email:contact.email,phone:contact.telefono_normalizado,whatsappOptIn:!!contact.whatsapp_opt_in_at,preferredChannel:contact.canal_preferido??'ninguno',reminderHours:[],kind:'cancelled'});
+      }
 
       const view = await this.repo.findView(tx, appointmentId);
       if (!view) throw new NotFoundException('Cita no encontrada tras cancelarla');

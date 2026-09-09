@@ -17,11 +17,12 @@ import { RecetaSeccion } from '../../components/receta-seccion';
 
 const OPCIONES = opcionesEspecialidad();
 
-type SeccionKey = 'perfil' | 'seguridad' | 'receta' | 'facturacion';
+type SeccionKey = 'perfil' | 'seguridad' | 'reservas' | 'receta' | 'facturacion';
 
 const SECCIONES: { key: SeccionKey; nombre: string; descripcion: string }[] = [
   { key: 'perfil', nombre: 'Perfil profesional', descripcion: 'Cómo es tu nota y con qué datos se firma.' },
   { key: 'seguridad', nombre: 'Seguridad', descripcion: 'Tu contraseña de acceso.' },
+  { key: 'reservas', nombre: 'Reservas', descripcion: 'Página pública, servicios, horarios y entregas.' },
   {
     key: 'receta',
     nombre: 'Receta',
@@ -56,7 +57,7 @@ export default function AjustesPage() {
    * un médico contratado una puerta que se le va a cerrar en la cara.
    */
   const esTitular = user.rol === 'admin';
-  const visibles = SECCIONES.filter((s) => (s.key !== 'facturacion' && s.key !== 'receta') || esTitular);
+  const visibles = SECCIONES.filter((s) => !['facturacion','receta','reservas'].includes(s.key) || esTitular);
   const actual = visibles.find((s) => s.key === seccion) ?? visibles[0]!;
 
   return (
@@ -118,6 +119,7 @@ export default function AjustesPage() {
 
             {actual.key === 'perfil' && <PerfilSeccion token={token} />}
             {actual.key === 'seguridad' && <SeguridadSeccion token={token} />}
+            {actual.key === 'reservas' && <Tarjeta><p className="mb-4 text-sm text-slate-600">Configura la agenda que verán tus pacientes y revisa recordatorios y confirmaciones.</p><button type="button" onClick={()=>router.push('/ajustes/reservas')} className={BOTON}>Administrar reservas</button></Tarjeta>}
             {actual.key === 'receta' && <RecetaSeccion token={token} />}
             {actual.key === 'facturacion' && <FacturacionSeccion token={token} />}
           </div>

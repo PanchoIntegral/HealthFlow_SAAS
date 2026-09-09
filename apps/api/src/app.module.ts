@@ -28,6 +28,8 @@ import { RadiografiasModule } from './modules/radiografias/radiografias.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
 import { PlantillasModule } from './modules/plantillas/plantillas.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
+import { PublicBookingModule } from './modules/public-booking/public-booking.module';
 
 @Module({
   imports: [
@@ -71,6 +73,8 @@ import { PlantillasModule } from './modules/plantillas/plantillas.module';
     AccountsModule,
     AiScribeModule,
     PlantillasModule,
+    MessagingModule,
+    PublicBookingModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.

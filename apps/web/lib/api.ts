@@ -69,6 +69,14 @@ import type {
   EmitirRecetaRequest,
   CancelarRecetaRequest,
   UpdatePatientRequest,
+  AvailabilitySlot,
+  BookingMetrics,
+  BookingService,
+  BookingSettings,
+  CreatePublicAppointmentRequest,
+  MessagingDelivery,
+  PublicAppointmentSummary,
+  PublicBookingPage,
 } from '@healthflow/shared-types';
 import { API_URL } from './config';
 import { marcarAlCorriente, marcarSuspendida } from './suscripcion';
@@ -126,6 +134,24 @@ export class ApiError extends Error {
 }
 
 export const api = {
+  publicBooking: (slug: string) => request<PublicBookingPage>(`/public/booking/${encodeURIComponent(slug)}`),
+  publicAvailability: (slug:string,serviceId:string,doctorId:string|undefined,from:string,to:string) => request<AvailabilitySlot[]>(`/public/booking/${encodeURIComponent(slug)}/availability?serviceId=${encodeURIComponent(serviceId)}${doctorId?`&doctorId=${encodeURIComponent(doctorId)}`:''}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  createPublicAppointment: (slug:string,body:CreatePublicAppointmentRequest) => request<PublicAppointmentSummary>(`/public/booking/${encodeURIComponent(slug)}/appointments`,{method:'POST',body:JSON.stringify(body)}),
+  publicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}`),
+  confirmPublicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/confirm`,{method:'POST'}),
+  cancelPublicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/cancel`,{method:'POST'}),
+  reschedulePublicAppointment: (manageToken:string,start:string,doctorId?:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/reschedule`,{method:'POST',body:JSON.stringify({start,doctorId})}),
+  bookingSettings: (token:string) => request<BookingSettings>('/booking/settings',{token}),
+  updateBookingSettings: (token:string,body:BookingSettings) => request<BookingSettings>('/booking/settings',{method:'PUT',token,body:JSON.stringify(body)}),
+  bookingServices: (token:string) => request<BookingService[]>('/booking/services',{token}),
+  createBookingService: (token:string,body:Omit<BookingService,'id'>) => request<BookingService>('/booking/services',{method:'POST',token,body:JSON.stringify(body)}),
+  updateBookingService: (token:string,id:string,body:Omit<BookingService,'id'>) => request<BookingService>(`/booking/services/${id}`,{method:'PUT',token,body:JSON.stringify(body)}),
+  bookingAvailabilityRules: (token:string) => request<{doctor_id:string;weekday:number;inicio_local:string;fin_local:string}[]>('/booking/availability',{token}),
+  replaceBookingAvailability: (token:string,doctorId:string,rules:{weekday:number;inicioLocal:string;finLocal:string}[]) => request<{ok:true}>(`/booking/doctors/${doctorId}/availability`,{method:'PUT',token,body:JSON.stringify({rules})}),
+  createBookingException: (token:string,body:{doctorId:string;fecha:string;disponible:boolean;nota?:string}) => request<{id:string}>('/booking/exceptions',{method:'POST',token,body:JSON.stringify(body)}),
+  messagingDeliveries: (token:string) => request<MessagingDelivery[]>('/messaging/deliveries',{token}),
+  bookingMetrics: (token:string) => request<BookingMetrics>('/messaging/metrics',{token}),
+  retryDelivery: (token:string,id:string) => request<{ok:true}>(`/messaging/deliveries/${id}/retry`,{method:'POST',token}),
   login: (body: LoginRequest) =>
     request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
 
