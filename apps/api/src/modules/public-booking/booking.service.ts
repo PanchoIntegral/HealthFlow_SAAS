@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID, createHmac } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import type { AvailabilitySlot, BookingService, BookingSettings, CreatePublicAppointmentRequest, PublicAppointmentSummary, PublicBookingPage, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
+import type { AvailabilitySlot, BookingService, BookingSettings, CreatePublicAppointmentRequest, PublicAppointmentSummary, PublicBookingPage, BookingReadiness, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
 import { DB } from '../../db/drizzle.module';
 import { runInTenant, type Database, type Tx } from '../../db/drizzle';
 import { TenantDbService } from '../../common/tenant-context/tenant-db.service';
@@ -12,6 +12,10 @@ import type { AvailabilityExceptionDto, AvailabilityRuleDto, UpdateBookingSettin
 type SettingsRow={tenant_id:string;slug:string;publicado:boolean;directorio_publico:boolean;feature_activa:boolean;timezone:string;anticipacion_minima_horas:number;horizonte_dias:number;limite_cancelacion_horas:number;recordatorios_horas:number[];aviso_privacidad_version:string};
 type DirectoryRow={slug:string;clinic_name:string;clinic_address:string|null;doctor_id:string;doctor_name:string;specialty:string|null;total_count:string|number};
 type SpecialtyRow={specialty:string;total:string|number};
+type ReadinessRow={publicado:boolean;directorio_publico:boolean;feature_activa:boolean;plan:string;subscription_status:string;grace_until:string|null;servicios:string|number;medicos:string|number};
+
+/** Debe coincidir con el filtro de plan de `resolve_public_booking_tenant` (0035). */
+const PLANES_CON_RESERVA=['consultorio','clinica','pro'];
 
 @Injectable()
 export class BookingServiceApp {
@@ -110,6 +114,42 @@ export class BookingServiceApp {
     // consulta dependa de esa validación.
     const recordatorios=`{${input.recordatoriosHoras.map(Number).join(',')}}`;
     return this.tenantDb.run(async tx=>{const r=await tx.execute(sql`INSERT INTO booking_settings(slug,publicado,directorio_publico,feature_activa,timezone,anticipacion_minima_horas,horizonte_dias,limite_cancelacion_horas,recordatorios_horas,aviso_privacidad_version) VALUES(${input.slug.toLowerCase()},${input.publicado},${input.directorioPublico},${input.featureActiva},${input.timezone},${input.anticipacionMinimaHoras},${input.horizonteDias},${input.limiteCancelacionHoras},${recordatorios}::int[],${input.avisoPrivacidadVersion}) ON CONFLICT(tenant_id) DO UPDATE SET slug=excluded.slug,publicado=excluded.publicado,directorio_publico=excluded.directorio_publico,feature_activa=excluded.feature_activa,timezone=excluded.timezone,anticipacion_minima_horas=excluded.anticipacion_minima_horas,horizonte_dias=excluded.horizonte_dias,limite_cancelacion_horas=excluded.limite_cancelacion_horas,recordatorios_horas=excluded.recordatorios_horas,aviso_privacidad_version=excluded.aviso_privacidad_version,updated_at=now() RETURNING *`);return mapSettings(r.rows[0] as SettingsRow);});}
+  /**
+   * Evalúa los mismos requisitos que las funciones SQL de la superficie
+   * pública, pero devolviendo cada uno por separado. Se consulta dentro del
+   * tenant, así que RLS sigue aplicando: una clínica sólo se diagnostica a sí
+   * misma.
+   */
+  async readiness():Promise<BookingReadiness>{
+    return this.tenantDb.run(async tx=>{
+      const r=(await tx.execute(sql`
+        SELECT bs.publicado, bs.directorio_publico, bs.feature_activa,
+               t.plan, t.subscription_status, t.grace_until,
+               (SELECT count(*) FROM booking_services svc
+                 WHERE svc.activo AND svc.publico) AS servicios,
+               (SELECT count(DISTINCT u.id) FROM booking_services svc
+                  JOIN booking_service_doctors bsd ON bsd.service_id = svc.id
+                  JOIN users u ON u.id = bsd.doctor_id AND u.activo
+                 WHERE svc.activo AND svc.publico) AS medicos
+          FROM booking_settings bs JOIN tenants t ON t.id = bs.tenant_id
+         LIMIT 1`)).rows[0] as ReadinessRow|undefined;
+      if(!r) throw new NotFoundException('La clínica todavía no tiene ajustes de reservas');
+      const grace=r.grace_until?new Date(r.grace_until):null;
+      return {
+        publicada:r.publicado,
+        featureActiva:r.feature_activa,
+        directorioPublico:r.directorio_publico,
+        planPermitido:PLANES_CON_RESERVA.includes(r.plan),
+        plan:r.plan,
+        suscripcionVigente:['active','trialing'].includes(r.subscription_status)
+          ||(r.subscription_status==='past_due'&&!!grace&&grace>new Date()),
+        suscripcionEstatus:r.subscription_status,
+        serviciosPublicos:Number(r.servicios),
+        medicosPublicables:Number(r.medicos),
+      };
+    });
+  }
+
   async listServices():Promise<BookingService[]>{return this.tenantDb.run(tx=>this.listServicesTx(tx,false));}
   async createService(i:UpsertBookingServiceDto):Promise<BookingService>{return this.tenantDb.run(async tx=>{const id=((await tx.execute(sql`INSERT INTO booking_services(nombre,duracion_minutos,precio_centavos,publico,activo,orden) VALUES(${i.nombre.trim()},${i.duracionMinutos},${i.precioCentavos??null},${i.publico},${i.activo},${i.orden}) RETURNING id`)).rows[0] as any).id;await this.assignDoctors(tx,id,i.doctorIds);return (await this.listServicesTx(tx,false)).find(x=>x.id===id)!;});}
   async updateService(id:string,i:UpsertBookingServiceDto):Promise<BookingService>{return this.tenantDb.run(async tx=>{const r=await tx.execute(sql`UPDATE booking_services SET nombre=${i.nombre.trim()},duracion_minutos=${i.duracionMinutos},precio_centavos=${i.precioCentavos??null},publico=${i.publico},activo=${i.activo},orden=${i.orden} WHERE id=${id} RETURNING id`);if(!r.rows.length)throw new NotFoundException();await this.assignDoctors(tx,id,i.doctorIds);return (await this.listServicesTx(tx,false)).find(x=>x.id===id)!;});}

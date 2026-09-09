@@ -2040,6 +2040,30 @@ export interface PublicBookingPage {
   doctors: DoctorSummary[];
 }
 
+/**
+ * Por qué una clínica aparece —o no— en la reserva pública y en el directorio.
+ *
+ * Los requisitos viven en funciones SQL (`resolve_public_booking_tenant` y
+ * `search_public_booking_directory`) que sólo pueden responder sí o no: una
+ * clínica marcaba todas sus casillas, guardaba sin error y no aparecía en
+ * ningún lado, sin forma de saber cuál de los seis requisitos faltaba. Esto
+ * devuelve los hechos para que la pantalla de ajustes los explique.
+ */
+export interface BookingReadiness {
+  publicada: boolean;
+  featureActiva: boolean;
+  directorioPublico: boolean;
+  /** El plan actual permite publicar agenda. La reserva pública no está en todos. */
+  planPermitido: boolean;
+  plan: string;
+  suscripcionVigente: boolean;
+  suscripcionEstatus: string;
+  /** Servicios activos y marcados como públicos. */
+  serviciosPublicos: number;
+  /** Médicos activos asociados a alguno de esos servicios. */
+  medicosPublicables: number;
+}
+
 /** Profesional publicado en el directorio de reservas de HealthFlow. */
 export interface PublicDirectoryResult {
   clinicName: string;

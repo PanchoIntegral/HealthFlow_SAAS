@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { AvailabilitySlot, BookingService, BookingSettings, PublicAppointmentSummary, PublicBookingPage, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
+import type { AvailabilitySlot, BookingReadiness, BookingService, BookingSettings, PublicAppointmentSummary, PublicBookingPage, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PoliciesGuard, RequirePolicy } from '../auth/casl/policies.guard';
 import { BookingServiceApp } from './booking.service';
@@ -43,6 +43,7 @@ export class PublicBookingController {
 export class BookingAdminController {
   constructor(private readonly booking:BookingServiceApp){}
   @Get('settings') @RequirePolicy('manage','all') settings():Promise<BookingSettings>{return this.booking.getSettings();}
+  @Get('readiness') @RequirePolicy('manage','all') readiness():Promise<BookingReadiness>{return this.booking.readiness();}
   @Put('settings') @RequirePolicy('manage','all') updateSettings(@Body()dto:UpdateBookingSettingsDto):Promise<BookingSettings>{return this.booking.updateSettings(dto);}
   @Get('services') @RequirePolicy('manage','all') services():Promise<BookingService[]>{return this.booking.listServices();}
   @Post('services') @RequirePolicy('manage','all') createService(@Body()dto:UpsertBookingServiceDto):Promise<BookingService>{return this.booking.createService(dto);}
