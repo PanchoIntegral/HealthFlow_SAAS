@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 export class PublicPatientDto {
   @IsString() @MinLength(2) @MaxLength(160) nombre!:string;
@@ -33,7 +33,7 @@ export class UpdateBookingSettingsDto {
   @IsInt() @Min(0) @Max(720) anticipacionMinimaHoras!:number;
   @IsInt() @Min(1) @Max(365) horizonteDias!:number;
   @IsInt() @Min(0) @Max(720) limiteCancelacionHoras!:number;
-  @IsArray() recordatoriosHoras!:number[];
+  @IsArray() @ArrayMaxSize(6) @IsInt({each:true}) @Min(0,{each:true}) @Max(720,{each:true}) recordatoriosHoras!:number[];
   @IsString() @MaxLength(40) avisoPrivacidadVersion!:string;
 }
 

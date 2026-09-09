@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { JwtService } from '@nestjs/jwt';
 import { sql } from 'drizzle-orm';
 import request from 'supertest';
-import { loadDotEnv } from '../src/config/env';
+import { loadDotEnv, env } from '../src/config/env';
 import { createAdminDb } from '../src/db/drizzle';
 import { AppModule } from '../src/app.module';
 
@@ -168,6 +169,61 @@ describe('Directorio público de reservas', () => {
     // Ni el correo del médico ni el identificador del tenant cruzan la frontera.
     expect(JSON.stringify(body)).not.toContain(tenantVisible);
     expect(JSON.stringify(body)).not.toContain('@test.mx');
+  });
+
+  describe('el consentimiento se administra desde Ajustes → Reservas', () => {
+    /** Payload que manda la pantalla de ajustes, con el opt-in parametrizado. */
+    function ajustes(directorioPublico: boolean) {
+      return {
+        slug: slugVisible,
+        publicado: true,
+        directorioPublico,
+        featureActiva: true,
+        timezone: 'America/Tijuana',
+        anticipacionMinimaHoras: 4,
+        horizonteDias: 60,
+        limiteCancelacionHoras: 4,
+        recordatoriosHoras: [48, 24],
+        avisoPrivacidadVersion: '2026-01',
+      };
+    }
+
+    function guardar(body: Record<string, unknown>) {
+      const token = app
+        .get(JwtService)
+        .sign({ sub: doctorVisible, tid: tenantVisible, rol: 'admin' }, { secret: env.jwtSecret });
+      return request(app.getHttpServer())
+        .put('/api/booking/settings')
+        .set('Authorization', `Bearer ${token}`)
+        .set('X-Forwarded-For', `198.51.100.${++visitas % 254 + 1}`)
+        .send(body);
+    }
+
+    /**
+     * Regresión: `recordatoriosHoras` viajaba como arreglo de JS dentro del
+     * template `sql`, que drizzle expande a una lista de parámetros. Postgres
+     * la leía como `record` contra una columna `integer[]` y respondía 500, así
+     * que NINGUNA clínica podía guardar sus ajustes — ni activar el directorio.
+     */
+    it('guarda los ajustes con la lista de recordatorios', async () => {
+      const { body } = await guardar(ajustes(true)).expect(200);
+      expect(body.recordatoriosHoras).toEqual([48, 24]);
+      expect(body.directorioPublico).toBe(true);
+    });
+
+    it('apagar el opt-in retira la clínica del directorio, y encenderlo la devuelve', async () => {
+      await guardar(ajustes(false)).expect(200);
+      const apagada = await visitante('/api/public/directory').query({ pageSize: 24 }).expect(200);
+      expect(apagada.body.items.map((x: { slug: string }) => x.slug)).not.toContain(slugVisible);
+
+      await guardar(ajustes(true)).expect(200);
+      const encendida = await visitante('/api/public/directory').query({ pageSize: 24 }).expect(200);
+      expect(encendida.body.items.map((x: { slug: string }) => x.slug)).toContain(slugVisible);
+    });
+
+    it('rechaza recordatorios que no sean enteros en vez de llevarlos al SQL', async () => {
+      await guardar({ ...ajustes(true), recordatoriosHoras: ['1); DROP TABLE users; --'] }).expect(400);
+    });
   });
 
   it('acota el tamaño de página en lugar de confiar en el cliente', async () => {
