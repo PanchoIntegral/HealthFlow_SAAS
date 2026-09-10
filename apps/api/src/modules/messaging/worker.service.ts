@@ -4,9 +4,9 @@ import { createHmac } from 'node:crypto';
 import { DB } from '../../db/drizzle.module';
 import type { Database } from '../../db/drizzle';
 import { env } from '../../config/env';
-import { MESSAGING_PROVIDER, type MessagingProvider, type MessageChannel, type MessageKind } from './messaging.types';
+import { MESSAGING_PROVIDER, type MessagingProvider, type MessageChannel, type MessageKind, type SendResult } from './messaging.types';
 
-interface Claimed { id:string; tenant_id:string; channel:MessageChannel; kind:MessageKind; clinic_name:string; clinic_timezone:string; destination:string|null; appointment_id:string; starts_at:Date|string; attempts:number }
+interface Claimed { id:string; tenant_id:string; channel:MessageChannel; kind:MessageKind; clinic_name:string; clinic_timezone:string; destination:string|null; appointment_id:string; starts_at:Date|string; attempts:number; idempotency_key:string }
 
 @Injectable()
 export class MessagingWorker {
@@ -21,27 +21,32 @@ export class MessagingWorker {
   }
 
   private async deliver(row: Claimed): Promise<void> {
-    if (!row.destination) return this.finish(row.id, false, null, 'missing_destination');
+    if (!row.destination) return this.finish(row.id, { outcome: 'permanent', code: 'missing_destination' });
+    // Es el mismo token opaco de 256 bits creado al reservar. Solo su hash
+    // vive en PostgreSQL; el worker lo deriva de IDs no públicos + secreto.
+    const actionToken = createHmac('sha256', env.publicLinkSecret)
+      .update(`${row.tenant_id}.${row.appointment_id}`).digest('base64url');
+    let result: SendResult;
     try {
-      // Es el mismo token opaco de 256 bits creado al reservar. Solo su hash
-      // vive en PostgreSQL; el worker lo deriva de IDs no públicos + secreto.
-      const actionToken = createHmac('sha256', env.publicLinkSecret)
-        .update(`${row.tenant_id}.${row.appointment_id}`).digest('base64url');
-      const result = await this.provider.send({
+      result = await this.provider.send({
         channel: row.channel, kind: row.kind, destination: row.destination,
         clinicName: row.clinic_name, timezone:row.clinic_timezone, startsAt: new Date(row.starts_at),
         manageUrl: `${env.appUrl}/cita/${actionToken}`,
-        statusCallbackUrl: `${env.apiPublicUrl}/api/webhooks/twilio/status`,
+        idempotencyKey: row.idempotency_key,
+        statusCallbackUrl: env.twilioStatusCallbackUrl,
       });
-      await this.finish(row.id, true, result.providerMessageId, null);
     } catch (error) {
+      // Un adaptador que lanza en vez de clasificar no puede garantizar que no envió.
       const code = error instanceof Error ? error.message.slice(0, 80) : 'provider_error';
-      this.logger.warn(`Fallo de proveedor para mensaje ${row.id}: ${code}`);
-      await this.finish(row.id, false, null, code);
+      result = { outcome: 'uncertain', code };
     }
+    if (result.outcome !== 'accepted') this.logger.warn(`Mensaje ${row.id} sin aceptar: ${result.outcome} (${result.code})`);
+    await this.finish(row.id, result);
   }
 
-  private async finish(id:string, ok:boolean, providerId:string|null, errorCode:string|null):Promise<void> {
-    await this.db.execute(sql`SELECT complete_outbound_message(${id},${ok},${providerId},${errorCode})`);
+  private async finish(id:string, result:SendResult):Promise<void> {
+    const providerId = result.outcome === 'accepted' ? result.providerMessageId : null;
+    const code = result.outcome === 'accepted' ? null : result.code;
+    await this.db.execute(sql`SELECT complete_outbound_message(${id},${result.outcome},${providerId},${code})`);
   }
 }

@@ -64,11 +64,11 @@ async function main() {
   await onTarget.query(`GRANT USAGE ON SCHEMA public TO ${quoteIdent(workerUser)}`);
   const workerFunctions = await onTarget.query(
     `SELECT to_regprocedure('claim_outbound_messages(integer)') AS claim,
-            to_regprocedure('complete_outbound_message(uuid,boolean,text,text)') AS complete`,
+            to_regprocedure('complete_outbound_message(uuid,text,text,text)') AS complete`,
   );
   if (workerFunctions.rows[0]?.claim && workerFunctions.rows[0]?.complete) {
     await onTarget.query(`GRANT EXECUTE ON FUNCTION claim_outbound_messages(integer) TO ${quoteIdent(workerUser)}`);
-    await onTarget.query(`GRANT EXECUTE ON FUNCTION complete_outbound_message(uuid,boolean,text,text) TO ${quoteIdent(workerUser)}`);
+    await onTarget.query(`GRANT EXECUTE ON FUNCTION complete_outbound_message(uuid,text,text,text) TO ${quoteIdent(workerUser)}`);
   }
   await onTarget.end();
 

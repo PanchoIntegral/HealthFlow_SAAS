@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID, createHmac } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { normalizeEmail, normalizeMxPhone, validateBirthDate } from '@healthflow/shared-types';
 import type { AvailabilitySlot, BookingService, BookingSettings, CreatePublicAppointmentRequest, PublicAppointmentSummary, PublicBookingPage, BookingReadiness, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
 import { DB } from '../../db/drizzle.module';
 import { runInTenant, type Database, type Tx } from '../../db/drizzle';
@@ -8,6 +9,7 @@ import { TenantDbService } from '../../common/tenant-context/tenant-db.service';
 import { env } from '../../config/env';
 import { OutboxService } from '../messaging/outbox.service';
 import type { AvailabilityExceptionDto, AvailabilityRuleDto, UpdateBookingSettingsDto, UpsertBookingServiceDto } from './booking.dto';
+import { decidePublicAction, rejectMessage, type PublicAction, type TransitionDecision } from './booking.transitions';
 
 type SettingsRow={tenant_id:string;slug:string;publicado:boolean;directorio_publico:boolean;feature_activa:boolean;timezone:string;anticipacion_minima_horas:number;horizonte_dias:number;limite_cancelacion_horas:number;recordatorios_horas:number[];aviso_privacidad_version:string};
 type DirectoryRow={slug:string;clinic_name:string;clinic_address:string|null;doctor_id:string;doctor_name:string;specialty:string|null;total_count:string|number};
@@ -52,7 +54,20 @@ export class BookingServiceApp {
   async availability(slug:string,serviceId:string,doctorId:string|undefined,from:string,to:string):Promise<AvailabilitySlot[]>{
     const tenant=await this.resolveSlug(slug); if(!tenant) throw new NotFoundException('Página de reservas no disponible');
     const start=new Date(from),end=new Date(to); if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||end<=start||end.getTime()-start.getTime()>7*86400000) throw new BadRequestException('El rango debe ser válido y de máximo siete días');
-    return runInTenant(this.db,tenant,async tx=>{
+    return runInTenant(this.db,tenant,tx=>this.availabilityRangeTx(tx,serviceId,doctorId,start,end));
+  }
+
+  async appointmentAvailability(token:string,doctorId:string|undefined,from:string,to:string):Promise<AvailabilitySlot[]>{
+    const start=new Date(from),end=new Date(to);
+    if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||end<=start||end.getTime()-start.getTime()>7*86400000) throw new BadRequestException('El rango debe ser válido y de máximo siete días');
+    return this.withToken(token,async(tx,hash)=>{
+      const row=await this.getAppointmentRow(tx,hash,false),cfg=await this.settingsRow(tx);
+      this.decide(row,'reschedule',cfg);
+      return this.availabilityRangeTx(tx,row.service_id,doctorId,start,end,row.id);
+    });
+  }
+
+  private async availabilityRangeTx(tx:Tx,serviceId:string,doctorId:string|undefined,start:Date,end:Date,exclude?:string):Promise<AvailabilitySlot[]>{
       const r=await tx.execute(sql`
         WITH cfg AS (SELECT * FROM booking_settings LIMIT 1), svc AS
           (SELECT * FROM booking_services WHERE id=${serviceId} AND activo AND publico),
@@ -65,11 +80,10 @@ export class BookingServiceApp {
            AND starts_at<${end.toISOString()}::timestamptz
            AND starts_at<now()+(SELECT horizonte_dias FROM cfg)*interval '1 day'
            AND NOT EXISTS(SELECT 1 FROM availability_exceptions e WHERE e.doctor_id=s.doctor_id AND e.fecha=s.day AND NOT e.disponible AND (e.inicio_local IS NULL OR tstzrange(starts_at,ends_at,'[)') && tstzrange((s.day+e.inicio_local) AT TIME ZONE s.timezone,(s.day+e.fin_local) AT TIME ZONE s.timezone,'[)')))
-           AND NOT EXISTS(SELECT 1 FROM appointments a WHERE a.doctor_id=s.doctor_id AND a.estatus NOT IN ('cancelada','no_asistio') AND tstzrange(a.inicio_programado,a.fin_programado,'[)') && tstzrange(starts_at,ends_at,'[)'))
+           AND NOT EXISTS(SELECT 1 FROM appointments a WHERE a.doctor_id=s.doctor_id ${exclude?sql`AND a.id<>${exclude}`:sql``} AND a.estatus NOT IN ('cancelada','no_asistio') AND tstzrange(a.inicio_programado,a.fin_programado,'[)') && tstzrange(starts_at,ends_at,'[)'))
          ORDER BY starts_at,doctor_name
       `);
       return (r.rows as any[]).map(x=>({start:new Date(x.starts_at).toISOString(),end:new Date(x.ends_at).toISOString(),doctorId:x.doctor_id,doctorName:x.doctor_name}));
-    });
   }
 
   async create(slug:string,input:CreatePublicAppointmentRequest):Promise<PublicAppointmentSummary>{
@@ -80,34 +94,90 @@ export class BookingServiceApp {
       const svc=(await tx.execute(sql`SELECT id,duracion_minutos FROM booking_services WHERE id=${input.serviceId} AND activo AND publico LIMIT 1`)).rows[0] as {id:string;duracion_minutos:number}|undefined;
       if(!svc) throw new NotFoundException('Servicio no disponible'); const end=new Date(start.getTime()+svc.duracion_minutos*60000);
       const slots=await this.availabilityForTx(tx,input.serviceId,input.doctorId,start,end); if(!slots.length) throw new ConflictException('El horario ya no está disponible');
-      const chosen=slots[0]!; const phone=normalizePhone(input.patient.telefono); if(!phone) throw new BadRequestException('Teléfono inválido');
-      const birth=new Date(`${input.patient.fechaNacimiento}T00:00:00Z`);if(!Number.isFinite(birth.getTime())||birth.getTime()>Date.now())throw new BadRequestException('Fecha de nacimiento inválida');
+      const chosen=slots[0]!;
+      const contact=validatePublicContact(input.patient);
       const normalizedName=normalizeName(input.patient.nombre);
-      let patient=(await tx.execute(sql`SELECT id FROM patients WHERE archivado_en IS NULL AND lower(regexp_replace(nombre,'\\s+',' ','g'))=${normalizedName} AND fecha_nacimiento=${input.patient.fechaNacimiento} AND telefono_normalizado=${phone} LIMIT 1`)).rows[0] as {id:string}|undefined;
+      let patient=(await tx.execute(sql`SELECT id FROM patients WHERE archivado_en IS NULL AND lower(regexp_replace(nombre,'\\s+',' ','g'))=${normalizedName} AND fecha_nacimiento=${input.patient.fechaNacimiento} AND telefono_normalizado=${contact.phone} LIMIT 1`)).rows[0] as {id:string}|undefined;
       if(!patient){
-        const duplicate=(await tx.execute(sql`SELECT 1 FROM patients WHERE archivado_en IS NULL AND (telefono_normalizado=${phone} OR (lower(regexp_replace(nombre,'\\s+',' ','g'))=${normalizedName} AND fecha_nacimiento=${input.patient.fechaNacimiento})) LIMIT 1`)).rows.length>0;
-        patient=(await tx.execute(sql`INSERT INTO patients(tenant_id,nombre,fecha_nacimiento,telefono,telefono_normalizado,email,canal_preferido,whatsapp_opt_in_at,aviso_privacidad_version,aviso_privacidad_aceptado_at,posible_duplicado) VALUES(current_tenant_id(),${input.patient.nombre.trim()},${input.patient.fechaNacimiento},${input.patient.telefono},${phone},${input.patient.email?.toLowerCase()??null},${input.patient.canalPreferido},${input.patient.whatsappOptIn?new Date().toISOString():null},${cfg.aviso_privacidad_version},now(),${duplicate}) RETURNING id`)).rows[0] as {id:string};
+        const duplicate=(await tx.execute(sql`SELECT 1 FROM patients WHERE archivado_en IS NULL AND (telefono_normalizado=${contact.phone} OR (lower(regexp_replace(nombre,'\\s+',' ','g'))=${normalizedName} AND fecha_nacimiento=${input.patient.fechaNacimiento})) LIMIT 1`)).rows.length>0;
+        patient=(await tx.execute(sql`INSERT INTO patients(tenant_id,nombre,fecha_nacimiento,telefono,telefono_normalizado,email,canal_preferido,aviso_privacidad_version,aviso_privacidad_aceptado_at,posible_duplicado) VALUES(current_tenant_id(),${input.patient.nombre.trim()},${input.patient.fechaNacimiento},${input.patient.telefono.trim()},${contact.phone},${contact.email},${contact.channel},${cfg.aviso_privacidad_version},now(),${duplicate}) RETURNING id`)).rows[0] as {id:string};
       }
-      await tx.execute(sql`UPDATE patients SET telefono=${input.patient.telefono},telefono_normalizado=${phone},email=coalesce(${input.patient.email?.toLowerCase()??null},email),canal_preferido=${input.patient.canalPreferido},whatsapp_opt_in_at=${input.patient.whatsappOptIn?new Date().toISOString():null},aviso_privacidad_version=${cfg.aviso_privacidad_version},aviso_privacidad_aceptado_at=now() WHERE id=${patient.id}`);
+      // El formulario actualiza contacto y canal, pero NUNCA retira un
+      // consentimiento previo: el retiro es un acto explícito (evento).
+      await tx.execute(sql`UPDATE patients SET telefono=${input.patient.telefono.trim()},telefono_normalizado=${contact.phone},email=coalesce(${contact.email}::text,email),canal_preferido=${contact.channel},aviso_privacidad_version=${cfg.aviso_privacidad_version},aviso_privacidad_aceptado_at=now() WHERE id=${patient.id}`);
+      if(contact.whatsappOptIn){
+        await tx.execute(sql`INSERT INTO patient_consent_events(patient_id,tipo,accion,version_aviso,origen) VALUES(${patient.id},'whatsapp','otorgado',${cfg.aviso_privacidad_version},'reserva_publica')`);
+      }
+      const optIn=contact.whatsappOptIn||!!((await tx.execute(sql`SELECT whatsapp_opt_in_at FROM patients WHERE id=${patient.id}`)).rows[0] as {whatsapp_opt_in_at:string|null}).whatsapp_opt_in_at;
       const appointmentId=randomUUID();
       const token=createHmac('sha256',env.publicLinkSecret).update(`${tenant}.${appointmentId}`).digest('base64url'),hash=hashToken(token);
       const appointment=(await tx.execute(sql`INSERT INTO appointments(id,tenant_id,patient_id,doctor_id,service_id,motivo,inicio_programado,fin_programado,estatus,origen,estado_confirmacion,public_manage_token_hash,manage_token_expires_at) VALUES(${appointmentId},current_tenant_id(),${patient.id},${chosen.doctorId},${input.serviceId},NULL,${start.toISOString()},${end.toISOString()},'agendada','publico','pendiente',${hash},${new Date(end.getTime()+86400000).toISOString()}) RETURNING id`)).rows[0] as {id:string};
-      await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${appointment.id},'public_schedule',jsonb_build_object('doctorId',${chosen.doctorId},'serviceId',${input.serviceId}))`);
-      await this.outbox.schedule(tx,{appointmentId:appointment.id,patientId:patient.id,startsAt:start,email:input.patient.email?.toLowerCase()??null,phone,whatsappOptIn:input.patient.whatsappOptIn,preferredChannel:input.patient.canalPreferido,reminderHours:cfg.recordatorios_horas});
+      await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${appointment.id},'public_schedule',jsonb_build_object('doctorId',${chosen.doctorId}::text,'serviceId',${input.serviceId}::text))`);
+      await this.outbox.schedule(tx,{appointmentId:appointment.id,patientId:patient.id,startsAt:start,email:contact.email,phone:contact.phone,whatsappOptIn:optIn,preferredChannel:contact.channel,reminderHours:cfg.recordatorios_horas});
       const clinic=(await tx.execute(sql`SELECT nombre_clinica FROM tenants LIMIT 1`)).rows[0] as {nombre_clinica:string};
-      return {clinicName:clinic.nombre_clinica,doctorName:chosen.doctorName,start:start.toISOString(),end:end.toISOString(),status:'agendada',confirmationStatus:'pendiente',manageUrl:`${env.appUrl}/cita/${token}`};
+      return {clinicName:clinic.nombre_clinica,doctorName:chosen.doctorName,start:start.toISOString(),end:end.toISOString(),status:'agendada',confirmationStatus:'pendiente',timezone:cfg.timezone,manageUrl:`${env.appUrl}/cita/${token}`};
     }); } catch(error){ if(isExclusion(error)) throw new ConflictException('El horario acaba de ocuparse; consulta la disponibilidad actualizada'); throw error; }
   }
 
   async getAppointment(token:string):Promise<PublicAppointmentSummary>{ return this.withToken(token,(tx,hash)=>this.summary(tx,hash)); }
 
-  async confirm(token:string):Promise<PublicAppointmentSummary>{ return this.withToken(token,async(tx,hash)=>{ const row=await this.getAppointmentRow(tx,hash); if(row.estatus==='cancelada') throw new ConflictException('La cita está cancelada'); await tx.execute(sql`UPDATE appointments SET estado_confirmacion='confirmada' WHERE id=${row.id}`); await this.event(tx,row.id,'confirmed'); return this.summary(tx,hash); }); }
+  /**
+   * Acciones públicas (P0.3). La decisión la toma `decidePublicAction`; aquí
+   * sólo se traduce a SQL. `noop` devuelve el resumen sin registrar evento:
+   * confirmar o cancelar dos veces no duplica nada.
+   */
+  async confirm(token:string):Promise<PublicAppointmentSummary>{ return this.withToken(token,async(tx,hash)=>{
+    const row=await this.getAppointmentRow(tx,hash); const cfg=await this.settingsRow(tx);
+    if(this.decide(row,'confirm',cfg)==='noop') return this.summary(tx,hash);
+    await tx.execute(sql`UPDATE appointments SET estado_confirmacion='confirmada',confirmada_at=coalesce(confirmada_at,now()) WHERE id=${row.id}`);
+    await this.event(tx,row.id,'confirmed');
+    return this.summary(tx,hash);
+  }); }
 
-  async cancel(token:string):Promise<PublicAppointmentSummary>{ return this.withToken(token,async(tx,hash)=>{ const row=await this.getAppointmentRow(tx,hash); const cfg=await this.settingsRow(tx); if(startTooSoon(row.inicio_programado,cfg?.limite_cancelacion_horas??0)) throw new ForbiddenException('La cita ya está dentro del límite de cancelación; comunícate con la clínica'); if(row.estatus!=='cancelada'){ await this.outbox.cancelPending(tx,row.id); await tx.execute(sql`UPDATE appointments SET estatus='cancelada',estado_confirmacion='cancelada' WHERE id=${row.id}`); await this.outbox.schedule(tx,{appointmentId:row.id,patientId:row.patient_id,startsAt:new Date(row.inicio_programado),email:row.email,phone:row.telefono_normalizado,whatsappOptIn:!!row.whatsapp_opt_in_at,preferredChannel:row.canal_preferido,reminderHours:[],kind:'cancelled'}); await this.event(tx,row.id,'cancelled'); } return this.summary(tx,hash); }); }
+  async cancel(token:string):Promise<PublicAppointmentSummary>{ return this.withToken(token,async(tx,hash)=>{
+    const row=await this.getAppointmentRow(tx,hash); const cfg=await this.settingsRow(tx);
+    if(this.decide(row,'cancel',cfg)==='noop') return this.summary(tx,hash);
+    await this.outbox.cancelPending(tx,row.id);
+    await tx.execute(sql`UPDATE appointments SET estatus='cancelada',estado_confirmacion='cancelada' WHERE id=${row.id}`);
+    await this.outbox.schedule(tx,{appointmentId:row.id,patientId:row.patient_id,startsAt:new Date(row.inicio_programado),email:row.email,phone:row.telefono_normalizado,whatsappOptIn:!!row.whatsapp_opt_in_at,preferredChannel:row.canal_preferido,reminderHours:[],kind:'cancelled'});
+    await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${row.id},'public_cancel','{}'::jsonb)`);
+    await this.event(tx,row.id,'cancelled');
+    return this.summary(tx,hash);
+  }); }
 
   async reschedule(token:string,startIso:string,doctorId?:string):Promise<PublicAppointmentSummary>{
     const start=new Date(startIso); if(!Number.isFinite(start.getTime())) throw new BadRequestException('Horario inválido');
-    try{return await this.withToken(token,async(tx,hash)=>{ const row=await this.getAppointmentRow(tx,hash); const cfg=await this.settingsRow(tx); if(startTooSoon(row.inicio_programado,cfg?.limite_cancelacion_horas??0)) throw new ForbiddenException('La cita ya está dentro del límite de reprogramación'); const end=new Date(start.getTime()+row.duracion_minutos*60000); const slots=await this.availabilityForTx(tx,row.service_id,doctorId,start,end,row.id); if(!slots.length) throw new ConflictException('Horario no disponible'); const chosen=slots[0]!; await this.outbox.cancelPending(tx,row.id); await tx.execute(sql`UPDATE appointments SET doctor_id=${chosen.doctorId},inicio_programado=${start.toISOString()},fin_programado=${end.toISOString()},estado_confirmacion='pendiente' WHERE id=${row.id}`); await this.outbox.schedule(tx,{appointmentId:row.id,patientId:row.patient_id,startsAt:start,email:row.email,phone:row.telefono_normalizado,whatsappOptIn:!!row.whatsapp_opt_in_at,preferredChannel:row.canal_preferido,reminderHours:cfg?.recordatorios_horas??[48,24],kind:'rescheduled'}); await this.event(tx,row.id,'rescheduled'); return this.summary(tx,hash);});}catch(error){if(isExclusion(error))throw new ConflictException('El horario acaba de ocuparse');throw error;}
+    try{return await this.withToken(token,async(tx,hash)=>{
+      const row=await this.getAppointmentRow(tx,hash); const cfg=await this.settingsRow(tx);
+      this.decide(row,'reschedule',cfg);
+      // Una repetición concurrente o del navegador no debe crear otra
+      // generación de mensajes para el mismo cambio.
+      if(new Date(row.inicio_programado).getTime()===start.getTime()&&(!doctorId||doctorId===row.doctor_id)) return this.summary(tx,hash);
+      const end=new Date(start.getTime()+row.duracion_minutos*60000);
+      const slots=await this.availabilityForTx(tx,row.service_id,doctorId,start,end,row.id); if(!slots.length) throw new ConflictException('Horario no disponible');
+      const chosen=slots[0]!;
+      // Una sola transacción: mensajes viejos cancelados, nueva generación de
+      // mensajes, confirmación de vuelta a pendiente, token vigente hasta
+      // después de la nueva fecha, auditoría y un único evento.
+      await this.outbox.cancelPending(tx,row.id);
+      await tx.execute(sql`UPDATE appointments SET doctor_id=${chosen.doctorId},inicio_programado=${start.toISOString()},fin_programado=${end.toISOString()},estado_confirmacion='pendiente',confirmada_at=NULL,messaging_version=messaging_version+1,manage_token_expires_at=${new Date(end.getTime()+86400000).toISOString()} WHERE id=${row.id}`);
+      await this.outbox.schedule(tx,{appointmentId:row.id,patientId:row.patient_id,startsAt:start,email:row.email,phone:row.telefono_normalizado,whatsappOptIn:!!row.whatsapp_opt_in_at,preferredChannel:row.canal_preferido,reminderHours:cfg?.recordatorios_horas??[48,24],kind:'rescheduled'});
+      await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${row.id},'public_reschedule',jsonb_build_object('doctorId',${chosen.doctorId}::text,'previousStart',${new Date(row.inicio_programado).toISOString()}::text))`);
+      await this.event(tx,row.id,'rescheduled');
+      return this.summary(tx,hash);
+    });}catch(error){if(isExclusion(error))throw new ConflictException('El horario acaba de ocuparse');throw error;}
+  }
+
+  /** Traduce la decisión de dominio a excepciones HTTP. Devuelve 'apply' o 'noop'. */
+  private decide(row:{estatus:string;estado_confirmacion:string;inicio_programado:Date|string},action:PublicAction,cfg:SettingsRow|undefined):'apply'|'noop'{
+    const decision:TransitionDecision=decidePublicAction(
+      {estatus:row.estatus as any,confirmacion:row.estado_confirmacion as any,startsAt:new Date(row.inicio_programado)},
+      action,{now:new Date(),limitHours:cfg?.limite_cancelacion_horas??0});
+    if(decision.kind==='reject'){
+      if(decision.reason==='within_limit') throw new ForbiddenException(rejectMessage(action,decision.reason));
+      throw new ConflictException(rejectMessage(action,decision.reason));
+    }
+    return decision.kind;
   }
 
   async getSettings():Promise<BookingSettings>{return this.tenantDb.run(async tx=>{let s=await this.settingsRow(tx);if(!s){const name=((await tx.execute(sql`SELECT nombre_clinica FROM tenants LIMIT 1`)).rows[0] as any).nombre_clinica;s=(await tx.execute(sql`INSERT INTO booking_settings(slug) VALUES(${slugify(name)+'-'+randomBytes(3).toString('hex')}) RETURNING *`)).rows[0] as SettingsRow;}return mapSettings(s);});}
@@ -168,16 +238,35 @@ export class BookingServiceApp {
   private async listServicesTx(tx:Tx,onlyPublic:boolean):Promise<BookingService[]>{const r=await tx.execute(sql`SELECT s.*,coalesce(array_agg(x.doctor_id) FILTER(WHERE x.doctor_id IS NOT NULL),'{}') doctor_ids FROM booking_services s LEFT JOIN booking_service_doctors x ON x.service_id=s.id ${onlyPublic?sql`WHERE s.activo AND s.publico`:sql``} GROUP BY s.id ORDER BY s.orden,s.nombre`);return (r.rows as any[]).map(x=>({id:x.id,nombre:x.nombre,duracionMinutos:x.duracion_minutos,precioCentavos:x.precio_centavos,publico:x.publico,activo:x.activo,orden:x.orden,doctorIds:x.doctor_ids}));}
   private async assignDoctors(tx:Tx,serviceId:string,ids:string[]):Promise<void>{await tx.execute(sql`DELETE FROM booking_service_doctors WHERE service_id=${serviceId}`);for(const id of [...new Set(ids)])await tx.execute(sql`INSERT INTO booking_service_doctors(service_id,doctor_id) SELECT ${serviceId},id FROM users WHERE id=${id} AND activo AND (rol='medico' OR es_medico) ON CONFLICT DO NOTHING`);}
   private async availabilityForTx(tx:Tx,serviceId:string,doctorId:string|undefined,start:Date,end:Date,exclude?:string):Promise<{doctorId:string;doctorName:string}[]>{const r=await tx.execute(sql`SELECT u.id doctor_id,u.nombre doctor_name FROM users u JOIN booking_service_doctors x ON x.doctor_id=u.id JOIN booking_services s ON s.id=x.service_id JOIN booking_settings c ON true JOIN doctor_availability da ON da.doctor_id=u.id AND da.weekday=extract(dow FROM (${start.toISOString()}::timestamptz AT TIME ZONE c.timezone)) WHERE s.id=${serviceId} AND s.activo AND s.publico AND u.activo ${doctorId?sql`AND u.id=${doctorId}`:sql``} AND (${start.toISOString()}::timestamptz AT TIME ZONE c.timezone)::time>=da.inicio_local AND (${end.toISOString()}::timestamptz AT TIME ZONE c.timezone)::time<=da.fin_local AND mod(extract(epoch FROM (((${start.toISOString()}::timestamptz AT TIME ZONE c.timezone)::time)-da.inicio_local))::int,s.duracion_minutos*60)=0 AND ${start.toISOString()}::timestamptz>=now()+c.anticipacion_minima_horas*interval '1 hour' AND ${start.toISOString()}::timestamptz<now()+c.horizonte_dias*interval '1 day' AND NOT EXISTS(SELECT 1 FROM availability_exceptions e WHERE e.doctor_id=u.id AND e.fecha=(${start.toISOString()}::timestamptz AT TIME ZONE c.timezone)::date AND NOT e.disponible AND (e.inicio_local IS NULL OR tstzrange(${start.toISOString()}::timestamptz,${end.toISOString()}::timestamptz,'[)')&&tstzrange((e.fecha+e.inicio_local) AT TIME ZONE c.timezone,(e.fecha+e.fin_local) AT TIME ZONE c.timezone,'[)'))) AND NOT EXISTS(SELECT 1 FROM appointments a WHERE a.doctor_id=u.id AND a.estatus NOT IN('cancelada','no_asistio') ${exclude?sql`AND a.id<>${exclude}`:sql``} AND tstzrange(a.inicio_programado,a.fin_programado,'[)')&&tstzrange(${start.toISOString()}::timestamptz,${end.toISOString()}::timestamptz,'[)')) ORDER BY (SELECT count(*) FROM appointments a2 WHERE a2.doctor_id=u.id AND (a2.inicio_programado AT TIME ZONE c.timezone)::date=(${start.toISOString()}::timestamptz AT TIME ZONE c.timezone)::date),u.nombre,u.id LIMIT 1`);return (r.rows as any[]).map(x=>({doctorId:x.doctor_id,doctorName:x.doctor_name}));}
-  private async getAppointmentRow(tx:Tx,hash:string):Promise<any>{const r=await tx.execute(sql`SELECT a.*,s.duracion_minutos,p.email,p.telefono_normalizado,p.whatsapp_opt_in_at,p.canal_preferido FROM appointments a JOIN booking_services s ON s.id=a.service_id JOIN patients p ON p.id=a.patient_id WHERE a.public_manage_token_hash=${hash} AND a.manage_token_expires_at>now() LIMIT 1`);if(!r.rows.length)throw new NotFoundException('Cita no encontrada');return r.rows[0];}
-  private async summary(tx:Tx,hash:string):Promise<PublicAppointmentSummary>{const r=await tx.execute(sql`SELECT t.nombre_clinica,u.nombre doctor_nombre,a.inicio_programado,a.fin_programado,a.estatus,a.estado_confirmacion FROM appointments a JOIN users u ON u.id=a.doctor_id JOIN tenants t ON t.id=a.tenant_id WHERE a.public_manage_token_hash=${hash} AND a.manage_token_expires_at>now() LIMIT 1`);const x=r.rows[0] as any;if(!x)throw new NotFoundException('Cita no encontrada');return{clinicName:x.nombre_clinica,doctorName:x.doctor_nombre,start:new Date(x.inicio_programado).toISOString(),end:new Date(x.fin_programado).toISOString(),status:x.estatus,confirmationStatus:x.estado_confirmacion};}
+  private async getAppointmentRow(tx:Tx,hash:string,lock=true):Promise<any>{const r=await tx.execute(sql`SELECT a.*,s.duracion_minutos,p.email,p.telefono_normalizado,p.whatsapp_opt_in_at,p.canal_preferido FROM appointments a JOIN booking_services s ON s.id=a.service_id JOIN patients p ON p.id=a.patient_id WHERE a.public_manage_token_hash=${hash} AND a.manage_token_expires_at>now() LIMIT 1 ${lock?sql`FOR UPDATE OF a`:sql``}`);if(!r.rows.length)throw new NotFoundException('Cita no encontrada');return r.rows[0];}
+  private async summary(tx:Tx,hash:string):Promise<PublicAppointmentSummary>{const r=await tx.execute(sql`SELECT t.nombre_clinica,u.nombre doctor_nombre,a.inicio_programado,a.fin_programado,a.estatus,a.estado_confirmacion,bs.timezone FROM appointments a JOIN users u ON u.id=a.doctor_id JOIN tenants t ON t.id=a.tenant_id JOIN booking_settings bs ON bs.tenant_id=a.tenant_id WHERE a.public_manage_token_hash=${hash} AND a.manage_token_expires_at>now() LIMIT 1`);const x=r.rows[0] as any;if(!x)throw new NotFoundException('Cita no encontrada');return{clinicName:x.nombre_clinica,doctorName:x.doctor_nombre,start:new Date(x.inicio_programado).toISOString(),end:new Date(x.fin_programado).toISOString(),status:x.estatus,confirmationStatus:x.estado_confirmacion,timezone:x.timezone};}
   private async event(tx:Tx,id:string,event:'confirmed'|'cancelled'|'rescheduled'):Promise<void>{await tx.execute(sql`INSERT INTO messaging_events(appointment_id,event) VALUES(${id},${event})`);}
 }
 
 function hashToken(t:string):string{return createHash('sha256').update(t).digest('hex');}
 function normalizeName(s:string):string{return s.trim().toLowerCase().replace(/\s+/g,' ');}
-export function normalizePhone(s:string):string|null{const digits=s.replace(/\D/g,'');if(digits.length===10)return`+52${digits}`;if(digits.length===12&&digits.startsWith('52'))return`+${digits}`;if(digits.length>=11&&digits.length<=15)return`+${digits}`;return null;}
+export function normalizePhone(s:string):string|null{return normalizeMxPhone(s);}
 function isExclusion(e:unknown):boolean{return typeof e==='object'&&e!==null&&'code' in e&&(e as {code?:string}).code==='23P01';}
-function startTooSoon(d:Date|string,hours:number):boolean{return new Date(d).getTime()-Date.now()<hours*3600000;}
 function mapSettings(s:SettingsRow):BookingSettings{return{slug:s.slug,publicado:s.publicado,directorioPublico:s.directorio_publico,featureActiva:s.feature_activa,timezone:s.timezone,anticipacionMinimaHoras:s.anticipacion_minima_horas,horizonteDias:s.horizonte_dias,limiteCancelacionHoras:s.limite_cancelacion_horas,recordatoriosHoras:s.recordatorios_horas,avisoPrivacidadVersion:s.aviso_privacidad_version};}
 function slugify(s:string):string{return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50)||'clinica';}
 function validateTimezone(s:string):void{try{new Intl.DateTimeFormat('es-MX',{timeZone:s}).format();}catch{throw new BadRequestException('Zona horaria IANA inválida');}}
+
+export interface PublicContact { phone:string; email:string|null; channel:'whatsapp'|'email'|'ninguno'; whatsappOptIn:boolean }
+
+/**
+ * Validación estricta del formulario público (P0.5). El DTO ya garantiza
+ * forma; aquí se garantizan reglas de negocio: fecha real y plausible,
+ * teléfono interpretable, correo obligatorio por canal, consentimiento
+ * obligatorio para WhatsApp y opt-in forzado a false fuera de WhatsApp.
+ */
+export function validatePublicContact(p:{fechaNacimiento:string;telefono:string;email?:string|null;canalPreferido:'whatsapp'|'email'|'ninguno';whatsappOptIn:boolean},today:Date=new Date()):PublicContact{
+  const birth=validateBirthDate(p.fechaNacimiento,today);
+  if(birth==='formato') throw new BadRequestException('La fecha de nacimiento no existe en el calendario');
+  if(birth==='futura') throw new BadRequestException('La fecha de nacimiento no puede ser futura');
+  if(birth==='demasiado_antigua') throw new BadRequestException('Revisa la fecha de nacimiento');
+  const phone=normalizeMxPhone(p.telefono); if(!phone) throw new BadRequestException('Teléfono inválido');
+  const email=normalizeEmail(p.email);
+  if(p.canalPreferido==='email'&&!email) throw new BadRequestException('Indica un correo para recibir avisos por correo');
+  if(p.canalPreferido==='whatsapp'&&!p.whatsappOptIn) throw new BadRequestException('Para recibir avisos por WhatsApp debes autorizarlo');
+  return {phone,email,channel:p.canalPreferido,whatsappOptIn:p.canalPreferido==='whatsapp'&&p.whatsappOptIn};
+}

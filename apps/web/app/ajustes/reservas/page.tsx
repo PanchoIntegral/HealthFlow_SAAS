@@ -245,15 +245,28 @@ export default function BookingSettingsPage() {
     } finally { finishAction(); }
   }
 
-  async function retryDelivery(deliveryId: string) {
+  async function retryDelivery(deliveryId: string, confirmResend = false) {
+    if (!token) return;
+    if (confirmResend && !window.confirm('Este mensaje pudo haberse enviado. Si lo reenvías y sí llegó, el paciente lo recibirá dos veces. ¿Verificaste en el proveedor que no salió?')) return;
+    beginAction(`delivery-${deliveryId}`);
+    try {
+      await api.retryDelivery(token, deliveryId, confirmResend);
+      setDeliveries(await api.messagingDeliveries(token));
+      setSaved('El mensaje se programó para enviarse nuevamente.');
+    } catch (caught) {
+      setError(messageFrom(caught, 'No se pudo reenviar el mensaje.'));
+    } finally { finishAction(); }
+  }
+
+  async function markDeliverySent(deliveryId: string) {
     if (!token) return;
     beginAction(`delivery-${deliveryId}`);
     try {
-      await api.retryDelivery(token, deliveryId);
+      await api.markDeliverySent(token, deliveryId);
       setDeliveries(await api.messagingDeliveries(token));
-      setSaved('El mensaje se envió nuevamente.');
+      setSaved('El mensaje quedó registrado como enviado.');
     } catch (caught) {
-      setError(messageFrom(caught, 'No se pudo reenviar el mensaje.'));
+      setError(messageFrom(caught, 'No se pudo actualizar el mensaje.'));
     } finally { finishAction(); }
   }
 
@@ -349,7 +362,7 @@ export default function BookingSettingsPage() {
 
         <section id="mensajes" className="scroll-mt-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
           <SectionHeader number="3" title="Confirmaciones y recordatorios" description="Revisa únicamente los mensajes que requieren atención."/>
-          <DeliveryPanel deliveries={deliveries} busy={busy} onRetry={retryDelivery}/>
+          <DeliveryPanel deliveries={deliveries} busy={busy} onRetry={retryDelivery} onMarkSent={markDeliverySent}/>
         </section>
       </>}
     </main>
@@ -400,11 +413,16 @@ function ServiceRow({ service, doctorNames, busy, onChange, onDeactivate }: { se
   return <article className="rounded-xl border border-slate-200 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className={`font-bold ${service.activo ? 'text-slate-900' : 'text-slate-500 line-through'}`}>{service.nombre}</h3><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.className}`}>{status.text}</span></div><p className="mt-1 text-sm text-slate-500">{service.duracionMinutos} min{service.precioCentavos != null ? ` · ${formatPrice(service.precioCentavos)}` : ''}</p><p className="mt-1 text-xs text-slate-500">{doctorNames.length ? `Atiende: ${doctorNames.join(', ')}` : 'Sin profesionales asignados'}</p></div><div className="flex shrink-0 flex-wrap gap-2">{!service.activo ? <button type="button" disabled={busy} className={secondaryButton} onClick={() => onChange(service, { activo: true, publico: false })}>Reactivar</button> : <><button type="button" disabled={busy} className={secondaryButton} onClick={() => onChange(service, { publico: !service.publico })}>{service.publico ? 'Pausar reservas' : 'Publicar'}</button><button type="button" disabled={busy} className="min-h-10 px-2 text-sm font-semibold text-red-700 hover:underline" onClick={() => onDeactivate(service)}>Dar de baja</button></>}</div></div></article>;
 }
 
-function DeliveryPanel({ deliveries, busy, onRetry }: { deliveries: MessagingDelivery[]; busy: string; onRetry: (id: string) => void }) {
-  const needsAttention = deliveries.filter((delivery) => ['failed', 'dead'].includes(delivery.status));
-  if (!needsAttention.length) return <div className="mt-5 flex items-start gap-3 rounded-xl bg-emerald-50 p-4"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-100 font-bold text-emerald-700">✓</span><div><p className="text-sm font-semibold text-emerald-900">Los mensajes están al corriente</p><p className="mt-0.5 text-xs text-emerald-800">No hay confirmaciones ni recordatorios pendientes de reenvío.</p></div></div>;
-  return <div className="mt-5 space-y-3">{needsAttention.map((delivery) => <div key={delivery.id} className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-red-900">No se entregó {deliveryLabel(delivery.kind).toLowerCase()} por {delivery.channel === 'whatsapp' ? 'WhatsApp' : 'correo'}</p><p className="mt-1 text-xs text-red-700">Se intentó {delivery.attempts} {delivery.attempts === 1 ? 'vez' : 'veces'}.</p></div><button type="button" className={secondaryButton} disabled={busy === `delivery-${delivery.id}`} onClick={() => onRetry(delivery.id)}>{busy === `delivery-${delivery.id}` ? 'Reenviando…' : 'Reintentar envío'}</button></div>)}</div>;
+function DeliveryPanel({ deliveries, busy, onRetry, onMarkSent }: { deliveries: MessagingDelivery[]; busy: string; onRetry: (id: string, confirmResend?: boolean) => void; onMarkSent: (id: string) => void }) {
+  const failed = deliveries.filter((delivery) => ['failed', 'dead'].includes(delivery.status));
+  const uncertain = deliveries.filter((delivery) => delivery.status === 'uncertain');
+  if (!failed.length && !uncertain.length) return <div className="mt-5 flex items-start gap-3 rounded-xl bg-emerald-50 p-4"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-100 font-bold text-emerald-700">✓</span><div><p className="text-sm font-semibold text-emerald-900">Los mensajes están al corriente</p><p className="mt-0.5 text-xs text-emerald-800">No hay confirmaciones ni recordatorios pendientes de revisión.</p></div></div>;
+  return <div className="mt-5 space-y-3">
+    {uncertain.map((delivery) => <div key={delivery.id} className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-amber-900">No sabemos si se entregó {deliveryLabel(delivery.kind).toLowerCase()} por {channelLabel(delivery.channel)}</p><p className="mt-1 text-xs text-amber-800">El proveedor no respondió a tiempo. Revisa en {delivery.channel === 'whatsapp' ? 'Twilio' : 'Resend'} si salió antes de decidir; reenviar sin revisar puede duplicar el mensaje al paciente.</p></div><div className="flex shrink-0 gap-2"><button type="button" className={secondaryButton} disabled={busy === `delivery-${delivery.id}`} onClick={() => onMarkSent(delivery.id)}>Sí se envió</button><button type="button" className={secondaryButton} disabled={busy === `delivery-${delivery.id}`} onClick={() => onRetry(delivery.id, true)}>{busy === `delivery-${delivery.id}` ? 'Procesando…' : 'No salió, reenviar'}</button></div></div>)}
+    {failed.map((delivery) => <div key={delivery.id} className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-red-900">No se entregó {deliveryLabel(delivery.kind).toLowerCase()} por {channelLabel(delivery.channel)}</p><p className="mt-1 text-xs text-red-700">Se intentó {delivery.attempts} {delivery.attempts === 1 ? 'vez' : 'veces'}.{delivery.status === 'dead' ? ' El proveedor rechazó el destino o se agotaron los reintentos.' : ''}</p></div><button type="button" className={secondaryButton} disabled={busy === `delivery-${delivery.id}`} onClick={() => onRetry(delivery.id)}>{busy === `delivery-${delivery.id}` ? 'Reenviando…' : 'Reintentar envío'}</button></div>)}
+  </div>;
 }
+function channelLabel(channel: MessagingDelivery['channel']) { return channel === 'whatsapp' ? 'WhatsApp' : 'correo'; }
 
 function SectionLink({ href, number, title, description }: { href: string; number: string; title: string; description: string }) { return <a href={href} className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 transition hover:border-blue-300 hover:shadow-sm"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-100 text-sm font-bold text-blue-700 group-hover:bg-blue-700 group-hover:text-white">{number}</span><span><span className="block text-sm font-bold text-slate-900">{title}</span><span className="block text-xs text-slate-500">{description}</span></span></a>; }
 function SectionHeader({ number, title, description }: { number: string; title: string; description: string }) { return <div className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">{number}</span><div><h2 className="text-lg font-bold text-slate-950">{title}</h2><p className="mt-0.5 text-sm text-slate-500">{description}</p></div></div>; }

@@ -28,6 +28,12 @@ export class PublicBookingController {
   @Get('appointments/:token') @Throttle({default:{limit:30,ttl:60000},burst:{limit:5,ttl:1000}})
   get(@Param('token')token:string):Promise<PublicAppointmentSummary>{return this.booking.getAppointment(token);}
 
+  @Get('appointments/:token/availability') @Throttle({default:{limit:30,ttl:60000},burst:{limit:5,ttl:1000}})
+  appointmentAvailability(@Param('token')token:string,@Query('doctorId')doctorId?:string,@Query('from')from?:string,@Query('to')to?:string):Promise<AvailabilitySlot[]>{
+    if(!from||!to) throw new BadRequestException('from y to son requeridos');
+    return this.booking.appointmentAvailability(token,doctorId,from,to);
+  }
+
   @Post('appointments/:token/confirm') @Throttle({default:{limit:10,ttl:60000}})
   confirm(@Param('token')token:string):Promise<PublicAppointmentSummary>{return this.booking.confirm(token);}
 

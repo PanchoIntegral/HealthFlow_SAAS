@@ -1,11 +1,15 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
+/** Normaliza antes de validar: el paciente escribe con espacios y mayúsculas. */
+const trimLower=()=>Transform(({value})=>typeof value==='string'?value.trim().toLowerCase():value);
+const trim=()=>Transform(({value})=>typeof value==='string'?value.trim():value);
+
 export class PublicPatientDto {
-  @IsString() @MinLength(2) @MaxLength(160) nombre!:string;
-  @Matches(/^\d{4}-\d{2}-\d{2}$/) fechaNacimiento!:string;
-  @IsString() @MinLength(8) @MaxLength(24) telefono!:string;
-  @IsOptional() @IsEmail() @MaxLength(254) email?:string;
+  @trim() @IsString() @MinLength(2) @MaxLength(160) nombre!:string;
+  @trim() @Matches(/^\d{4}-\d{2}-\d{2}$/) fechaNacimiento!:string;
+  @trim() @IsString() @MinLength(8) @MaxLength(24) telefono!:string;
+  @trimLower() @IsOptional() @IsEmail() @MaxLength(254) email?:string;
   @IsIn(['whatsapp','email','ninguno']) canalPreferido!:'whatsapp'|'email'|'ninguno';
   @IsBoolean() whatsappOptIn!:boolean;
   @IsIn([true]) privacyNoticeAccepted!:true;

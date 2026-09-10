@@ -138,6 +138,7 @@ export const api = {
   publicAvailability: (slug:string,serviceId:string,doctorId:string|undefined,from:string,to:string) => request<AvailabilitySlot[]>(`/public/booking/${encodeURIComponent(slug)}/availability?serviceId=${encodeURIComponent(serviceId)}${doctorId?`&doctorId=${encodeURIComponent(doctorId)}`:''}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   createPublicAppointment: (slug:string,body:CreatePublicAppointmentRequest) => request<PublicAppointmentSummary>(`/public/booking/${encodeURIComponent(slug)}/appointments`,{method:'POST',body:JSON.stringify(body)}),
   publicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}`),
+  publicAppointmentAvailability: (manageToken:string,from:string,to:string,doctorId?:string) => request<AvailabilitySlot[]>(`/public/appointments/${encodeURIComponent(manageToken)}/availability?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${doctorId?`&doctorId=${encodeURIComponent(doctorId)}`:''}`),
   confirmPublicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/confirm`,{method:'POST'}),
   cancelPublicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/cancel`,{method:'POST'}),
   reschedulePublicAppointment: (manageToken:string,start:string,doctorId?:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/reschedule`,{method:'POST',body:JSON.stringify({start,doctorId})}),
@@ -155,7 +156,8 @@ export const api = {
   createBookingException: (token:string,body:{doctorId:string;fecha:string;disponible:boolean;nota?:string}) => request<{id:string}>('/booking/exceptions',{method:'POST',token,body:JSON.stringify(body)}),
   messagingDeliveries: (token:string) => request<MessagingDelivery[]>('/messaging/deliveries',{token}),
   bookingMetrics: (token:string) => request<BookingMetrics>('/messaging/metrics',{token}),
-  retryDelivery: (token:string,id:string) => request<{ok:true}>(`/messaging/deliveries/${id}/retry`,{method:'POST',token}),
+  retryDelivery: (token:string,id:string,confirmResend=false) => request<{ok:true}>(`/messaging/deliveries/${id}/retry`,{method:'POST',token,body:JSON.stringify({confirmResend})}),
+  markDeliverySent: (token:string,id:string) => request<{ok:true}>(`/messaging/deliveries/${id}/mark-sent`,{method:'POST',token}),
   login: (body: LoginRequest) =>
     request<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
 

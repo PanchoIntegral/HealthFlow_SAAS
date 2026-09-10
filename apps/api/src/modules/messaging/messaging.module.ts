@@ -6,9 +6,10 @@ import { MessagingWorker } from './worker.service';
 import { MESSAGE_SCHEDULER, MESSAGING_PROVIDER } from './messaging.types';
 import { MessagingAdminController, MessagingWebhookController } from './messaging.controller';
 import { AuthModule } from '../auth/auth.module';
+import { AuditModule } from '../../common/audit/audit.module';
 
 @Module({
-  imports:[AuthModule],
+  imports:[AuthModule,AuditModule],
   controllers:[MessagingWebhookController,MessagingAdminController],
   providers:[OutboxService,MessagingWorker,FakeMessagingProvider,LiveMessagingProvider,
     {provide:MESSAGE_SCHEDULER,useExisting:OutboxService},

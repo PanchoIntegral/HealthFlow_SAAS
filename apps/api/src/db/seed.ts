@@ -15,6 +15,8 @@ const PASSWORD = 'password123';
 async function main() {
   const c = new Client({ connectionString: env.adminDatabaseUrl });
   await c.connect();
+  await c.query('BEGIN');
+  try {
   const hash = await bcrypt.hash(PASSWORD, 10);
 
   // Limpieza de datos de demo (respeta FKs por CASCADE desde tenants).
@@ -56,7 +58,7 @@ async function main() {
   ] as const;
 
   const patientIdsA: string[] = [];
-  for (const [nombre, fnac, motivo] of patientsA) {
+  for (const [index, [nombre, fnac, motivo]] of patientsA.entries()) {
     const patientId = (
       await c.query(
         `INSERT INTO patients(tenant_id,nombre,fecha_nacimiento) VALUES ($1,$2,$3) RETURNING id`,
@@ -68,8 +70,8 @@ async function main() {
     // Cita agendada para hoy (lista para check-in).
     await c.query(
       `INSERT INTO appointments(tenant_id,patient_id,doctor_id,motivo,inicio_programado,fin_programado,estatus)
-       VALUES ($1,$2,$3,$4, now() + interval '30 min', now() + interval '50 min', 'agendada')`,
-      [tenantA, patientId, medicoA, motivo],
+       VALUES ($1,$2,$3,$4, now() + ($5 * interval '30 min'), now() + (($5 * 30 + 20) * interval '1 min'), 'agendada')`,
+      [tenantA, patientId, medicoA, motivo, index + 1],
     );
   }
 
@@ -171,7 +173,7 @@ async function main() {
     [tenantB, patientB, medicoB],
   );
 
-  await c.end();
+  await c.query('COMMIT');
 
   console.log(`
 ✓ Seed completo.
@@ -185,6 +187,12 @@ async function main() {
     médico     dr.lopez@sur.mx         /  ${PASSWORD}
     1 paciente confidencial (NO debe verse desde Clínica Norte)
 `);
+  } catch (error) {
+    await c.query('ROLLBACK');
+    throw error;
+  } finally {
+    await c.end();
+  }
 }
 
 main().catch((err) => {

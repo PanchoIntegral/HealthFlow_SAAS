@@ -14,6 +14,7 @@ describe('reserva pública y privacidad de mensajería', () => {
       timezone: 'America/Tijuana',
       kind: 'reminder', startsAt: new Date('2026-09-10T17:00:00Z'),
       manageUrl: 'https://app.example/cita/token',
+      idempotencyKey: 'cita:v1:reminder:24h:whatsapp',
     });
     expect(body).toContain('Clínica Sonrisa, mediante HealthFlow');
     expect(body).toContain('https://app.example/cita/token');

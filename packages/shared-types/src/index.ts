@@ -2124,15 +2124,23 @@ export interface PublicAppointmentSummary {
   end: string;
   status: AppointmentStatus;
   confirmationStatus: ConfirmationStatus;
+  /** Zona IANA de la clínica; todas las horas públicas deben renderizarse aquí. */
+  timezone: string;
   manageUrl?: string;
 }
+
+export type MessagingDeliveryStatus =
+  | 'pending' | 'processing' | 'sent' | 'delivered' | 'failed' | 'dead'
+  | 'cancelled' | 'bounced' | 'complained'
+  /** El proveedor pudo haber aceptado el mensaje; requiere decisión humana. */
+  | 'uncertain';
 
 export interface MessagingDelivery {
   id: string;
   appointmentId: string;
   channel: 'whatsapp' | 'email';
   kind: 'confirmation' | 'reminder' | 'rescheduled' | 'cancelled';
-  status: string;
+  status: MessagingDeliveryStatus;
   scheduledAt: string;
   attempts: number;
   lastErrorCode: string | null;
@@ -4214,3 +4222,60 @@ export const MEDICAMENTO_RECETADO_VACIO: MedicamentoRecetado = {
   indicaciones: null,
   fraccion: null,
 };
+
+// ── Normalización y validación de contacto (P0.5) ────────────────
+// Una sola implementación para API y web: el formulario público, la ficha de
+// recepción y el importador deben rechazar y normalizar exactamente igual.
+
+/** Edad máxima admitida en una fecha de nacimiento. Generosa a propósito. */
+export const MAX_PATIENT_AGE_YEARS = 130;
+
+/** `trim().toLowerCase()`; cadena vacía se convierte en `null`. */
+export function normalizeEmail(input: string | null | undefined): string | null {
+  const value = (input ?? '').trim().toLowerCase();
+  return value ? value : null;
+}
+
+/**
+ * Normaliza un teléfono a E.164. Reglas mexicanas:
+ *  - 10 dígitos → +52 (nacional).
+ *  - prefijos nacionales antiguos 01 / 044 / 045 + 10 dígitos → se descartan.
+ *  - 52 + 10 dígitos, con o sin `+` → +52…
+ *  - 11 a 15 dígitos con `+` → internacional tal cual.
+ * Devuelve `null` cuando no puede interpretarse.
+ */
+export function normalizeMxPhone(input: string | null | undefined): string | null {
+  const raw = (input ?? '').trim();
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+52${digits}`;
+  if (digits.length === 12 && digits.startsWith('01')) return `+52${digits.slice(2)}`;
+  if (digits.length === 12 && digits.startsWith('52')) return `+${digits}`;
+  if (digits.length === 13 && (digits.startsWith('044') || digits.startsWith('045'))) return `+52${digits.slice(3)}`;
+  if (digits.length === 13 && digits.startsWith('521')) return `+52${digits.slice(3)}`; // formato WhatsApp antiguo 521…
+  if (raw.startsWith('+') && digits.length >= 11 && digits.length <= 15) return `+${digits}`;
+  return null;
+}
+
+/** `YYYY-MM-DD` que además existe en el calendario (rechaza 2026-02-31). */
+export function isRealCalendarDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (mo < 1 || mo > 12 || d < 1) return false;
+  const daysInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  return d <= daysInMonth;
+}
+
+export type BirthDateProblem = 'formato' | 'futura' | 'demasiado_antigua';
+
+/** Valida una fecha de nacimiento contra `today` (por defecto, hoy en UTC). */
+export function validateBirthDate(value: string, today: Date = new Date()): BirthDateProblem | null {
+  if (!isRealCalendarDate(value)) return 'formato';
+  const birth = new Date(`${value}T00:00:00Z`).getTime();
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  if (birth > todayUtc) return 'futura';
+  const oldest = Date.UTC(today.getUTCFullYear() - MAX_PATIENT_AGE_YEARS, today.getUTCMonth(), today.getUTCDate());
+  if (birth < oldest) return 'demasiado_antigua';
+  return null;
+}

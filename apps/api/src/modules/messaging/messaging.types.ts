@@ -11,11 +11,31 @@ export interface ProviderMessage {
   kind: MessageKind;
   startsAt: Date;
   manageUrl: string;
+  /**
+   * Clave única del trabajo de outbox (`outbound_messages.idempotency_key`).
+   * El worker la entrega tal cual; el adaptador la usa como clave de
+   * idempotencia del proveedor cuando éste la soporta. Nunca se deriva aquí.
+   */
+  idempotencyKey: string;
   statusCallbackUrl?: string;
 }
 
+/**
+ * Resultado clasificado de un intento de envío.
+ *  - accepted:  el proveedor devolvió un identificador.
+ *  - retryable: rechazo seguro antes de aceptar (429, 5xx, conexión rechazada).
+ *  - permanent: destino o plantilla inválidos; reintentar repetiría el rechazo.
+ *  - uncertain: timeout o conexión cortada; no se sabe si aceptó. Nunca se
+ *               reintenta automáticamente: lo decide un administrador.
+ */
+export type SendResult =
+  | { outcome: 'accepted'; providerMessageId: string }
+  | { outcome: 'retryable'; code: string }
+  | { outcome: 'permanent'; code: string }
+  | { outcome: 'uncertain'; code: string };
+
 export interface MessagingProvider {
-  send(message: ProviderMessage): Promise<{ providerMessageId: string }>;
+  send(message: ProviderMessage): Promise<SendResult>;
 }
 
 export const MESSAGING_PROVIDER = Symbol('MESSAGING_PROVIDER');
