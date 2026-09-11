@@ -120,24 +120,31 @@ Alternativa descartada: tabla + endpoint protegido por un rol `superadmin`. Aña
 
 ### D3. Una sola función de dominio decide
 
-```ts
-type Capacidad =
-  | { disponible: true }
-  | { disponible: false; razon: 'suscripcion' | 'entitlement' | 'rollout' | 'configuracion' };
+**Leer y escribir no son la misma pregunta**, así que la función no devuelve un booleano:
 
-function capacidadEfectiva(entrada: {
-  suscripcion: EstadoSuscripcion;
-  entitlement: EstadoEntitlement;   // del mapa de plan o de la tabla
-  rollout: boolean;                 // tenant_feature_flags (operación HealthFlow)
-  configuracion: boolean;           // el titular decidió usarlo
-}, ahora: Date): Capacidad;
+```ts
+type ModoAcceso = 'lectura' | 'escritura';
+
+type Capacidad =
+  | { acceso: 'completo' }
+  | { acceso: 'solo_lectura'; razon: RazonNoDisponible }   // sólo la suscripción llega aquí
+  | { acceso: 'ninguno'; razon: RazonNoDisponible };
+
+function capacidadEfectiva(entrada: EntradaCapacidad, ahora: Date): Capacidad;
+function permite(capacidad: Capacidad, modo: ModoAcceso): boolean;
 ```
+
+Un módulo sin contratar, en rollback o sin activar **desaparece entero**: no hay nada que consultar. Pero una clínica que se atrasó en el pago **conserva la lectura y pierde la escritura** — la misma decisión que ya gobierna el expediente clínico, y por el mismo motivo. Un booleano único obligaría a cada punto de aplicación a reponer esa distinción por su cuenta, que es justo lo que esta función existe para evitar.
+
+De ahí sale también el orden: **la suscripción se evalúa al final**. Si fuera antes, a quien no contrató el módulo le diríamos "regulariza tu pago" por algo que de todos modos no compró.
+
+El status HTTP se deriva de la razón, no del punto que la detecta: `suscripcion` → **402** (el módulo existe, falta pagar), el resto → **404**. Un solo error, `ModuloNoDisponibleError`, con el status calculado en su constructor.
 
 Pura, sin Nest ni SQL, probada como tabla de verdad. **Tres consumidores obligatorios**, y ninguno reimplementa la regla:
 
-1. `FeatureFlagInterceptor` (renombrado a `CapacidadInterceptor`) — rutas HTTP.
-2. `RecallUseCases` — `asegurarCapacidad(tx, 'dental_recalls')` al inicio de cada caso de uso, porque el worker no pasa por interceptores.
-3. `AppEventsDispatcher` — un consumidor cuyo módulo no está disponible **aplaza** el evento (no lo cierra ni lo falla).
+1. `CapacidadInterceptor` — rutas HTTP. Deduce el modo del método (GET/HEAD/OPTIONS = lectura), igual que `SuscripcionInterceptor`.
+2. `RecallUseCases` — `asegurar(tx, 'dental_recalls', modo)` al inicio de cada caso de uso, porque el worker no pasa por interceptores. El `modo` es **obligatorio**: obliga a cada caso de uso a declarar si lee o escribe.
+3. `AppEventsDispatcher` — evalúa siempre en modo `'escritura'`, porque un consumidor existe para producir un efecto; si no se permite, **aplaza** el evento (no lo cierra ni lo falla).
 
 ### Reconciliación: lo que pasó mientras el módulo estaba apagado
 
@@ -222,11 +229,11 @@ Fase A dejó el bus sin productores. Recall necesita instrumentar tres casos de 
 | marcar `no_asistio` (nuevo, ver D7) | `appointment.no_show` | `appointmentId`, `patientId` |
 | `BookingService.createPublicAppointment` | `appointment.scheduled` | igual que el interno, con `origen: 'publico'` |
 | `BookingService.cancel` | `appointment.cancelled` | `appointmentId`, `patientId` |
-| `BookingService.reschedule` | `appointment.cancelled` + `appointment.scheduled` | la reprogramación es reemplazo, no cancelación suelta |
+| `BookingService.reschedule` y la reprogramación interna | `appointment.rescheduled` | `appointmentId`, `patientId`, `doctorId`, `inicioAnterior`, `inicioNuevo` |
 
 **Las citas públicas son el camino que cierra el ciclo.** El paciente que recibe un recall reserva por `/reservar/{slug}`, no por recepción: si `PublicBookingService` no emite, el recall nunca pasa a `scheduled` y la métrica de conversión queda en cero justo en el caso que el módulo existe para medir. `BookingService` no usa casos de uso ni repositorios (es un servicio plano con SQL crudo), así que la emisión va dentro de su `withToken`/transacción, igual que el resto de su escritura.
 
-Sobre `reschedule`: emitir cancelación + alta con el **mismo `appointmentId`** deja que `recalls.reabrir` detecte que existe reemplazo y no reactive el contacto. Es exactamente el caso de aceptación «una cita de reemplazo evita reactivar contacto».
+**Sobre `reschedule`: un solo evento, no un par.** La versión anterior de este ADR proponía emitir `appointment.cancelled` + `appointment.scheduled` con el mismo `appointmentId` y dejar que cada consumidor dedujera que hubo reemplazo. Eso obliga a cada consumidor a correlacionar dos eventos dentro de una ventana temporal, y basta con que uno escuche sólo `appointment.cancelled` para que reabra un seguimiento que nunca debió reabrirse — con la cita nueva ya en la agenda. Un `appointment.rescheduled` hace la intención explícita y nadie tiene que adivinar. Es el caso de aceptación «una cita de reemplazo evita reactivar contacto», resuelto en el contrato en vez de en cada consumidor.
 
 `asegurarPayloadDeEvento` ya prohíbe nombre, teléfono, correo y texto clínico: estos payloads pasan porque son sólo UUIDs y una fecha ISO.
 
@@ -351,6 +358,10 @@ GRANT UPDATE (habilitado, habilitado_at, habilitado_por, notas, updated_at) ON �
 ```
 
 Lo detectó la prueba «la API tampoco puede levantar un rollback de operación», que sin ella habría pasado por buena una barrera inexistente.
+
+**`DELETE` seguía concedido sobre `tenant_feature_flags`.** Se revocaron `INSERT` y `UPDATE` y se volvieron a conceder por columna, pero `DELETE` quedó vivo desde el `GRANT` de `0046`. Borrar la fila era la puerta trasera a todo lo anterior: se lleva por delante el interruptor de rollback —la fila vuelve a nacer con `rollout_habilitado = true`— y el "activo desde". Lección: al recortar permisos hay que enumerar los cuatro verbos, no los que parecen peligrosos.
+
+**`Promise.all` sobre una transacción.** Las lecturas de capacidad se lanzaban en paralelo sobre el mismo `tx`. Una transacción es UNA conexión y node-postgres no multiplexa: dos consultas en vuelo se pisan. Se volvieron secuenciales y, de paso, plan y estado de cobro se leen en una sola consulta porque salen de la misma fila de `tenants`.
 
 **La vista calculaba «contratado» con un predicado propio.** `contratado: entitlement !== null` mostraba como contratado un derecho `suspended` que la capacidad efectiva ya estaba negando: la pantalla decía una cosa y la API otra. Se exportó `tieneDerechoVigente` y ahora la vista y la decisión usan **la misma función**. Regla para lo que viene: si un campo de la respuesta responde a la misma pregunta que una regla de dominio, tiene que salir de esa regla, no de una reimplementación al lado.
 

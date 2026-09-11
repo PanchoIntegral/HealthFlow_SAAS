@@ -18,9 +18,13 @@ import { debeRestringir } from '../subscription/debe-restringir';
 import { esSubscriptionStatus } from '../subscription/subscription-status';
 import {
   capacidadEfectiva,
+  estaDisponible,
+  permite,
+  razonDe,
   tieneDerechoVigente,
   type Capacidad,
   type EntradaCapacidad,
+  type ModoAcceso,
 } from './capacidad';
 import { ModuloDesconocidoError, ModuloNoDisponibleError } from './capacidad.errors';
 
@@ -59,23 +63,40 @@ export class CapacidadService {
     private readonly ctx: RequestContextService,
   ) {}
 
-  /** Dentro de la transacción de un caso de uso o de un consumidor. */
+  /**
+   * Dentro de la transacción de un caso de uso o de un consumidor.
+   *
+   * Las dos lecturas van SECUENCIALES, no en `Promise.all`: comparten la misma
+   * conexión de PostgreSQL (es una transacción, no un pool), y node-postgres
+   * no multiplexa — dos consultas en vuelo sobre el mismo cliente se pisan.
+   * Además serían dos viajes en paralelo para ahorrar microsegundos en algo
+   * que ya son dos lecturas por índice.
+   */
   async evaluar(tx: Tx, modulo: FeatureFlag, ahora = new Date()): Promise<Capacidad> {
-    const [entradas, plan, suscripcionVigente] = await Promise.all([
-      this.leerEstados(tx),
-      this.planKey(tx),
-      this.suscripcionVigente(tx, ahora),
-    ]);
+    const clinica = await this.leerClinica(tx, ahora);
+    const estados = await this.leerEstados(tx);
     return capacidadEfectiva(
-      entrada(modulo, entradas.get(modulo), plan, suscripcionVigente),
+      entrada(modulo, estados.get(modulo), clinica.plan, clinica.suscripcionVigente),
       ahora,
     );
   }
 
-  /** Igual que `evaluar`, pero corta el caso de uso si no está disponible. */
-  async asegurar(tx: Tx, modulo: FeatureFlag, ahora = new Date()): Promise<void> {
+  /**
+   * Igual que `evaluar`, pero corta el caso de uso si el modo pedido no está
+   * permitido. `modo` es obligatorio a propósito: obliga a cada caso de uso a
+   * declarar si lee o escribe, que es justo la distinción que hace que una
+   * clínica con el pago atrasado siga pudiendo consultar su historial.
+   */
+  async asegurar(
+    tx: Tx,
+    modulo: FeatureFlag,
+    modo: ModoAcceso,
+    ahora = new Date(),
+  ): Promise<void> {
     const capacidad = await this.evaluar(tx, modulo, ahora);
-    if (!capacidad.disponible) throw new ModuloNoDisponibleError(modulo, capacidad.razon);
+    if (!permite(capacidad, modo)) {
+      throw new ModuloNoDisponibleError(modulo, razonDe(capacidad)!);
+    }
   }
 
   /** Para quien no tiene transacción abierta (el interceptor de rutas). */
@@ -86,14 +107,11 @@ export class CapacidadService {
   /** El catálogo COMPLETO con sus cuatro ejes: es la pantalla de Ajustes. */
   async listar(ahora = new Date()): Promise<ModuloView[]> {
     return this.tenantDb.run(async (tx) => {
-      const [estados, plan, suscripcionVigente] = await Promise.all([
-        this.leerEstados(tx),
-        this.planKey(tx),
-        this.suscripcionVigente(tx, ahora),
-      ]);
+      const clinica = await this.leerClinica(tx, ahora);
+      const estados = await this.leerEstados(tx);
       return FEATURE_FLAGS.map((modulo) => {
         const fila = estados.get(modulo);
-        const datos = entrada(modulo, fila, plan, suscripcionVigente);
+        const datos = entrada(modulo, fila, clinica.plan, clinica.suscripcionVigente);
         const capacidad = capacidadEfectiva(datos, ahora);
         const hasta = fila?.entitlement_hasta ?? null;
         const configuradoAt = fila?.configurado_at ?? null;
@@ -103,12 +121,12 @@ export class CapacidadService {
           // Mismo predicado que usa la decisión: un derecho suspendido o
           // vencido NO se muestra como contratado.
           contratado: tieneDerechoVigente(datos.entitlement, ahora),
-          fuente: fuenteDe(fila, plan, modulo),
+          fuente: fuenteDe(fila, clinica.plan, modulo),
           vigenciaHasta: hasta ? new Date(hasta).toISOString() : null,
           rollout: datos.rollout,
           configuracion: datos.configuracion,
-          disponible: capacidad.disponible,
-          razon: capacidad.disponible ? null : capacidad.razon,
+          disponible: estaDisponible(capacidad),
+          razon: razonDe(capacidad),
           configuradoAt: configuradoAt ? new Date(configuradoAt).toISOString() : null,
           notas: fila?.notas ?? null,
         } satisfies ModuloView;
@@ -187,25 +205,32 @@ export class CapacidadService {
     return new Map(filas.map((f) => [f.module_key, f]));
   }
 
-  private async planKey(tx: Tx): Promise<string> {
-    const row = (await tx.execute(sql`SELECT plan FROM tenants LIMIT 1`)).rows[0] as
-      | { plan: string }
-      | undefined;
-    return row?.plan ?? 'individual';
-  }
-
-  private async suscripcionVigente(tx: Tx, ahora: Date): Promise<boolean> {
+  /**
+   * Plan y estado de cobro en UNA lectura: los dos salen de la misma fila de
+   * `tenants`, y antes eran dos consultas que además viajaban en paralelo
+   * sobre la misma transacción. Sin `WHERE`: RLS ya deja ver sólo la clínica
+   * en curso (mismo patrón que PlanService y EstadoSuscripcionReader).
+   */
+  private async leerClinica(
+    tx: Tx,
+    ahora: Date,
+  ): Promise<{ plan: string; suscripcionVigente: boolean }> {
     const row = (
-      await tx.execute(sql`SELECT subscription_status, grace_until FROM tenants LIMIT 1`)
-    ).rows[0] as { subscription_status: string; grace_until: Date | string | null } | undefined;
+      await tx.execute(sql`SELECT plan, subscription_status, grace_until FROM tenants LIMIT 1`)
+    ).rows[0] as
+      | { plan: string; subscription_status: string; grace_until: Date | string | null }
+      | undefined;
     const status = row?.subscription_status ?? 'none';
-    return !debeRestringir(
-      {
-        status: esSubscriptionStatus(status) ? status : 'none',
-        graceUntil: row?.grace_until ? new Date(row.grace_until) : null,
-      },
-      ahora,
-    );
+    return {
+      plan: row?.plan ?? 'individual',
+      suscripcionVigente: !debeRestringir(
+        {
+          status: esSubscriptionStatus(status) ? status : 'none',
+          graceUntil: row?.grace_until ? new Date(row.grace_until) : null,
+        },
+        ahora,
+      ),
+    };
   }
 }
 

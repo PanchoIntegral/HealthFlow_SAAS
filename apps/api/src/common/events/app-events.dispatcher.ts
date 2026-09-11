@@ -5,6 +5,7 @@ import { DB } from '../../db/drizzle.module';
 import { runInTenant, type Database } from '../../db/drizzle';
 import { APP_EVENT_CONSUMER, type AppEventConsumer, type AppEventEnvelope } from './app-event.types';
 import { CapacidadService } from '../capacidad/capacidad.service';
+import { permite, razonDe } from '../capacidad/capacidad';
 
 interface FilaReclamada {
   id: string;
@@ -80,10 +81,14 @@ export class AppEventsDispatcher {
           // cierra ni se falla: se aplaza, y el día que el módulo vuelva el
           // reclamo lo recoge y se reconcilia solo.
           if (consumidor.moduloRequerido) {
+            // 'escritura' siempre: un consumidor existe para producir un
+            // efecto. Una clínica con el pago atrasado conserva la lectura del
+            // módulo, pero no se le generan recalls nuevos ni se le manda nada
+            // al paciente — eso se aplaza hasta que regularice.
             const capacidad = await this.capacidad.evaluar(tx, consumidor.moduloRequerido);
-            if (!capacidad.disponible) {
+            if (!permite(capacidad, 'escritura')) {
               await tx.execute(
-                sql`SELECT defer_app_event(${fila.id}, ${consumidor.nombre}, ${`modulo_${capacidad.razon}`}, interval '1 day')`,
+                sql`SELECT defer_app_event(${fila.id}, ${consumidor.nombre}, ${`modulo_${razonDe(capacidad)}`}, interval '1 day')`,
               );
               return false;
             }

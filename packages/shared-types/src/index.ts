@@ -4377,6 +4377,16 @@ export interface ModuloView {
 
 export const APP_EVENT_TYPES = [
   'appointment.scheduled',
+  /**
+   * Reprogramación: UN evento, no una cancelación seguida de un alta.
+   *
+   * Emitir el par obligaría a cada consumidor a adivinar, dentro de la ventana
+   * entre ambos, si la cancelación es definitiva o tiene reemplazo — y un
+   * consumidor que sólo escuche `appointment.cancelled` reabriría un
+   * seguimiento que nunca debió reabrirse. Con un solo evento la intención es
+   * explícita y nadie tiene que correlacionar nada.
+   */
+  'appointment.rescheduled',
   'appointment.cancelled',
   'appointment.no_show',
   'appointment.completed',

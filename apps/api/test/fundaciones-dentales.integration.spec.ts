@@ -163,6 +163,17 @@ describe('Fundaciones de módulos dentales (Fase A)', () => {
       ).rejects.toThrow(/permission denied/i);
     });
 
+    it('la API no puede BORRAR la configuración: sería la puerta trasera al rollback', async () => {
+      // Borrar la fila se lleva por delante el interruptor de rollback —vuelve
+      // a nacer en `true` por omisión— y el "activo desde". Apagar es
+      // UPDATE habilitado=false; no hay caso de negocio que requiera borrarla.
+      await expect(
+        runInTenant(appDb.db, norte, (tx) =>
+          tx.execute(sql`DELETE FROM tenant_feature_flags WHERE flag='dental_recalls'`),
+        ),
+      ).rejects.toThrow(/permission denied/i);
+    });
+
     it('la API tampoco puede levantar un rollback de operación', async () => {
       await expect(
         runInTenant(appDb.db, norte, (tx) =>
@@ -218,6 +229,25 @@ describe('Fundaciones de módulos dentales (Fase A)', () => {
         fuente: 'plan',
         disponible: true,
       });
+    });
+
+    it('con el pago atrasado el módulo se consulta pero no se escribe', async () => {
+      await admin.db.execute(sql`
+        UPDATE tenants SET subscription_status='unpaid' WHERE id=${norte}::uuid
+      `);
+      const res = await request(app.getHttpServer()).get('/api/modulos').set(auth(tokenTitular)).expect(200);
+      expect(modulo(res.body, 'dental_recalls')).toMatchObject({
+        contratado: true,
+        rollout: true,
+        configuracion: true,
+        // No es "disponible" —la UI no debe ofrecerlo como si funcionara del
+        // todo— pero tampoco desaparece: se puede seguir consultando.
+        disponible: false,
+        razon: 'suscripcion',
+      });
+      await admin.db.execute(sql`
+        UPDATE tenants SET subscription_status='active' WHERE id=${norte}::uuid
+      `);
     });
 
     it('el rollback de operación apaga el módulo sin tocar lo contratado', async () => {

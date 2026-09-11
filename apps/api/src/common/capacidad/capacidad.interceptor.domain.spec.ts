@@ -11,13 +11,16 @@ function contexto(
   modulo: FeatureFlag | undefined,
   autenticado = true,
   tipo = 'http',
+  method = 'GET',
 ): { ctx: ExecutionContext; reflector: Reflector } {
   const reflector = { getAllAndOverride: () => modulo } as unknown as Reflector;
   const ctx = {
     getType: () => tipo,
     getHandler: () => undefined,
     getClass: () => undefined,
-    switchToHttp: () => ({ getRequest: () => (autenticado ? { user: { userId: 'u1' } } : {}) }),
+    switchToHttp: () => ({
+      getRequest: () => (autenticado ? { user: { userId: 'u1' }, method } : { method }),
+    }),
   } as unknown as ExecutionContext;
   return { ctx, reflector };
 }
@@ -36,7 +39,7 @@ function servicio(capacidad: Capacidad, espia?: FeatureFlag[]): CapacidadService
 describe('CapacidadInterceptor', () => {
   it('deja pasar la ruta cuando la clínica puede usar el módulo', async () => {
     const { ctx, reflector } = contexto('dental_recalls');
-    const interceptor = new CapacidadInterceptor(reflector, servicio({ disponible: true }));
+    const interceptor = new CapacidadInterceptor(reflector, servicio({ acceso: 'completo' }));
     await expect(lastValueFrom(interceptor.intercept(ctx, siguiente))).resolves.toBe('resultado');
   });
 
@@ -46,7 +49,7 @@ describe('CapacidadInterceptor', () => {
       const { ctx, reflector } = contexto('dental_recalls');
       const interceptor = new CapacidadInterceptor(
         reflector,
-        servicio({ disponible: false, razon }),
+        servicio({ acceso: 'ninguno', razon }),
       );
       const error = await lastValueFrom(interceptor.intercept(ctx, siguiente)).catch((e) => e);
       expect(error).toBeInstanceOf(ModuloNoDisponibleError);
@@ -60,16 +63,37 @@ describe('CapacidadInterceptor', () => {
     },
   );
 
-  it('deja pasar una suscripción vencida: de eso se encarga el 402, y sólo en escrituras', async () => {
+  describe('suscripción vencida: lectura sí, escritura no', () => {
     // Cortarle a un médico el historial de recalls de sus pacientes por un
     // tema de cobranza sería el mismo error que ya se decidió no cometer con
     // el expediente clínico.
-    const { ctx, reflector } = contexto('dental_recalls');
-    const interceptor = new CapacidadInterceptor(
-      reflector,
-      servicio({ disponible: false, razon: 'suscripcion' }),
-    );
-    await expect(lastValueFrom(interceptor.intercept(ctx, siguiente))).resolves.toBe('resultado');
+    const soloLectura = { acceso: 'solo_lectura', razon: 'suscripcion' } as const;
+
+    it.each(['GET', 'HEAD', 'OPTIONS'])('%s pasa', async (method) => {
+      const { ctx, reflector } = contexto('dental_recalls', true, 'http', method);
+      const interceptor = new CapacidadInterceptor(reflector, servicio(soloLectura));
+      await expect(lastValueFrom(interceptor.intercept(ctx, siguiente))).resolves.toBe('resultado');
+    });
+
+    it.each(['POST', 'PATCH', 'PUT', 'DELETE'])('%s recibe 402, no 404', async (method) => {
+      const { ctx, reflector } = contexto('dental_recalls', true, 'http', method);
+      const interceptor = new CapacidadInterceptor(reflector, servicio(soloLectura));
+      const error = await lastValueFrom(interceptor.intercept(ctx, siguiente)).catch((e) => e);
+      expect(error).toBeInstanceOf(ModuloNoDisponibleError);
+      // 402 y no 404: el módulo existe y se puede leer; lo que falta es pagar.
+      expect((error as ModuloNoDisponibleError).httpStatus).toBe(402);
+      expect((error as ModuloNoDisponibleError).razon).toBe('suscripcion');
+    });
+
+    it('un módulo sin contratar se oculta también en lectura', async () => {
+      const { ctx, reflector } = contexto('dental_recalls', true, 'http', 'GET');
+      const interceptor = new CapacidadInterceptor(
+        reflector,
+        servicio({ acceso: 'ninguno', razon: 'entitlement' }),
+      );
+      const error = await lastValueFrom(interceptor.intercept(ctx, siguiente)).catch((e) => e);
+      expect((error as ModuloNoDisponibleError).httpStatus).toBe(404);
+    });
   });
 
   it('no consulta nada en rutas sin @RequiereModulo', async () => {
@@ -77,7 +101,7 @@ describe('CapacidadInterceptor', () => {
     const { ctx, reflector } = contexto(undefined);
     const interceptor = new CapacidadInterceptor(
       reflector,
-      servicio({ disponible: false, razon: 'entitlement' }, consultados),
+      servicio({ acceso: 'ninguno', razon: 'entitlement' }, consultados),
     );
     await expect(lastValueFrom(interceptor.intercept(ctx, siguiente))).resolves.toBe('resultado');
     expect(consultados).toEqual([]);
@@ -88,7 +112,7 @@ describe('CapacidadInterceptor', () => {
     const { ctx, reflector } = contexto('patient_portal', false);
     const interceptor = new CapacidadInterceptor(
       reflector,
-      servicio({ disponible: false, razon: 'entitlement' }, consultados),
+      servicio({ acceso: 'ninguno', razon: 'entitlement' }, consultados),
     );
     await expect(lastValueFrom(interceptor.intercept(ctx, siguiente))).resolves.toBe('resultado');
     expect(consultados).toEqual([]);
@@ -98,7 +122,7 @@ describe('CapacidadInterceptor', () => {
     const { ctx, reflector } = contexto('dental_recalls', true, 'ws');
     const interceptor = new CapacidadInterceptor(
       reflector,
-      servicio({ disponible: false, razon: 'entitlement' }),
+      servicio({ acceso: 'ninguno', razon: 'entitlement' }),
     );
     await expect(lastValueFrom(interceptor.intercept(ctx, siguiente))).resolves.toBe('resultado');
   });

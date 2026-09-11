@@ -21,32 +21,66 @@ export interface EntradaCapacidad {
   configuracion: boolean;
 }
 
+/**
+ * Leer y escribir NO son la misma pregunta.
+ *
+ * Un módulo sin contratar, en rollback o sin activar desaparece entero: no hay
+ * nada que consultar. Pero una clínica que se atrasó en el pago conserva la
+ * lectura y pierde la escritura — es la misma decisión que ya gobierna el
+ * expediente clínico, y por el mismo motivo: cortarle a un médico el acceso a
+ * la información de sus pacientes por un tema de cobranza es un riesgo clínico
+ * y legal que no compensa la presión de cobro.
+ */
+export type ModoAcceso = 'lectura' | 'escritura';
+
 export type Capacidad =
-  | { disponible: true }
-  | { disponible: false; razon: RazonNoDisponible };
+  | { acceso: 'completo' }
+  /** Se puede consultar lo que ya existe, pero no producir nada nuevo. */
+  | { acceso: 'solo_lectura'; razon: RazonNoDisponible }
+  /** El módulo no existe para esta clínica. */
+  | { acceso: 'ninguno'; razon: RazonNoDisponible };
 
 /**
- * El ORDEN de las comprobaciones es la parte importante, porque determina el
- * mensaje que ve el usuario:
+ * El ORDEN de las comprobaciones determina el mensaje que ve el usuario:
  *
  *  1. entitlement — "no está incluido en tu plan" es una conversación de
  *     ventas y va primero: a quien no contrató el módulo no le sirve saber
  *     que además su suscripción venció;
- *  2. suscripción — "regulariza el pago";
- *  3. rollout     — "no disponible por ahora" (lo apagamos nosotros);
- *  4. configuración — "actívalo en Ajustes" (lo apagó el titular).
+ *  2. rollout     — "no disponible por ahora" (lo apagamos nosotros);
+ *  3. configuración — "actívalo en Ajustes" (lo apagó el titular);
+ *  4. suscripción — degrada a solo lectura, no oculta.
+ *
+ * La suscripción va al FINAL justamente porque es la única que no oculta: si
+ * fuera antes, una clínica sin contratar el módulo y con un pago atrasado
+ * vería "regulariza tu pago" para algo que de todos modos no compró.
  *
  * Un entitlement `suspended` o vencido cuenta como no contratado: suspender
  * bloquea el uso, pero jamás borra el histórico (eso vive en la tabla).
  */
 export function capacidadEfectiva(entrada: EntradaCapacidad, ahora: Date): Capacidad {
   if (!tieneDerechoVigente(entrada.entitlement, ahora)) {
-    return { disponible: false, razon: 'entitlement' };
+    return { acceso: 'ninguno', razon: 'entitlement' };
   }
-  if (!entrada.suscripcionVigente) return { disponible: false, razon: 'suscripcion' };
-  if (!entrada.rollout) return { disponible: false, razon: 'rollout' };
-  if (!entrada.configuracion) return { disponible: false, razon: 'configuracion' };
-  return { disponible: true };
+  if (!entrada.rollout) return { acceso: 'ninguno', razon: 'rollout' };
+  if (!entrada.configuracion) return { acceso: 'ninguno', razon: 'configuracion' };
+  if (!entrada.suscripcionVigente) return { acceso: 'solo_lectura', razon: 'suscripcion' };
+  return { acceso: 'completo' };
+}
+
+/** ¿Este modo de acceso está permitido con esta capacidad? */
+export function permite(capacidad: Capacidad, modo: ModoAcceso): boolean {
+  if (capacidad.acceso === 'completo') return true;
+  if (capacidad.acceso === 'ninguno') return false;
+  return modo === 'lectura';
+}
+
+/** Para la vista y para `disponible` en las respuestas de la API. */
+export function estaDisponible(capacidad: Capacidad): boolean {
+  return capacidad.acceso === 'completo';
+}
+
+export function razonDe(capacidad: Capacidad): RazonNoDisponible | null {
+  return capacidad.acceso === 'completo' ? null : capacidad.razon;
 }
 
 /**
@@ -64,19 +98,6 @@ export function tieneDerechoVigente(
   if (entitlement === null) return false;
   if (entitlement.estado !== 'active' && entitlement.estado !== 'trialing') return false;
   return entitlement.vigenciaHasta === null || entitlement.vigenciaHasta.getTime() > ahora.getTime();
-}
-
-/**
- * Qué hace cada punto de aplicación con una razón.
- *
- * `suscripcion` es el caso especial y está así a propósito: en HTTP la maneja
- * SuscripcionInterceptor, que bloquea ESCRITURAS con 402 y deja pasar las
- * lecturas — cortarle a un médico el acceso al expediente por cobranza es un
- * riesgo clínico. Pero el worker sí se detiene: no se le manda un mensaje al
- * paciente de una clínica que dejó de pagar.
- */
-export function bloqueaLecturaHttp(razon: RazonNoDisponible): boolean {
-  return razon !== 'suscripcion';
 }
 
 /** Módulos que este archivo gobierna. Alias legible para las firmas. */

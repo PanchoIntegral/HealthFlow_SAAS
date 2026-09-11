@@ -6,7 +6,10 @@ import type { FeatureFlag } from '@healthflow/shared-types';
 import { CapacidadService } from './capacidad.service';
 import { ModuloNoDisponibleError } from './capacidad.errors';
 import { REQUIERE_MODULO_KEY } from './requiere-modulo.decorator';
-import { bloqueaLecturaHttp } from './capacidad';
+import { permite, razonDe, type ModoAcceso } from './capacidad';
+
+/** Mismos métodos que trata como lectura SuscripcionInterceptor. */
+const METODOS_DE_LECTURA = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
  * Hace valer @RequiereModulo en el borde: si la clínica no puede usar el
@@ -49,13 +52,16 @@ export class CapacidadInterceptor implements NestInterceptor {
     // y comprueban la capacidad dentro de su propia transacción.
     if (!context.switchToHttp().getRequest()?.user) return next.handle();
 
-    return from(this.verificar(modulo)).pipe(switchMap(() => next.handle()));
+    const modo: ModoAcceso = METODOS_DE_LECTURA.has(context.switchToHttp().getRequest()?.method)
+      ? 'lectura'
+      : 'escritura';
+    return from(this.verificar(modulo, modo)).pipe(switchMap(() => next.handle()));
   }
 
-  private async verificar(modulo: FeatureFlag): Promise<void> {
+  private async verificar(modulo: FeatureFlag, modo: ModoAcceso): Promise<void> {
     const capacidad = await this.capacidad.evaluarSuelto(modulo);
-    if (!capacidad.disponible && bloqueaLecturaHttp(capacidad.razon)) {
-      throw new ModuloNoDisponibleError(modulo, capacidad.razon);
+    if (!permite(capacidad, modo)) {
+      throw new ModuloNoDisponibleError(modulo, razonDe(capacidad)!);
     }
   }
 }

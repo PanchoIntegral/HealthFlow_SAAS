@@ -51,9 +51,9 @@ RETURNS TABLE (
    ORDER BY e.occurred_at, e.id
 $$;
 
--- Devuelve el permiso de tabla que 0047 recortó a columnas.
+-- Devuelve los permisos de tabla que 0047 recortó a columnas.
 REVOKE INSERT, UPDATE ON tenant_feature_flags FROM healthflow_app;
-GRANT INSERT, UPDATE ON tenant_feature_flags TO healthflow_app;
+GRANT INSERT, UPDATE, DELETE ON tenant_feature_flags TO healthflow_app;
 
 ALTER TABLE tenant_feature_flags
   DROP COLUMN IF EXISTS rollout_habilitado,

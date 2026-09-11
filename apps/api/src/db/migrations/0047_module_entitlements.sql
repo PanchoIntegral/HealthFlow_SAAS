@@ -87,11 +87,16 @@ ALTER TABLE tenant_feature_flags
 -- vigente el GRANT a nivel de TABLA que dejó 0001_rls — un permiso de tabla
 -- autoriza cualquier columna, y el REVOKE por columna no lo recorta. Hay que
 -- quitar el permiso de tabla y volver a concederlo columna por columna.
-REVOKE UPDATE, INSERT ON tenant_feature_flags FROM healthflow_app;
+REVOKE INSERT, UPDATE, DELETE ON tenant_feature_flags FROM healthflow_app;
 GRANT INSERT (flag, habilitado, habilitado_at, habilitado_por, notas)
   ON tenant_feature_flags TO healthflow_app;
 GRANT UPDATE (habilitado, habilitado_at, habilitado_por, notas, updated_at)
   ON tenant_feature_flags TO healthflow_app;
+-- DELETE tampoco: borrar la fila sería la forma trivial de saltarse todo lo
+-- anterior. Se lleva por delante el interruptor de rollback (la fila vuelve a
+-- nacer con rollout_habilitado = true por omisión) y borra desde cuándo la
+-- clínica tiene el módulo activo. Apagar es UPDATE habilitado=false; no hay
+-- ningún caso de negocio que requiera borrar la fila.
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='healthflow_worker') THEN
   GRANT SELECT ON tenant_feature_flags TO healthflow_worker;
 END IF; END $$;
