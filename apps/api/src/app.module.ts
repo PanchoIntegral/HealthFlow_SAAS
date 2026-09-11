@@ -9,6 +9,9 @@ import { SubscriptionModule } from './common/subscription/subscription.module';
 import { SuscripcionInterceptor } from './common/subscription/suscripcion.interceptor';
 import { DomainExceptionFilter } from './common/errors/domain-exception.filter';
 import { AuditModule } from './common/audit/audit.module';
+import { FeatureFlagsModule } from './common/feature-flags/feature-flags.module';
+import { FeatureFlagInterceptor } from './common/feature-flags/feature-flag.interceptor';
+import { AppEventsModule } from './common/events/app-events.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { PatientsModule } from './modules/patients/patients.module';
@@ -30,6 +33,7 @@ import { AiScribeModule } from './modules/ai-scribe/ai-scribe.module';
 import { PlantillasModule } from './modules/plantillas/plantillas.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { PublicBookingModule } from './modules/public-booking/public-booking.module';
+import { ModulosModule } from './modules/modulos/modulos.module';
 
 @Module({
   imports: [
@@ -54,6 +58,8 @@ import { PublicBookingModule } from './modules/public-booking/public-booking.mod
     TenantContextModule,
     SubscriptionModule,
     AuditModule,
+    FeatureFlagsModule,
+    AppEventsModule,
     AuthModule,
     NotificationsModule,
     CatalogosModule,
@@ -75,6 +81,7 @@ import { PublicBookingModule } from './modules/public-booking/public-booking.mod
     PlantillasModule,
     MessagingModule,
     PublicBookingModule,
+    ModulosModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.
@@ -92,6 +99,14 @@ import { PublicBookingModule } from './modules/public-booking/public-booking.mod
      * Invertirlos rompe el gating con "No hay contexto de petición".
      */
     { provide: APP_INTERCEPTOR, useClass: SuscripcionInterceptor },
+    /**
+     * Global: 404 en los módulos que la clínica todavía no tiene liberados
+     * (@RequiereFlag). Va DESPUÉS de los dos anteriores por la misma razón de
+     * anidamiento: necesita el AsyncLocalStorage con el tenant fijado para
+     * consultar el flag. Y va al final porque una suscripción vencida es una
+     * respuesta más útil que un "este módulo no existe".
+     */
+    { provide: APP_INTERCEPTOR, useClass: FeatureFlagInterceptor },
     { provide: APP_FILTER, useClass: DomainExceptionFilter },
   ],
 })

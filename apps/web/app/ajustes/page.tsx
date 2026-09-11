@@ -14,10 +14,11 @@ import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
 import { FacturacionSeccion } from '../../components/facturacion-seccion';
 import { RecetaSeccion } from '../../components/receta-seccion';
+import { ModulosSeccion } from '../../components/modulos-seccion';
 
 const OPCIONES = opcionesEspecialidad();
 
-type SeccionKey = 'perfil' | 'seguridad' | 'reservas' | 'receta' | 'facturacion';
+type SeccionKey = 'perfil' | 'seguridad' | 'reservas' | 'receta' | 'modulos' | 'facturacion';
 
 const SECCIONES: { key: SeccionKey; nombre: string; descripcion: string }[] = [
   { key: 'perfil', nombre: 'Perfil profesional', descripcion: 'Cómo es tu nota y con qué datos se firma.' },
@@ -27,6 +28,11 @@ const SECCIONES: { key: SeccionKey; nombre: string; descripcion: string }[] = [
     key: 'receta',
     nombre: 'Receta',
     descripcion: 'Membrete, orden del contenido y apariencia de la hoja impresa.',
+  },
+  {
+    key: 'modulos',
+    nombre: 'Módulos',
+    descripcion: 'Qué funciones de la clínica están activas.',
   },
   { key: 'facturacion', nombre: 'Facturación', descripcion: 'Plan, método de pago e historial de cobros.' },
 ];
@@ -57,7 +63,7 @@ export default function AjustesPage() {
    * un médico contratado una puerta que se le va a cerrar en la cara.
    */
   const esTitular = user.rol === 'admin';
-  const visibles = SECCIONES.filter((s) => !['facturacion','receta','reservas'].includes(s.key) || esTitular);
+  const visibles = SECCIONES.filter((s) => !['facturacion','receta','reservas','modulos'].includes(s.key) || esTitular);
   const actual = visibles.find((s) => s.key === seccion) ?? visibles[0]!;
 
   return (
@@ -121,6 +127,7 @@ export default function AjustesPage() {
             {actual.key === 'seguridad' && <SeguridadSeccion token={token} />}
             {actual.key === 'reservas' && <Tarjeta><p className="mb-4 text-sm text-slate-600">Configura la agenda que verán tus pacientes y revisa recordatorios y confirmaciones.</p><button type="button" onClick={()=>router.push('/ajustes/reservas')} className={BOTON}>Administrar reservas</button></Tarjeta>}
             {actual.key === 'receta' && <RecetaSeccion token={token} />}
+            {actual.key === 'modulos' && <ModulosSeccion token={token} />}
             {actual.key === 'facturacion' && <FacturacionSeccion token={token} />}
           </div>
         </div>

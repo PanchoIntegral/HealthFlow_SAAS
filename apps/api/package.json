@@ -9,7 +9,7 @@
     "start:worker": "node dist/worker.js",
     "dev:worker": "tsx watch src/worker.ts",
     "lint": "tsc --noEmit",
-    "test": "jest",
+    "test": "jest --runInBand",
     "test:domain": "jest --selectProjects domain",
     "test:integration": "jest --selectProjects integration --runInBand",
     "db:setup": "tsx src/db/setup.ts",

@@ -4279,3 +4279,72 @@ export function validateBirthDate(value: string, today: Date = new Date()): Birt
   if (birth < oldest) return 'demasiado_antigua';
   return null;
 }
+
+// ── Feature flags por clínica (Fase A dental) ─────────────────────
+// Catálogo ÚNICO para API y web. La tabla `tenant_feature_flags` no valida
+// contra esta lista a propósito (agregar un flag no debe costar una migración);
+// quien valida el nombre es este módulo, en los dos extremos.
+
+export const FEATURE_FLAGS = [
+  'dental_recalls',
+  'periodontal_charting',
+  'patient_portal',
+  'patient_forms',
+  'dental_labs',
+  'dental_inventory',
+  'patient_online_payments',
+  'provider_commissions',
+] as const;
+
+export type FeatureFlag = (typeof FEATURE_FLAGS)[number];
+
+/** Nombre visible en /ajustes. El flag crudo nunca se muestra al usuario. */
+export const FEATURE_FLAG_LABELS: Record<FeatureFlag, string> = {
+  dental_recalls: 'Recall y reactivación de pacientes',
+  periodontal_charting: 'Periodontograma',
+  patient_portal: 'Portal del paciente',
+  patient_forms: 'Formularios previos a consulta',
+  dental_labs: 'Laboratorios dentales',
+  dental_inventory: 'Inventario dental',
+  patient_online_payments: 'Pagos y anticipos en línea',
+  provider_commissions: 'Comisiones por profesional',
+};
+
+export function isFeatureFlag(value: string): value is FeatureFlag {
+  return (FEATURE_FLAGS as readonly string[]).includes(value);
+}
+
+export interface FeatureFlagView {
+  flag: FeatureFlag;
+  nombre: string;
+  habilitado: boolean;
+  habilitadoAt: string | null;
+  notas: string | null;
+}
+
+// ── Eventos internos de aplicación (§14) ──────────────────────────
+// Comunican módulos entre sí a través de la outbox interna `app_events`. No
+// son los mensajes al paciente (`outbound_messages`) ni la auditoría.
+
+export const APP_EVENT_TYPES = [
+  'appointment.scheduled',
+  'appointment.cancelled',
+  'appointment.no_show',
+  'appointment.completed',
+  'treatment_plan.presented',
+  'treatment_plan.accepted',
+  'treatment_item.completed',
+  'periodontal_exam.signed',
+  'recall.due',
+  'recall.scheduled',
+  'lab_case.status_changed',
+  'inventory.movement_posted',
+  'patient_payment.succeeded',
+  'patient_payment.refunded',
+] as const;
+
+export type AppEventType = (typeof APP_EVENT_TYPES)[number];
+
+export function isAppEventType(value: string): value is AppEventType {
+  return (APP_EVENT_TYPES as readonly string[]).includes(value);
+}

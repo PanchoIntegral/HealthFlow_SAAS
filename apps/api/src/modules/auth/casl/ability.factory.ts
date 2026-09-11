@@ -13,6 +13,26 @@ export type Action =
   | 'finish'
   /** Registrar un abono: es cobrar, no cotizar — por eso es su propia acción. */
   | 'abonar'
+  /**
+   * Firmar un documento clínico (periodontograma). Separada de 'write' a
+   * propósito: firmar lo vuelve inmutable y es un acto de juicio profesional
+   * indelegable — quien captura no necesariamente es quien firma.
+   */
+  | 'firmar'
+  /**
+   * Contactar al paciente por un recall. Separada de 'write' porque el
+   * asistente SÍ llama y manda mensajes, pero no define cada cuánto debe
+   * volver un paciente (eso es 'write' sobre Recall, criterio clínico).
+   */
+  | 'contactar'
+  /**
+   * Ver costos, márgenes y comisiones. Es una dimensión distinta de 'read':
+   * el asistente lee un caso de laboratorio o un insumo del inventario, pero
+   * no lo que cuesta ni lo que deja.
+   */
+  | 'costear'
+  /** Aprobar una liquidación de comisiones: la congela. Solo el titular. */
+  | 'aprobar'
   | 'delete';
 export type Subject =
   | 'Appointment'
@@ -46,6 +66,29 @@ export type Subject =
    * que atiende en la clínica.
    */
   | 'Cuenta'
+  /**
+   * ── Módulos dentales (§5.7 del plan de módulos prioritarios) ──
+   * Todos liberados por feature flag: tener el permiso no basta, la clínica
+   * además tiene que tener el módulo encendido (ver common/feature-flags).
+   */
+  /** Recall y reactivación. 'write' configura la periodicidad (criterio
+   *  clínico), 'contactar' ejecuta el seguimiento (trabajo de recepción). */
+  | 'Recall'
+  /** Periodontograma. 'firmar' lo vuelve inmutable; no existe 'delete'. */
+  | 'Periodontograma'
+  /** Invitaciones y enlaces del portal del paciente. */
+  | 'PortalPaciente'
+  /** Plantillas, asignación y REVISIÓN de formularios previos a consulta.
+   *  La revisión (aplicar respuestas al expediente) es acto clínico. */
+  | 'FormularioPaciente'
+  /** Casos de laboratorio dental. El costo va aparte, con 'costear'. */
+  | 'LaboratorioDental'
+  /** Inventario: existencias, lotes y movimientos. */
+  | 'Inventario'
+  /** Cobros y anticipos en línea del paciente. */
+  | 'PagoPaciente'
+  /** Reglas, cálculo y liquidación de comisiones por profesional. */
+  | 'Comisiones'
   | 'all';
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
@@ -125,6 +168,39 @@ export class CaslAbilityFactory {
         // médico/admin: ahí el riesgo es accidental/malicioso, no de criterio.
         can('read', 'Radiografia');
         can('create', 'Radiografia');
+        // ── Módulos dentales (matriz §5.7) ──
+        // Recall: el asistente EJECUTA el seguimiento (llama, manda el
+        // mensaje, registra el resultado) pero no CONFIGURA cada cuánto debe
+        // volver un paciente — eso es criterio clínico ('write', del médico).
+        can('read', 'Recall');
+        can('contactar', 'Recall');
+        // Periodontograma: nada. La tabla dice "según política clínica" para
+        // la consulta; el default es negar, y abrirlo se decide por clínica
+        // (será un ajuste, no un cambio de código). Crear y firmar jamás:
+        // sondear y concluir es acto del odontólogo.
+        // Portal y formularios: enviar la invitación y ver si el paciente
+        // contestó es trabajo de recepción. Lo que NO puede es 'write' —
+        // revisar la respuesta y volcarla al expediente (alergias,
+        // medicamentos, antecedentes) exige juicio clínico (§9.3).
+        can('read', 'PortalPaciente');
+        can('create', 'PortalPaciente');
+        can('read', 'FormularioPaciente');
+        can('create', 'FormularioPaciente');
+        // Laboratorio e inventario: operación pura de consultorio. El
+        // asistente manda la corona al laboratorio y descuenta el insumo; lo
+        // que NO ve es cuánto cuesta ni cuánto deja ('costear', abajo).
+        can('read', 'LaboratorioDental');
+        can('create', 'LaboratorioDental');
+        can('write', 'LaboratorioDental');
+        can('read', 'Inventario');
+        can('create', 'Inventario');
+        can('write', 'Inventario');
+        // Pagos del paciente: genera el link de cobro, como ya registra
+        // abonos en recepción. El reembolso NO (mismo criterio que 'cancel'
+        // sobre Caja: quien cobra no devuelve).
+        can('read', 'PagoPaciente');
+        can('create', 'PagoPaciente');
+        // Costos, márgenes y comisiones: nada, igual que Finanzas y Reports.
         break;
       case 'medico':
         // El médico agenda/cancela citas, marca llegada, da de alta pacientes
@@ -171,6 +247,38 @@ export class CaslAbilityFactory {
         // all). El asistente factura pero no ve las ganancias.
         can('read', 'Finanzas');
         can('read', 'Reports');
+        // ── Módulos dentales (matriz §5.7) ──
+        // Recall: configura la periodicidad y también contacta (en un
+        // consultorio sin asistente el médico hace todo).
+        can('read', 'Recall');
+        can('write', 'Recall');
+        can('contactar', 'Recall');
+        // Periodontograma: capturar, corregir y firmar. Sin 'delete': un
+        // examen firmado es inmutable y se corrige con una adenda (§5.5).
+        can('read', 'Periodontograma');
+        can('create', 'Periodontograma');
+        can('write', 'Periodontograma');
+        can('firmar', 'Periodontograma');
+        can('read', 'PortalPaciente');
+        can('create', 'PortalPaciente');
+        // 'write' sobre el formulario = revisar la respuesta y aplicarla al
+        // expediente. Es la línea que el asistente no cruza.
+        can('read', 'FormularioPaciente');
+        can('create', 'FormularioPaciente');
+        can('write', 'FormularioPaciente');
+        can('read', 'LaboratorioDental');
+        can('create', 'LaboratorioDental');
+        can('write', 'LaboratorioDental');
+        can('read', 'Inventario');
+        can('create', 'Inventario');
+        can('write', 'Inventario');
+        can('read', 'PagoPaciente');
+        can('create', 'PagoPaciente');
+        // Costos y márgenes sí (mismo criterio que Finanzas). Comisiones NO:
+        // configurarlas y aprobar liquidaciones es del titular, incluso
+        // cuando el médico es socio — quien cobra no se autoriza el pago.
+        can('costear', 'LaboratorioDental');
+        can('costear', 'Inventario');
         break;
     }
 
