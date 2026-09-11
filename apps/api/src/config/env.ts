@@ -257,7 +257,7 @@ export const env = {
   get twilioAccountSid(): string { return required('TWILIO_ACCOUNT_SID'); },
   get twilioAuthToken(): string { return required('TWILIO_AUTH_TOKEN'); },
   get twilioWhatsappFrom(): string { return required('TWILIO_WHATSAPP_FROM').replace(/^whatsapp:/,''); },
-  twilioContentSid(kind:'confirmation'|'reminder'|'rescheduled'|'cancelled'):string {
+  twilioContentSid(kind:'confirmation'|'reminder'|'rescheduled'|'cancelled'|'recall'):string {
     return required(`TWILIO_CONTENT_SID_${kind.toUpperCase()}`);
   },
   get twilioStatusCallbackUrl(): string {

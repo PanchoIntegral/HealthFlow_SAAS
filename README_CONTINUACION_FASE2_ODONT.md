@@ -517,11 +517,12 @@ público aunque existan muchos módulos.
 - Commits sugeridos:
   1. entitlements y capacidad efectiva;
   2. migración y dominio de Recall;
-  3. repositorio y casos de uso;
-  4. consumidores y worker;
-  5. API y contratos;
-  6. frontend;
-  7. pruebas, métricas y documentación.
+  3. outbox polimórfica para mensajes de Recall;
+  4. repositorio y casos de uso;
+  5. consumidores, emisores y worker;
+  6. API y contratos;
+  7. frontend;
+  8. pruebas, métricas y documentación.
 
 ## 28. Prompt listo para otra IA
 
@@ -566,4 +567,3 @@ resultados, riesgos restantes, rollback y pasos de despliegue.
 - El flujo funciona sin Twilio y admite habilitarlo después.
 - RLS, idempotencia, rollback y E2E tienen evidencia automática.
 - El piloto puede habilitarse sin afectar a otros tenants.
-

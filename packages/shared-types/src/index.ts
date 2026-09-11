@@ -2137,9 +2137,10 @@ export type MessagingDeliveryStatus =
 
 export interface MessagingDelivery {
   id: string;
-  appointmentId: string;
+  appointmentId: string | null;
+  recallAttemptId: string | null;
   channel: 'whatsapp' | 'email';
-  kind: 'confirmation' | 'reminder' | 'rescheduled' | 'cancelled';
+  kind: 'confirmation' | 'reminder' | 'rescheduled' | 'cancelled' | 'recall';
   status: MessagingDeliveryStatus;
   scheduledAt: string;
   attempts: number;

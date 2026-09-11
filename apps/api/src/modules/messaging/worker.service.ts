@@ -6,7 +6,7 @@ import type { Database } from '../../db/drizzle';
 import { env } from '../../config/env';
 import { MESSAGING_PROVIDER, type MessagingProvider, type MessageChannel, type MessageKind, type SendResult } from './messaging.types';
 
-interface Claimed { id:string; tenant_id:string; channel:MessageChannel; kind:MessageKind; clinic_name:string; clinic_timezone:string; destination:string|null; appointment_id:string; starts_at:Date|string; attempts:number; idempotency_key:string }
+interface Claimed { id:string; tenant_id:string; channel:MessageChannel; kind:MessageKind; clinic_name:string; clinic_timezone:string; destination:string|null; appointment_id:string|null; recall_attempt_id:string|null; starts_at:Date|string|null; booking_slug:string|null; attempts:number; idempotency_key:string }
 
 @Injectable()
 export class MessagingWorker {
@@ -22,19 +22,40 @@ export class MessagingWorker {
 
   private async deliver(row: Claimed): Promise<void> {
     if (!row.destination) return this.finish(row.id, { outcome: 'permanent', code: 'missing_destination' });
-    // Es el mismo token opaco de 256 bits creado al reservar. Solo su hash
-    // vive en PostgreSQL; el worker lo deriva de IDs no públicos + secreto.
-    const actionToken = createHmac('sha256', env.publicLinkSecret)
-      .update(`${row.tenant_id}.${row.appointment_id}`).digest('base64url');
     let result: SendResult;
     try {
-      result = await this.provider.send({
-        channel: row.channel, kind: row.kind, destination: row.destination,
-        clinicName: row.clinic_name, timezone:row.clinic_timezone, startsAt: new Date(row.starts_at),
-        manageUrl: `${env.appUrl}/cita/${actionToken}`,
+      const base = {
+        channel: row.channel,
+        destination: row.destination,
+        clinicName: row.clinic_name,
+        timezone: row.clinic_timezone,
         idempotencyKey: row.idempotency_key,
         statusCallbackUrl: env.twilioStatusCallbackUrl,
-      });
+      } as const;
+      if (row.kind === 'recall') {
+        if (!row.booking_slug) {
+          result = { outcome: 'permanent', code: 'missing_booking_slug' };
+        } else {
+          result = await this.provider.send({
+            ...base,
+            kind: 'recall',
+            bookingUrl: `${env.appUrl}/reservar/${encodeURIComponent(row.booking_slug)}`,
+          });
+        }
+      } else if (!row.appointment_id || !row.starts_at) {
+        result = { outcome: 'permanent', code: 'invalid_appointment_subject' };
+      } else {
+        // Enlaces de citas existentes conservan el contrato previo. Recall sólo
+        // apunta a la página pública de reserva y nunca inventa una cita.
+        const actionToken = createHmac('sha256', env.publicLinkSecret)
+          .update(`${row.tenant_id}.${row.appointment_id}`).digest('base64url');
+        result = await this.provider.send({
+          ...base,
+          kind: row.kind,
+          startsAt: new Date(row.starts_at),
+          manageUrl: `${env.appUrl}/cita/${actionToken}`,
+        });
+      }
     } catch (error) {
       // Un adaptador que lanza en vez de clasificar no puede garantizar que no envió.
       const code = error instanceof Error ? error.message.slice(0, 80) : 'provider_error';

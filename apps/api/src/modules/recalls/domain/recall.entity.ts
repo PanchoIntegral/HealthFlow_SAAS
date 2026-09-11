@@ -178,9 +178,13 @@ export class PatientRecall {
    * justamente el mejor caso.
    */
   vincularCita(appointmentId: string): void {
+    // Una entrega repetida del MISMO evento es un no-op. Una cita distinta no
+    // puede secuestrar un recall que ya estaba atribuido: eso requiere una
+    // decisión explícita del caso de uso, no una auto-transición silenciosa.
+    if (this.estado.status === 'scheduled' && this.estado.appointmentId === appointmentId) return;
+    this.transicionar('scheduled');
     this.estado.appointmentId = appointmentId;
     this.estado.nextAttemptAt = null;
-    this.transicionar('scheduled');
   }
 
   /**
@@ -193,15 +197,15 @@ export class PatientRecall {
       throw new TransicionRecallInvalidaError(this.estado.status, 'due');
     }
     if (hayReemplazo) return;
-    this.estado.appointmentId = null;
     this.transicionar('due');
+    this.estado.appointmentId = null;
   }
 
   /** La cita se realizó: el ciclo se cierra. El siguiente se crea aparte. */
   completar(ahora: Date): void {
+    this.transicionar('completed');
     this.estado.completedAt = ahora;
     this.estado.nextAttemptAt = null;
-    this.transicionar('completed');
   }
 
   /** Cierre manual con motivo: se mudó, ya no es paciente, pidió no insistir. */
@@ -214,9 +218,9 @@ export class PatientRecall {
         'Para descartar un control hay que decir por qué.',
       );
     }
+    this.transicionar('dismissed');
     this.estado.dismissReason = limpio.slice(0, 280);
     this.estado.nextAttemptAt = null;
-    this.transicionar('dismissed');
   }
 
   /**
@@ -257,7 +261,6 @@ export class PatientRecall {
 
   private transicionar(hacia: RecallStatus): void {
     const desde = this.estado.status;
-    if (desde === hacia && hacia !== 'contacted') return;
     if (!TRANSICIONES[desde].includes(hacia)) {
       throw new TransicionRecallInvalidaError(desde, hacia);
     }

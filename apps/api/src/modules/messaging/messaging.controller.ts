@@ -75,8 +75,8 @@ export class MessagingAdminController {
   @Get('deliveries') @RequirePolicy('manage','all')
   async deliveries():Promise<MessagingDelivery[]> {
     return this.tenantDb.run(async tx => {
-      const r=await tx.execute(sql`SELECT id,appointment_id,channel,kind,status,scheduled_at,attempts,last_error_code FROM outbound_messages ORDER BY created_at DESC LIMIT 200`);
-      return (r.rows as any[]).map(x=>({id:x.id,appointmentId:x.appointment_id,channel:x.channel,kind:x.kind,status:x.status,scheduledAt:new Date(x.scheduled_at).toISOString(),attempts:x.attempts,lastErrorCode:x.last_error_code}));
+      const r=await tx.execute(sql`SELECT id,appointment_id,recall_attempt_id,channel,kind,status,scheduled_at,attempts,last_error_code FROM outbound_messages ORDER BY created_at DESC LIMIT 200`);
+      return (r.rows as any[]).map(x=>({id:x.id,appointmentId:x.appointment_id,recallAttemptId:x.recall_attempt_id,channel:x.channel,kind:x.kind,status:x.status,scheduledAt:new Date(x.scheduled_at).toISOString(),attempts:x.attempts,lastErrorCode:x.last_error_code}));
     });
   }
 
@@ -102,7 +102,7 @@ export class MessagingAdminController {
   @Post('deliveries/:id/mark-sent') @RequirePolicy('manage','all')
   async markSent(@Param('id') id:string):Promise<{ok:true}> {
     await this.tenantDb.run(async tx=>{
-      const row=(await tx.execute(sql`SELECT status,tenant_id,appointment_id FROM outbound_messages WHERE id=${id}`)).rows[0] as {status:string;tenant_id:string;appointment_id:string}|undefined;
+      const row=(await tx.execute(sql`SELECT status,tenant_id,appointment_id FROM outbound_messages WHERE id=${id}`)).rows[0] as {status:string;tenant_id:string;appointment_id:string|null}|undefined;
       if(!row) throw new NotFoundException('Mensaje no encontrado');
       if(row.status!=='uncertain') throw new ConflictException('Sólo un mensaje incierto puede marcarse como enviado');
       await tx.execute(sql`UPDATE outbound_messages SET status='sent',last_error_code=NULL,updated_at=now() WHERE id=${id}`);

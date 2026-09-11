@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../../db/drizzle';
-import type { MessageChannel, MessageKind, MessageScheduler, ScheduleMessagesInput } from './messaging.types';
+import type { AppointmentMessageKind, MessageChannel, MessageScheduler, ScheduleMessagesInput } from './messaging.types';
 
-export interface OutboxJob { channel: MessageChannel; kind: MessageKind; at: Date; key: string }
+export interface OutboxJob { channel: MessageChannel; kind: AppointmentMessageKind; at: Date; key: string }
 
 /**
  * Clave de idempotencia de un trabajo de outbox. Es única por cita, generación
@@ -12,7 +12,7 @@ export interface OutboxJob { channel: MessageChannel; kind: MessageKind; at: Dat
  * así reprogramar A -> B -> A no choca con las filas canceladas de la primera
  * A, y 48 h y 24 h son siempre envíos distintos.
  */
-export function outboxKey(appointmentId: string, version: number, kind: MessageKind, channel: MessageChannel, hours?: number): string {
+export function outboxKey(appointmentId: string, version: number, kind: AppointmentMessageKind, channel: MessageChannel, hours?: number): string {
   return hours === undefined
     ? `${appointmentId}:v${version}:${kind}:${channel}`
     : `${appointmentId}:v${version}:${kind}:${hours}h:${channel}`;

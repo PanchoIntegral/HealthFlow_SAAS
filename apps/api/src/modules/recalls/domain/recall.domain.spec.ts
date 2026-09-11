@@ -192,7 +192,10 @@ describe('PatientRecall', () => {
     });
 
     it('no se completa un control que nunca llegó a agendarse', () => {
-      expect(() => en('due').completar(AHORA)).toThrow(TransicionRecallInvalidaError);
+      const recall = en('due');
+      const antes = recall.snapshot;
+      expect(() => recall.completar(AHORA)).toThrow(TransicionRecallInvalidaError);
+      expect(recall.snapshot).toEqual(antes);
     });
   });
 
@@ -212,16 +215,38 @@ describe('PatientRecall', () => {
     });
 
     it('un control cerrado no se vuelve a descartar', () => {
-      expect(() => en('completed').descartar('tarde')).toThrow(TransicionRecallInvalidaError);
+      const recall = en('completed');
+      const antes = recall.snapshot;
+      expect(() => recall.descartar('tarde')).toThrow(TransicionRecallInvalidaError);
+      expect(recall.snapshot).toEqual(antes);
     });
   });
 
   describe('estados terminales', () => {
     it.each(['completed', 'dismissed', 'exhausted'] as const)('%s no admite nada más', (status) => {
       const recall = en(status);
+      const antes = recall.snapshot;
       expect(recall.vivo).toBe(false);
       expect(() => recall.vincularCita('a2')).toThrow(TransicionRecallInvalidaError);
+      expect(recall.snapshot).toEqual(antes);
       expect(() => recall.reabrirPorCancelacion(false)).toThrow(TransicionRecallInvalidaError);
+      expect(recall.snapshot).toEqual(antes);
+    });
+
+    it('reentregar la misma cita es idempotente pero no permite sustituirla', () => {
+      const recall = en('scheduled');
+      expect(() => recall.vincularCita('a1')).not.toThrow();
+      expect(() => recall.vincularCita('a2')).toThrow(TransicionRecallInvalidaError);
+      expect(recall.snapshot.appointmentId).toBe('a1');
+    });
+
+    it('completar dos veces no cambia la fecha original', () => {
+      const recall = en('completed');
+      const original = recall.snapshot.completedAt;
+      expect(() => recall.completar(new Date('2030-01-01T00:00:00Z'))).toThrow(
+        TransicionRecallInvalidaError,
+      );
+      expect(recall.snapshot.completedAt).toEqual(original);
     });
 
     it.each(['pending', 'due', 'contacted', 'scheduled'] as const)('%s ocupa el cupo', (status) => {

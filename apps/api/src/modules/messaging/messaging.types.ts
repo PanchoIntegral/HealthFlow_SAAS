@@ -1,16 +1,14 @@
 import type { Tx } from '../../db/drizzle';
 
 export type MessageChannel = 'whatsapp' | 'email';
-export type MessageKind = 'confirmation' | 'reminder' | 'rescheduled' | 'cancelled';
+export type AppointmentMessageKind = 'confirmation' | 'reminder' | 'rescheduled' | 'cancelled';
+export type MessageKind = AppointmentMessageKind | 'recall';
 
-export interface ProviderMessage {
+interface ProviderMessageBase {
   channel: MessageChannel;
   destination: string;
   clinicName: string;
   timezone: string;
-  kind: MessageKind;
-  startsAt: Date;
-  manageUrl: string;
   /**
    * Clave única del trabajo de outbox (`outbound_messages.idempotency_key`).
    * El worker la entrega tal cual; el adaptador la usa como clave de
@@ -19,6 +17,18 @@ export interface ProviderMessage {
   idempotencyKey: string;
   statusCallbackUrl?: string;
 }
+
+/** El compilador impide renderizar un recall como si ya existiera una cita. */
+export type ProviderMessage =
+  | (ProviderMessageBase & {
+      kind: AppointmentMessageKind;
+      startsAt: Date;
+      manageUrl: string;
+    })
+  | (ProviderMessageBase & {
+      kind: 'recall';
+      bookingUrl: string;
+    });
 
 /**
  * Resultado clasificado de un intento de envío.
@@ -49,7 +59,7 @@ export interface ScheduleMessagesInput {
   whatsappOptIn: boolean;
   preferredChannel: 'whatsapp' | 'email' | 'ninguno';
   reminderHours: number[];
-  kind?: MessageKind;
+  kind?: AppointmentMessageKind;
 }
 
 export interface MessageScheduler {

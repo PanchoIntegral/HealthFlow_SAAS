@@ -3,6 +3,9 @@ import { env } from '../../config/env';
 import type { MessagingProvider, ProviderMessage, SendResult } from './messaging.types';
 
 export function renderPrivacySafeBody(m: ProviderMessage): string {
+  if (m.kind === 'recall') {
+    return `Clínica ${m.clinicName}, mediante HealthFlow: es momento de agendar una revisión. Reserva aquí: ${m.bookingUrl}`;
+  }
   const when = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short', timeZone: m.timezone }).format(m.startsAt);
   const action = m.kind === 'cancelled' ? 'se canceló' : m.kind === 'rescheduled' ? 'se reprogramó' : m.kind === 'reminder' ? 'te recordamos tu cita' : 'tu cita quedó reservada';
   return `Clínica ${m.clinicName}, mediante HealthFlow: ${action} para ${when}. Adminístrala aquí: ${m.manageUrl}`;
@@ -82,12 +85,18 @@ export class LiveMessagingProvider implements MessagingProvider {
   }
 
   private async twilio(message: ProviderMessage): Promise<SendResult> {
-    const when = new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short',timeZone:message.timezone}).format(message.startsAt);
+    const variables = message.kind === 'recall'
+      ? { 1: message.clinicName, 2: message.bookingUrl }
+      : {
+          1: message.clinicName,
+          2: new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short',timeZone:message.timezone}).format(message.startsAt),
+          3: message.manageUrl,
+        };
     const form = new URLSearchParams({
       From: `whatsapp:${env.twilioWhatsappFrom}`,
       To: `whatsapp:${message.destination}`,
       ContentSid: env.twilioContentSid(message.kind),
-      ContentVariables: JSON.stringify({1:message.clinicName,2:when,3:message.manageUrl}),
+      ContentVariables: JSON.stringify(variables),
       ...(message.statusCallbackUrl ? { StatusCallback: message.statusCallbackUrl } : {}),
     });
     const auth = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString('base64');
@@ -106,7 +115,7 @@ export class LiveMessagingProvider implements MessagingProvider {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json', 'Idempotency-Key': message.idempotencyKey },
-      body: JSON.stringify({ from: env.emailFrom, to: [message.destination], subject: `Cita en ${message.clinicName}`, text: renderPrivacySafeBody(message) }),
+      body: JSON.stringify({ from: env.emailFrom, to: [message.destination], subject: message.kind === 'recall' ? `Agenda tu próxima visita en ${message.clinicName}` : `Cita en ${message.clinicName}`, text: renderPrivacySafeBody(message) }),
       signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
     });
     const body = await readJson<{ id?: string; name?: string }>(res);

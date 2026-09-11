@@ -1,5 +1,5 @@
 import { buildOutboxJobs, outboxKey } from './outbox.service';
-import { FakeMessagingProvider, LiveMessagingProvider } from './providers';
+import { FakeMessagingProvider, LiveMessagingProvider, renderPrivacySafeBody } from './providers';
 import type { ProviderMessage, ScheduleMessagesInput } from './messaging.types';
 
 const now = new Date('2026-09-10T12:00:00Z');
@@ -91,6 +91,17 @@ describe('adaptadores de proveedor y clave de idempotencia (P0.1)', () => {
     fake.reset();
     expect(fake.sent).toHaveLength(0);
   });
+
+  it('un recall sólo menciona clínica, revisión y reserva; nunca información clínica', () => {
+    const body = renderPrivacySafeBody({
+      channel: 'email', destination: 'ana@example.mx', clinicName: 'Sonrisa',
+      timezone: 'America/Tijuana', kind: 'recall',
+      bookingUrl: 'https://app.example/reservar/sonrisa', idempotencyKey: 'recall:r1:a1:email',
+    });
+    expect(body).toContain('Clínica Sonrisa');
+    expect(body).toContain('https://app.example/reservar/sonrisa');
+    expect(body).not.toMatch(/limpieza|tratamiento|diagnóstico|pieza|presupuesto/i);
+  });
 });
 
 describe('clasificación de fallos del proveedor (P0.2)', () => {
@@ -150,5 +161,27 @@ describe('worker: cierra cada intento con el resultado clasificado (P0.2)', () =
     const q = await run({ send: jest.fn().mockResolvedValue({ outcome: 'permanent', code: 'twilio_21211' }) });
     expect(q).toContain('"permanent"');
     expect(q).toContain('twilio_21211');
+  });
+
+  it('un recall usa la reserva pública y no fabrica un enlace de cita', async () => {
+    const recallRow = {
+      ...row,
+      kind: 'recall',
+      appointment_id: null,
+      recall_attempt_id: 'ra-1',
+      starts_at: null,
+      booking_slug: 'clinica-sonrisa',
+      idempotency_key: 'recall:r1:a1:whatsapp',
+    };
+    const execute = jest.fn().mockResolvedValueOnce({ rows: [recallRow] }).mockResolvedValue({ rows: [] });
+    const send = jest.fn().mockResolvedValue({ outcome: 'accepted', providerMessageId: 'msg-recall' });
+    const worker = new MessagingWorker({ execute } as never, { send } as never);
+    await worker.tick();
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'recall',
+      bookingUrl: expect.stringContaining('/reservar/clinica-sonrisa'),
+    }));
+    expect(send.mock.calls[0]![0]).not.toHaveProperty('manageUrl');
+    expect(send.mock.calls[0]![0]).not.toHaveProperty('startsAt');
   });
 });
