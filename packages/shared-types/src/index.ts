@@ -4407,3 +4407,46 @@ export type AppEventType = (typeof APP_EVENT_TYPES)[number];
 export function isAppEventType(value: string): value is AppEventType {
   return (APP_EVENT_TYPES as readonly string[]).includes(value);
 }
+
+// ── Recall y reactivación ─────────────────────────────────────────
+// Un recall NO es un recordatorio: el recordatorio parte de una cita que ya
+// existe; el recall intenta conseguir una cita nueva.
+
+export const RECALL_STATUSES = [
+  /** Creado, con fecha futura. Todavía no hay nada que hacer. */
+  'pending',
+  /** Llegó su fecha: aparece en la lista de recepción. */
+  'due',
+  /** Se hizo al menos un intento de contacto. */
+  'contacted',
+  /** El paciente reservó: hay una cita vinculada. */
+  'scheduled',
+  /** La cita se realizó. Cierra el ciclo y normalmente abre el siguiente. */
+  'completed',
+  /** Cerrado a mano, con motivo (se mudó, ya no es paciente, lo pidió). */
+  'dismissed',
+  /** Se agotaron los intentos sin respuesta. */
+  'exhausted',
+] as const;
+export type RecallStatus = (typeof RECALL_STATUSES)[number];
+
+/** Estados en los que el control sigue ocupando el cupo del paciente. */
+export const RECALL_STATUSES_VIVOS = ['pending', 'due', 'contacted', 'scheduled'] as const;
+
+export function esRecallVivo(status: RecallStatus): boolean {
+  return (RECALL_STATUSES_VIVOS as readonly string[]).includes(status);
+}
+
+export const RECALL_SOURCES = ['manual', 'procedimiento', 'periodontograma', 'reactivacion'] as const;
+export type RecallSource = (typeof RECALL_SOURCES)[number];
+
+export const RECALL_CHANNELS = ['email', 'whatsapp', 'phone', 'manual'] as const;
+export type RecallChannel = (typeof RECALL_CHANNELS)[number];
+
+/** Canales que produce un envío; el resto son tareas que recepción cierra. */
+export const RECALL_CHANNELS_DIGITALES = ['email', 'whatsapp'] as const;
+
+export const RECALL_ATTEMPT_RESULTS = [
+  'sent', 'answered', 'booked', 'declined', 'unreachable', 'failed',
+] as const;
+export type RecallAttemptResult = (typeof RECALL_ATTEMPT_RESULTS)[number];

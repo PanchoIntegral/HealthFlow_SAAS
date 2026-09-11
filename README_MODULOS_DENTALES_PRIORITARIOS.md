@@ -1201,7 +1201,7 @@ Mantener el export `api` compatible durante la migración.
 |---|---|---|
 | `0046_fundaciones_dentales.sql` | feature flags por tenant, outbox interna de eventos y consumiciones idempotentes | **Aplicada** |
 | `0047_module_entitlements.sql` | derechos contratados, interruptor de rollout y reconciliación de eventos aplazados | **Aplicada** |
-| `0048_dental_recalls.sql` | tipos, recalls e intentos | Pendiente |
+| `0048_dental_recalls.sql` | tipos, recalls e intentos | **Aplicada** |
 | `0049_outbox_polimorfica.sql` | mensajes de recall en la outbox existente | Pendiente |
 | `0050_periodontal_charting.sql` | exámenes, piezas y sitios | Pendiente |
 | `0051_treatment_plan_portal.sql` | snapshots, tokens y decisiones | Pendiente |
