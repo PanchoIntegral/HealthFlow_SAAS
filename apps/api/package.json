@@ -16,6 +16,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:create-account": "tsx src/db/create-account.ts",
+    "db:grant-module": "tsx src/db/grant-module.ts",
     "load-test": "tsx test/load/load-test.ts",
     "db:seed:directory": "tsx src/db/seed-directory.ts"
   },

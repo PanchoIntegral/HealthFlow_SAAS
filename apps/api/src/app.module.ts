@@ -9,8 +9,8 @@ import { SubscriptionModule } from './common/subscription/subscription.module';
 import { SuscripcionInterceptor } from './common/subscription/suscripcion.interceptor';
 import { DomainExceptionFilter } from './common/errors/domain-exception.filter';
 import { AuditModule } from './common/audit/audit.module';
-import { FeatureFlagsModule } from './common/feature-flags/feature-flags.module';
-import { FeatureFlagInterceptor } from './common/feature-flags/feature-flag.interceptor';
+import { CapacidadModule } from './common/capacidad/capacidad.module';
+import { CapacidadInterceptor } from './common/capacidad/capacidad.interceptor';
 import { AppEventsModule } from './common/events/app-events.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
@@ -58,7 +58,7 @@ import { ModulosModule } from './modules/modulos/modulos.module';
     TenantContextModule,
     SubscriptionModule,
     AuditModule,
-    FeatureFlagsModule,
+    CapacidadModule,
     AppEventsModule,
     AuthModule,
     NotificationsModule,
@@ -100,13 +100,15 @@ import { ModulosModule } from './modules/modulos/modulos.module';
      */
     { provide: APP_INTERCEPTOR, useClass: SuscripcionInterceptor },
     /**
-     * Global: 404 en los módulos que la clínica todavía no tiene liberados
-     * (@RequiereFlag). Va DESPUÉS de los dos anteriores por la misma razón de
-     * anidamiento: necesita el AsyncLocalStorage con el tenant fijado para
-     * consultar el flag. Y va al final porque una suscripción vencida es una
-     * respuesta más útil que un "este módulo no existe".
+     * Global: 404 en los módulos que la clínica no tiene contratados,
+     * liberados o activados (@RequiereModulo). Va DESPUÉS de los dos
+     * anteriores por la misma razón de anidamiento: necesita el
+     * AsyncLocalStorage con el tenant fijado para resolver la capacidad. Y va
+     * al final porque una suscripción vencida es una respuesta más útil que
+     * un "este módulo no existe" — por eso este interceptor deja pasar
+     * explícitamente la razón 'suscripcion'.
      */
-    { provide: APP_INTERCEPTOR, useClass: FeatureFlagInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: CapacidadInterceptor },
     { provide: APP_FILTER, useClass: DomainExceptionFilter },
   ],
 })

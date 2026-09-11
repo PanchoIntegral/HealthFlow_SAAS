@@ -4314,11 +4314,60 @@ export function isFeatureFlag(value: string): value is FeatureFlag {
   return (FEATURE_FLAGS as readonly string[]).includes(value);
 }
 
-export interface FeatureFlagView {
+/** Qué módulos incluye cada plan. Es la promesa de la página de precios. */
+export const MODULOS_POR_PLAN: Record<string, readonly FeatureFlag[]> = {
+  individual: [],
+  consultorio: ['dental_recalls', 'patient_portal', 'patient_forms'],
+  clinica: [...FEATURE_FLAGS],
+};
+
+/**
+ * Módulos contratados por el plan, con caída SEGURA al plan más chico —
+ * mismo criterio que `limitesDePlan`: ante la duda, no se regala producto.
+ * Los add-ons y las excepciones comerciales NO viven aquí, sino en
+ * `tenant_module_entitlements`.
+ */
+export function modulosDePlan(plan: string | null | undefined): readonly FeatureFlag[] {
+  if (!plan) return MODULOS_POR_PLAN.individual!;
+  const normalizado = plan === 'pro' ? 'consultorio' : plan === 'free' ? 'individual' : plan;
+  return MODULOS_POR_PLAN[normalizado] ?? MODULOS_POR_PLAN.individual!;
+}
+
+/** De dónde viene el derecho a usar un módulo. */
+export const FUENTES_ENTITLEMENT = ['plan', 'addon', 'trial', 'manual'] as const;
+export type FuenteEntitlement = (typeof FUENTES_ENTITLEMENT)[number];
+
+export const ESTADOS_ENTITLEMENT = ['active', 'trialing', 'suspended', 'expired'] as const;
+export type EstadoEntitlement = (typeof ESTADOS_ENTITLEMENT)[number];
+
+/**
+ * Por qué un módulo no está disponible. El orden en que se evalúan importa
+ * para el mensaje que ve el usuario: "no lo contrataste" y "lo apagaste tú"
+ * son conversaciones distintas (una es de ventas, la otra de soporte).
+ */
+export type RazonNoDisponible = 'suscripcion' | 'entitlement' | 'rollout' | 'configuracion';
+
+/**
+ * Estado de un módulo para una clínica, con sus CUATRO ejes separados.
+ * Ninguno se deriva de otro: el frontend necesita distinguirlos para decir
+ * "no incluido en tu plan" en vez de "no disponible".
+ */
+export interface ModuloView {
   flag: FeatureFlag;
   nombre: string;
-  habilitado: boolean;
-  habilitadoAt: string | null;
+  /** Lo compró (plan, add-on, prueba o excepción). Lo decide HealthFlow. */
+  contratado: boolean;
+  fuente: FuenteEntitlement | null;
+  /** Fin de la vigencia del derecho (pruebas y add-ons temporales). */
+  vigenciaHasta: string | null;
+  /** Interruptor de operación de HealthFlow. `true` salvo rollback. */
+  rollout: boolean;
+  /** El titular decidió usarlo. Es lo único que cambia desde la clínica. */
+  configuracion: boolean;
+  /** La conjunción de todo lo anterior más la suscripción. */
+  disponible: boolean;
+  razon: RazonNoDisponible | null;
+  configuradoAt: string | null;
   notas: string | null;
 }
 

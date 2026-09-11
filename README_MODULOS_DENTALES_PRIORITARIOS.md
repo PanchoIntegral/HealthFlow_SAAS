@@ -12,15 +12,16 @@
 | Fase | Estado | Evidencia |
 |---|---|---|
 | A — Fundaciones | **Hecha** (2026-09-11) | Migración `0046_fundaciones_dentales.sql`, `docs/adr/0003-fundaciones-modulos-dentales.md`, 543 pruebas en verde |
+| Entrega 0 — Entitlements y capacidad efectiva | **Hecha** (2026-09-11) | Migración `0047_module_entitlements.sql`, `docs/adr/0004-diseno-recall-y-entitlements.md`, 569 pruebas en verde |
 | B — Conversión y retorno | Pendiente | — |
 | C — Clínica dental avanzada | Pendiente | — |
 | D — Operación | Pendiente | — |
 | E — Ingresos y gestión | Pendiente | — |
 
-**Corrección a la numeración de migraciones de este documento.** La Fase A ocupó `0046`, así que
-cada migración de módulo se recorre un lugar: recalls es `0047`, periodontograma `0048`, y así
-sucesivamente. La tabla de la §16 ya refleja el corrimiento. Verificar igualmente el directorio
-antes de escribir (§20.3).
+**Corrección a la numeración de migraciones de este documento.** La Fase A ocupó `0046` y la
+Entrega 0 (entitlements) `0047`, así que cada migración de módulo se recorre: recalls es `0048`,
+más una `0049` para la outbox polimórfica que el plan original no contemplaba. La tabla de la §16
+ya refleja el corrimiento. Verificar igualmente el directorio antes de escribir (§20.3).
 
 ---
 
@@ -1199,14 +1200,16 @@ Mantener el export `api` compatible durante la migración.
 | Migración | Contenido | Estado |
 |---|---|---|
 | `0046_fundaciones_dentales.sql` | feature flags por tenant, outbox interna de eventos y consumiciones idempotentes | **Aplicada** |
-| `0047_dental_recalls.sql` | tipos, recalls e intentos | Pendiente |
-| `0048_periodontal_charting.sql` | exámenes, piezas y sitios | Pendiente |
-| `0049_treatment_plan_portal.sql` | snapshots, tokens y decisiones | Pendiente |
-| `0050_patient_forms_portal.sql` | plantillas, asignaciones, respuestas y tokens | Pendiente |
-| `0051_dental_labs.sql` | laboratorios, casos, eventos y adjuntos | Pendiente |
-| `0052_dental_inventory.sql` | catálogo, lotes, ledger, compras y kits | Pendiente |
-| `0053_patient_payments.sql` | intents, eventos, reembolsos y webhooks | Pendiente |
-| `0054_provider_commissions.sql` | reglas, periodos, entradas y aprobaciones | Pendiente |
+| `0047_module_entitlements.sql` | derechos contratados, interruptor de rollout y reconciliación de eventos aplazados | **Aplicada** |
+| `0048_dental_recalls.sql` | tipos, recalls e intentos | Pendiente |
+| `0049_outbox_polimorfica.sql` | mensajes de recall en la outbox existente | Pendiente |
+| `0050_periodontal_charting.sql` | exámenes, piezas y sitios | Pendiente |
+| `0051_treatment_plan_portal.sql` | snapshots, tokens y decisiones | Pendiente |
+| `0052_patient_forms_portal.sql` | plantillas, asignaciones, respuestas y tokens | Pendiente |
+| `0053_dental_labs.sql` | laboratorios, casos, eventos y adjuntos | Pendiente |
+| `0054_dental_inventory.sql` | catálogo, lotes, ledger, compras y kits | Pendiente |
+| `0055_patient_payments.sql` | intents, eventos, reembolsos y webhooks | Pendiente |
+| `0056_provider_commissions.sql` | reglas, periodos, entradas y aprobaciones | Pendiente |
 
 La migración compensatoria de cada una vive en `apps/api/src/db/migrations/rollback/` — un
 directorio que el runner ignora a propósito (solo lee `*.sql` del nivel superior), y que se

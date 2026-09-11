@@ -4,6 +4,7 @@ import { isAppEventType, type AppEventType } from '@healthflow/shared-types';
 import { DB } from '../../db/drizzle.module';
 import { runInTenant, type Database } from '../../db/drizzle';
 import { APP_EVENT_CONSUMER, type AppEventConsumer, type AppEventEnvelope } from './app-event.types';
+import { CapacidadService } from '../capacidad/capacidad.service';
 
 interface FilaReclamada {
   id: string;
@@ -43,6 +44,7 @@ export class AppEventsDispatcher {
 
   constructor(
     @Inject(DB) private readonly db: Database,
+    private readonly capacidad: CapacidadService,
     @Optional() @Inject(APP_EVENT_CONSUMER) consumidores?: AppEventConsumer[] | AppEventConsumer,
   ) {
     this.consumidores = consumidores ? ([] as AppEventConsumer[]).concat(consumidores) : [];
@@ -72,13 +74,27 @@ export class AppEventsDispatcher {
       }
       const evento = aEnvelope(fila);
       try {
-        await runInTenant(this.db, fila.tenant_id, async (tx) => {
+        const entregado = await runInTenant(this.db, fila.tenant_id, async (tx) => {
+          // La clínica puede no tener el módulo disponible (no contratado,
+          // suspendido, en rollback o apagado por el titular). El evento NO se
+          // cierra ni se falla: se aplaza, y el día que el módulo vuelva el
+          // reclamo lo recoge y se reconcilia solo.
+          if (consumidor.moduloRequerido) {
+            const capacidad = await this.capacidad.evaluar(tx, consumidor.moduloRequerido);
+            if (!capacidad.disponible) {
+              await tx.execute(
+                sql`SELECT defer_app_event(${fila.id}, ${consumidor.nombre}, ${`modulo_${capacidad.razon}`}, interval '1 day')`,
+              );
+              return false;
+            }
+          }
           await consumidor.manejar(evento, tx);
           await tx.execute(
             sql`SELECT complete_app_event(${fila.id}, ${consumidor.nombre}, true, NULL)`,
           );
+          return true;
         });
-        entregados++;
+        if (entregado) entregados++;
       } catch (error) {
         const code = error instanceof Error ? error.message.slice(0, 80) : 'consumer_error';
         this.logger.warn(`${consumidor.nombre} falló en ${fila.tipo} (${fila.id}): ${code}`);

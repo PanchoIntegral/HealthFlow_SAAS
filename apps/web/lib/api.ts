@@ -3,7 +3,7 @@ import type {
   CancelAppointmentRequest,
   CancelarFacturaRequest,
   FacturacionView,
-  FeatureFlagView,
+  ModuloView,
   FacturaView,
   FinanzasResumen,
   ClinicalNoteView,
@@ -143,11 +143,13 @@ export const api = {
   confirmPublicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/confirm`,{method:'POST'}),
   cancelPublicAppointment: (manageToken:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/cancel`,{method:'POST'}),
   reschedulePublicAppointment: (manageToken:string,start:string,doctorId?:string) => request<PublicAppointmentSummary>(`/public/appointments/${encodeURIComponent(manageToken)}/reschedule`,{method:'POST',body:JSON.stringify({start,doctorId})}),
-  // Módulos liberados por etapas. `modulos` lo consulta cualquier usuario
-  // autenticado (es lo que decide qué navegación se pinta); cambiarlos es del
-  // titular y el servidor responde 403 a los demás.
-  modulos: (token:string) => request<FeatureFlagView[]>('/modulos',{token}),
-  cambiarModulo: (token:string,flag:string,habilitado:boolean,notas?:string) => request<FeatureFlagView>('/modulos',{method:'PUT',token,body:JSON.stringify({flag,habilitado,notas})}),
+  // Módulos de la clínica con sus cuatro ejes (contratado, rollout,
+  // configuración, disponible). `modulos` lo consulta cualquier usuario
+  // autenticado —es lo que decide qué navegación se pinta—; `cambiarModulo`
+  // sólo mueve la CONFIGURACIÓN y el servidor responde 403 a quien no es
+  // titular. Conceder un módulo no se hace por API.
+  modulos: (token:string) => request<ModuloView[]>('/modulos',{token}),
+  cambiarModulo: (token:string,flag:string,habilitado:boolean,notas?:string) => request<ModuloView>('/modulos',{method:'PUT',token,body:JSON.stringify({flag,habilitado,notas})}),
   bookingSettings: (token:string) => request<BookingSettings>('/booking/settings',{token}),
   bookingReadiness: (token:string) => request<BookingReadiness>('/booking/readiness',{token}),
   updateBookingSettings: (token:string,body:BookingSettings) => request<BookingSettings>('/booking/settings',{method:'PUT',token,body:JSON.stringify(body)}),

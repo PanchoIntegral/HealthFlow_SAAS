@@ -1,22 +1,31 @@
 import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
-import type { FeatureFlagView } from '@healthflow/shared-types';
+import type { ModuloView } from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PoliciesGuard, RequirePolicy } from '../../auth/casl/policies.guard';
-import { FeatureFlagsService } from '../../../common/feature-flags/feature-flags.service';
+import { CapacidadService } from '../../../common/capacidad/capacidad.service';
 import { CambiarModuloDto } from './dto/modulo.dto';
 
 /**
- * Activación por clínica de los módulos liberados por etapas (§5.8).
+ * CONFIGURACIÓN por clínica de los módulos. Uno de los cuatro ejes de la
+ * capacidad efectiva (ADR 0004): aquí el titular dice si QUIERE usar lo que
+ * tiene disponible.
  *
- * Esta ruta NO lleva @RequiereFlag —sería imposible volver a encender un
- * módulo apagado—, y va sobre 'Cuenta': activar un módulo es administración de
- * la cuenta (la decide el titular), no un acto clínico. Por eso el médico que
- * atiende en la clínica tampoco llega: mismo criterio que dar de alta usuarios.
+ * Lo que esta ruta NO puede hacer, y es el punto del diseño: conceder el
+ * derecho a un módulo. Eso vive en `tenant_module_entitlements`, sobre la que
+ * el rol de la aplicación sólo tiene SELECT — un INSERT desde aquí es
+ * `permission denied` en PostgreSQL, no un `if` que alguien pueda olvidar.
+ * Tampoco levanta un rollback (`rollout_habilitado`), cuya columna tiene el
+ * UPDATE revocado.
+ *
+ * Sin @RequiereModulo —sería imposible volver a encender un módulo apagado—, y
+ * sobre 'Cuenta': configurar módulos es administración de la cuenta (la decide
+ * el titular), no un acto clínico. Por eso el médico que atiende en la clínica
+ * tampoco llega: mismo criterio que dar de alta usuarios.
  */
 @Controller('modulos')
 @UseGuards(JwtAuthGuard, PoliciesGuard)
 export class ModulosController {
-  constructor(private readonly flags: FeatureFlagsService) {}
+  constructor(private readonly capacidad: CapacidadService) {}
 
   /**
    * Sin @RequirePolicy: cualquier usuario autenticado puede saber qué módulos
@@ -25,13 +34,13 @@ export class ModulosController {
    * sí es del titular es CAMBIARLOS.
    */
   @Get()
-  listar(): Promise<FeatureFlagView[]> {
-    return this.flags.listar();
+  listar(): Promise<ModuloView[]> {
+    return this.capacidad.listar();
   }
 
   @Put()
   @RequirePolicy('manage', 'Cuenta')
-  cambiar(@Body() dto: CambiarModuloDto): Promise<FeatureFlagView> {
-    return this.flags.establecer(dto.flag, dto.habilitado, dto.notas ?? null);
+  cambiar(@Body() dto: CambiarModuloDto): Promise<ModuloView> {
+    return this.capacidad.configurar(dto.flag, dto.habilitado, dto.notas ?? null);
   }
 }

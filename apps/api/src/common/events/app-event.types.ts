@@ -1,4 +1,4 @@
-import type { AppEventType } from '@healthflow/shared-types';
+import type { AppEventType, FeatureFlag } from '@healthflow/shared-types';
 import type { Tx } from '../../db/drizzle';
 
 /**
@@ -45,6 +45,15 @@ export interface EmitirEvento {
 export interface AppEventConsumer {
   readonly nombre: string;
   readonly tipos: readonly AppEventType[];
+  /**
+   * Módulo del que depende este consumidor. Si la clínica no lo tiene
+   * disponible, el despachador APLAZA el evento en vez de entregarlo o de
+   * cerrarlo: encender el módulo reconcilia solo lo que pasó mientras estuvo
+   * apagado (ADR 0004, "Reconciliación").
+   *
+   * Un consumidor sin módulo (infraestructura) corre siempre.
+   */
+  readonly moduloRequerido?: FeatureFlag;
   manejar(evento: AppEventEnvelope, tx: Tx): Promise<void>;
 }
 
