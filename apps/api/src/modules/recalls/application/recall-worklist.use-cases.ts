@@ -37,14 +37,34 @@ export class ListRecallWorklistUseCase {
 /**
  * Métricas del módulo.
  *
+ * ⚠️ NO EXPONER TODAVÍA. Esta clase existe para que el commit 8 tenga dónde
+ * apoyarse, pero sus cifras aún NO son publicables — ni por API ni en pantalla.
+ *
+ * El motivo: "convertidos", "agotados" y la mediana se fechan con
+ * `patient_recalls.updated_at`, que es MUTABLE. Cualquier escritura posterior
+ * sobre el control —registrar una gestión, corregir el médico asignado, una
+ * migración que toque la fila— lo mueve al periodo actual. Consecuencia: un
+ * control convertido en marzo y editado en septiembre aparece como conversión
+ * de septiembre, el informe de marzo cambia solo con el tiempo, y dos
+ * consultas del mismo periodo pueden no coincidir.
+ *
+ * Para que sean publicables hace falta una FECHA INMUTABLE de conversión:
+ * columnas `scheduled_at` y `exhausted_at` que se escriban UNA vez, en la
+ * transición, y que ninguna edición posterior toque. Eso es una migración, y
+ * va en el commit 8 junto con el resto de la observabilidad.
+ *
+ * Lo que sí es correcto hoy: "vencidos" (se calcula sobre el estado actual,
+ * sin fecha) y "contactados", que se fecha con `recall_attempts.created_at`
+ * —inmutable por construcción, un intento no se re-crea.
+ *
  * Cada cifra declara su unidad en el tipo (`MetricasRecall`) porque mezclarlas
  * es el error clásico: contar mensajes como pacientes convierte a un paciente
  * insistido tres veces en tres pacientes contactados, y hace que el módulo
  * parezca funcionar el triple de bien de lo que funciona.
  *
- * "Ingreso recuperado" NO está: atribuir dinero a un control exige decidir si
- * cuenta lo presupuestado, lo terminado o lo cobrado, y con qué ventana. Es
- * una definición contable, no una consulta.
+ * "Ingreso recuperado" NO está, y es otra discusión: atribuir dinero a un
+ * control exige decidir si cuenta lo presupuestado, lo terminado o lo cobrado,
+ * y con qué ventana. Es una definición contable, no una consulta.
  */
 @Injectable()
 export class RecallMetricsUseCase {

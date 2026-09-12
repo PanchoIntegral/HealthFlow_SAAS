@@ -9,6 +9,7 @@ import { PatientRecall, cierraElSeguimiento } from '../domain/recall.entity';
 import { RECALL_REPOSITORY, type RecallRepository } from '../domain/recall.repository';
 import {
   IntentoEnCursoError,
+  IntentoNoActualizableError,
   IntentoYaRegistradoError,
   RecallNoEncontradoError,
   TipoRecallNoEncontradoError,
@@ -146,7 +147,24 @@ export class RecordRecallOutcomeUseCase {
       const estado = await this.repo.cargarParaActualizar(tx, input.recallId);
       if (!estado) throw new RecallNoEncontradoError();
 
-      await this.repo.cerrarIntento(tx, input.attemptId, input.resultado, input.nota ?? null);
+      // ORDEN: primero se cancela el envío que pudiera quedar en cola para
+      // esta gestión, y sólo después se cierra. Al revés no funcionaba: el
+      // cierre saca el intento de 'pending' y `cancelarPendientes` ya no lo
+      // encontraba, así que el paciente recibía el correo de un control que
+      // acababa de rechazar.
+      await this.repo.cancelarMensajesDeIntento(tx, input.attemptId);
+
+      const cerrado = await this.repo.cerrarIntento(
+        tx,
+        input.recallId,
+        input.attemptId,
+        input.resultado,
+        input.nota ?? null,
+      );
+      // Un UPDATE que no toca ninguna fila no es un éxito: el intento es de
+      // otro control, no existe, o alguien lo cerró antes. Devolver 200 aquí
+      // dejaría a recepción creyendo que registró algo que no quedó.
+      if (!cerrado) throw new IntentoNoActualizableError();
 
       const recall = PatientRecall.desde(estado);
       // 'declined' cierra el seguimiento: insistirle a quien ya dijo que no es

@@ -10,7 +10,10 @@ import type {
   TipoRecall,
 } from '../domain/recall.repository';
 import { GenerateRecallFromCompletedTreatmentUseCase } from './recall-asignacion.use-cases';
-import { ScheduleRecallAttemptUseCase } from './recall-contacto.use-cases';
+import {
+  RecordRecallOutcomeUseCase,
+  ScheduleRecallAttemptUseCase,
+} from './recall-contacto.use-cases';
 import {
   MatchAppointmentToRecallUseCase,
   UpdateRecallOnAppointmentUseCase,
@@ -317,6 +320,67 @@ describe('Casos de uso de Recall (ramas de decisión)', () => {
         caso.enTransaccion(TX, 'r1', { tipo: 'usuario' }, 'u1', AHORA),
       ).rejects.toMatchObject({ code: 'PacienteNoContactable' });
       expect(llamadas).not.toContain('crearIntento');
+    });
+  });
+
+  describe('registrar el resultado de una gestión', () => {
+    /** Caso de uso con un doble que además apunta el ORDEN de las llamadas. */
+    function armar(cerrado: boolean) {
+      const orden: string[] = [];
+      const { repo } = repoFalso({
+        cancelarMensajesDeIntento: async () => {
+          orden.push('cancelarMensajesDeIntento');
+        },
+        cerrarIntento: async () => {
+          orden.push('cerrarIntento');
+          return cerrado;
+        },
+        cancelarPendientes: async () => {
+          orden.push('cancelarPendientes');
+        },
+        guardar: async () => {
+          orden.push('guardar');
+        },
+      } as Partial<RecallRepository>);
+      const { audit, entradas } = auditFalso();
+      const tenantDb = { run: async (fn: (tx: Tx) => Promise<unknown>) => fn(TX) };
+      return {
+        caso: new RecordRecallOutcomeUseCase(
+          tenantDb as never, capacidadFalsa(), audit, repo,
+        ),
+        orden,
+        entradas,
+      };
+    }
+
+    it('cancela el mensaje ANTES de cerrar el intento', async () => {
+      // Al revés no funciona: cerrar saca el intento de 'pending' y la
+      // cancelación ya no lo encuentra, así que el correo salía igual.
+      const { caso, orden } = armar(true);
+      await caso.ejecutar({ recallId: 'r1', attemptId: 'a1', resultado: 'declined' });
+      expect(orden.indexOf('cancelarMensajesDeIntento')).toBeLessThan(orden.indexOf('cerrarIntento'));
+    });
+
+    it('si el cierre no actualizó ninguna fila, falla en vez de devolver éxito', async () => {
+      const { caso, orden, entradas } = armar(false);
+      await expect(
+        caso.ejecutar({ recallId: 'r1', attemptId: 'ajeno', resultado: 'answered' }),
+      ).rejects.toMatchObject({ code: 'IntentoNoActualizable' });
+      // Y no sigue adelante: ni descarta, ni guarda, ni audita una gestión
+      // que no quedó registrada.
+      expect(orden).not.toContain('guardar');
+      expect(entradas).toHaveLength(0);
+    });
+
+    it('declinar descarta el control; no contestar lo deja como estaba', async () => {
+      const { caso: declinar, orden: ordenDeclinar } = armar(true);
+      await declinar.ejecutar({ recallId: 'r1', attemptId: 'a1', resultado: 'declined' });
+      expect(ordenDeclinar).toContain('guardar');
+
+      const { caso: noContesta, orden: ordenNoContesta } = armar(true);
+      await noContesta.ejecutar({ recallId: 'r1', attemptId: 'a1', resultado: 'unreachable' });
+      // Sigue vivo: aún quedan intentos por hacer.
+      expect(ordenNoContesta).not.toContain('guardar');
     });
   });
 

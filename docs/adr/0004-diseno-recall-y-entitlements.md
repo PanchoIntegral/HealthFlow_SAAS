@@ -297,14 +297,56 @@ Las rutas son las del plan. Lo que fija este diseño:
 
 Tres denominadores distintos, etiquetados en la UI:
 
-| Métrica | Cuenta | Definición |
-|---|---|---|
-| Vencidos | recalls | `status='due'` al cierre del periodo |
-| Contactados | recalls únicos | recalls con ≥1 intento en el periodo — **no** intentos |
-| Convertidos | recalls | `status` pasó a `scheduled` dentro de los 30 días del primer contacto |
-| Recuperados | pacientes únicos | pacientes con cita **finalizada** originada en un recall |
+| Métrica | Cuenta | Definición | ¿Publicable hoy? |
+|---|---|---|---|
+| Vencidos | recalls | `status='due'` al cierre del periodo | Sí — no depende de fechas |
+| Contactados | recalls únicos | recalls con ≥1 intento en el periodo — **no** intentos | Sí — se fecha con `recall_attempts.created_at`, inmutable |
+| Convertidos | recalls | `status` pasó a `scheduled` | **No** (ver abajo) |
+| Recuperados | pacientes únicos | pacientes con cita **finalizada** originada en un recall | **No** (ver abajo) |
+| Agotados | recalls | se consumieron los intentos sin respuesta | **No** (ver abajo) |
+
+### Las métricas de conversión no pueden exponerse todavía
+
+El commit 4 dejó `RecallMetricsUseCase` implementado, pero **sus cifras de conversión no deben salir ni por API ni en pantalla**, y por eso el endpoint `GET /recalls/metrics` no se construye en el commit 6.
+
+El motivo es que hoy se fechan con `patient_recalls.updated_at`, que es **mutable**. Cualquier escritura posterior sobre el control —registrar una gestión, reasignar el médico, una migración que toque la fila— lo arrastra al periodo actual. Las consecuencias no son cosméticas:
+
+- un control convertido en marzo y editado en septiembre aparece como conversión de **septiembre**;
+- el informe de marzo **cambia solo** conforme pasa el tiempo, así que no es reproducible;
+- dos consultas del mismo periodo pueden dar números distintos, y la clínica no tiene forma de saber cuál creer.
+
+Una cifra de conversión que se mueve sola es peor que no tener la cifra: es la que la clínica usa para juzgar si el módulo sirve, y desmentirla una vez cuesta más que haber esperado.
+
+**Lo que falta** es una fecha INMUTABLE de transición: columnas `scheduled_at` y `exhausted_at` escritas **una sola vez**, en el momento del cambio de estado, que ninguna edición posterior toque. Es una migración y va en el commit 8, junto con la observabilidad. Hasta entonces el código lleva la advertencia en `RecallMetricsUseCase`, en el puerto y en la consulta SQL.
 
 «Ingreso recuperado» **se deja fuera del MVP**: atribuir dinero a un recall exige decidir si cuenta lo presupuestado, lo terminado o lo cobrado, y con qué ventana. Es una definición de negocio, no un query, y una cifra mal definida en la primera demo es peor que no tenerla. Entra con Entrega 8, donde §13.3 obliga a documentar cada KPI.
+
+---
+
+### D8. Cómo el webhook del proveedor actualizará `recall_attempts`
+
+Pendiente de implementar (commit 8); se fija aquí para que no se decida a mitad de ese commit.
+
+Hoy la cadena es `process_messaging_status` → `apply_messaging_webhook`, que sólo toca `outbound_messages` y `messaging_events`. Un mensaje de recall pasa por ahí igual que uno de cita —comparten tabla desde `0049`— pero **nadie mueve el `recall_attempt` correspondiente**: se queda en `pending` para siempre, y con él la regla de "no abrir una gestión mientras haya otra en curso" bloquearía el control indefinidamente. Ése es el bug que esta sección existe para evitar.
+
+La actualización va **dentro de `apply_messaging_webhook`**, no en un consumidor de eventos ni en el worker, por tres razones: corre en la misma transacción que ya bloquea el mensaje con `FOR UPDATE`, es idempotente por el mismo `messaging_webhook_events(provider, external_id)`, y es `SECURITY DEFINER` —el webhook no tiene tenant en contexto—.
+
+Mapeo, derivado del estado del mensaje y no del texto del proveedor:
+
+| Estado del mensaje | `recall_attempts.status` | `result` | Por qué |
+|---|---|---|---|
+| `sent` | `sent` | sin tocar | Salió, pero entregar no es responder. El resultado lo pone una persona o la reserva. |
+| `delivered` | `sent` | sin tocar | Igual: llegó, no contestó. |
+| `bounced` / `dead` / `complained` | `closed` | `failed` | Ese canal no sirve para este paciente. |
+| `cancelled` | `cancelled` | — | Lo canceló el opt-out, el descarte o el cierre del intento. |
+| `failed` reintentable | sin tocar | — | Sigue en cola; el intento continúa abierto. |
+
+Dos consecuencias que hay que construir junto con el mapeo:
+
+1. **Un `bounced` degrada el control a tarea manual.** Cerrar el intento con `failed` y no hacer nada más dejaría al paciente sin seguimiento y al control esperando un `next_attempt_at` que nadie va a atender. El webhook debe dejar el control listo para que el siguiente intento salga por `phone` — la supresión de correo que ya aplica `apply_messaging_webhook` hace que `elegirCanal` lo resuelva solo.
+2. **`recall_attempts_cerrado_chk` exige `result` cuando `status='closed'`.** Cualquier camino que cierre un intento desde SQL tiene que poner los dos campos a la vez o la transacción del webhook falla, y un webhook que falla se reintenta en bucle.
+
+Pruebas que debe traer ese commit: webhook repetido (un solo efecto), webhook de un mensaje de cita (no toca ningún intento), `delivered` seguido de `bounced` fuera de orden, y un `bounced` que deja el control contactable por teléfono.
 
 ---
 

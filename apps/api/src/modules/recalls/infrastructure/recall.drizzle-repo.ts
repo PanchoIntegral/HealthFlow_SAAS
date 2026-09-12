@@ -261,15 +261,30 @@ export class DrizzleRecallRepository implements RecallRepository {
 
   async cerrarIntento(
     tx: Tx,
-    id: string,
+    patientRecallId: string,
+    attemptId: string,
     resultado: RecallAttemptResult,
     nota: string | null,
-  ): Promise<void> {
-    await tx.execute(sql`
+  ): Promise<boolean> {
+    // Las tres condiciones del WHERE son la validación: pertenencia al
+    // control, y que siga abierto. RLS acota al tenant, pero DENTRO de un
+    // tenant no distingue un intento de otro control.
+    const filas = await tx.execute(sql`
       UPDATE recall_attempts
          SET status='closed', result=${resultado}, note=${nota},
              sent_at=coalesce(sent_at, now()), updated_at=now()
-       WHERE id=${id}::uuid
+       WHERE id=${attemptId}::uuid
+         AND patient_recall_id=${patientRecallId}::uuid
+         AND status='pending'
+      RETURNING id
+    `);
+    return filas.rows.length > 0;
+  }
+
+  async cancelarMensajesDeIntento(tx: Tx, attemptId: string): Promise<void> {
+    await tx.execute(sql`
+      UPDATE outbound_messages SET status='cancelled', updated_at=now()
+       WHERE recall_attempt_id=${attemptId}::uuid AND status IN ('pending','failed')
     `);
   }
 
@@ -340,6 +355,12 @@ export class DrizzleRecallRepository implements RecallRepository {
     };
   }
 
+  /**
+   * ⚠️ Cifras NO publicables todavía: `convertidos`, `agotados` y la mediana
+   * se fechan con `updated_at`, que es mutable y arrastra el control al
+   * periodo de su última edición. Requiere fechas inmutables de transición
+   * (commit 8). Ver el comentario extenso en RecallMetricsUseCase.
+   */
   async metricas(tx: Tx, desde: string, hasta: string): Promise<MetricasRecall> {
     const fila = (
       await tx.execute(sql`
@@ -352,6 +373,7 @@ export class DrizzleRecallRepository implements RecallRepository {
           (SELECT count(DISTINCT a.patient_recall_id)::int FROM recall_attempts a
             WHERE a.created_at >= ${desde}::date AND a.created_at < (${hasta}::date + 1)
               AND a.status <> 'cancelled') AS contactados,
+          -- updated_at: MUTABLE. Fuente de la limitación documentada arriba.
           (SELECT count(*)::int FROM patient_recalls r
             WHERE r.status IN ('scheduled','completed')
               AND r.updated_at >= ${desde}::date AND r.updated_at < (${hasta}::date + 1)) AS convertidos,

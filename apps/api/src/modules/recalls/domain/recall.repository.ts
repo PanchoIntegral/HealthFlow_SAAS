@@ -89,6 +89,11 @@ export interface PaginaWorklist {
   nextCursor: string | null;
 }
 
+/**
+ * ⚠️ Parcialmente no publicable: ver RecallMetricsUseCase. `vencidos` y
+ * `contactados` son correctos; el resto se fecha con una columna mutable y
+ * necesita fechas inmutables de transición antes de salir a pantalla.
+ */
 export interface MetricasRecall {
   /** Controles vencidos sin cerrar. Recalls, NO mensajes. */
   vencidos: number;
@@ -164,7 +169,33 @@ export interface RecallRepository {
    * reclamando a la vez no producen dos envíos.
    */
   encolarMensajeDeIntento(tx: Tx, input: NuevoMensajeDeIntento): Promise<boolean>;
-  cerrarIntento(tx: Tx, id: string, resultado: RecallAttemptResult, nota: string | null): Promise<void>;
+  /**
+   * Cierra un intento, exigiendo que sea DE ESTE control y que siga pendiente.
+   *
+   * El `patientRecallId` no es decorativo: sin él, un id de intento de otro
+   * control del mismo tenant pasaría RLS y cerraría la gestión equivocada. Y
+   * el filtro por `status='pending'` impide reescribir el resultado de algo
+   * que ya se cerró — un `UPDATE` que no encuentra fila no es un éxito
+   * silencioso.
+   *
+   * Devuelve `false` cuando no actualizó ninguna fila; quien llama decide qué
+   * error levantar.
+   */
+  cerrarIntento(
+    tx: Tx,
+    patientRecallId: string,
+    attemptId: string,
+    resultado: RecallAttemptResult,
+    nota: string | null,
+  ): Promise<boolean>;
+  /**
+   * Cancela el envío aún no entregado de UN intento.
+   *
+   * Se llama al cerrar el intento: la gestión terminó, así que lo que siga en
+   * cola para ella es correo viejo. Sólo toca `pending`/`failed` — un mensaje
+   * ya entregado no se puede des-enviar.
+   */
+  cancelarMensajesDeIntento(tx: Tx, attemptId: string): Promise<void>;
   /** Cancela intentos pendientes y sus mensajes: el ciclo terminó. */
   cancelarPendientes(tx: Tx, patientRecallId: string): Promise<void>;
   /** ¿Hay una gestión todavía sin entregar ni cerrar? */

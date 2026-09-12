@@ -361,7 +361,7 @@ describe('Casos de uso de Recall', () => {
       expect(intentos.n).toBe(1);
     });
 
-    it('declinar cierra el seguimiento y cancela lo pendiente', async () => {
+    it('declinar cierra el seguimiento y CANCELA el mensaje que seguía en cola', async () => {
       const { recallId: recall3 } = await crearControlVivo();
       const intento = await comoUsuario(() =>
         app.get(ScheduleRecallAttemptUseCase).ejecutar(recall3),
@@ -374,14 +374,97 @@ describe('Casos de uso de Recall', () => {
         }),
       );
       expect(status).toBe('dismissed');
+
+      // Lo que importa de verdad: el paciente que acaba de rechazar el control
+      // NO recibe el correo que seguía en cola para esa misma gestión.
       const mensajes = (
         await admin.db.execute(sql`
           SELECT status FROM outbound_messages WHERE recall_attempt_id=${intento.attemptId}::uuid
         `)
       ).rows as unknown as { status: string }[];
-      // El intento ya no estaba 'pending' (se cerró), así que su mensaje sigue
-      // en pie: lo que se cancela son los intentos aún sin gestionar.
-      expect(mensajes.length).toBeGreaterThanOrEqual(0);
+      expect(mensajes).toHaveLength(1);
+      expect(mensajes[0]?.status).toBe('cancelled');
+    });
+
+    it('un intento de OTRO control del mismo tenant no se puede cerrar desde aquí', async () => {
+      // RLS acota al tenant, pero dentro de una clínica no distingue un
+      // control de otro: el vínculo lo tiene que exigir la consulta.
+      const a = await crearControlVivo();
+      const b = await crearControlVivo();
+      const intentoDeA = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(a.recallId),
+      );
+
+      await expect(
+        comoUsuario(() =>
+          app.get(RecordRecallOutcomeUseCase).ejecutar({
+            recallId: b.recallId,
+            attemptId: intentoDeA.attemptId,
+            resultado: 'answered',
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'IntentoNoActualizable' });
+
+      // Y el intento de A sigue intacto: ni cerrado ni con resultado ajeno.
+      const fila = (
+        await admin.db.execute(sql`
+          SELECT status, result FROM recall_attempts WHERE id=${intentoDeA.attemptId}::uuid
+        `)
+      ).rows[0] as unknown as { status: string; result: string | null };
+      expect(fila).toMatchObject({ status: 'pending', result: null });
+    });
+
+    it('cerrar dos veces la misma gestión falla la segunda, en vez de reescribir el resultado', async () => {
+      const { recallId } = await crearControlVivo();
+      const intento = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(recallId),
+      );
+      await comoUsuario(() =>
+        app.get(RecordRecallOutcomeUseCase).ejecutar({
+          recallId,
+          attemptId: intento.attemptId,
+          resultado: 'unreachable',
+        }),
+      );
+      await expect(
+        comoUsuario(() =>
+          app.get(RecordRecallOutcomeUseCase).ejecutar({
+            recallId,
+            attemptId: intento.attemptId,
+            resultado: 'booked',
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'IntentoNoActualizable' });
+
+      const fila = (
+        await admin.db.execute(sql`
+          SELECT result FROM recall_attempts WHERE id=${intento.attemptId}::uuid
+        `)
+      ).rows[0] as unknown as { result: string };
+      expect(fila.result).toBe('unreachable');
+    });
+
+    it('cancelar lo pendiente de un control no toca el de otro', async () => {
+      const a = await crearControlVivo();
+      const b = await crearControlVivo();
+      const intentoA = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(a.recallId),
+      );
+      const intentoB = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(b.recallId),
+      );
+
+      await comoUsuario(() => app.get(DismissRecallUseCase).ejecutar(a.recallId, 'Se mudó'));
+
+      const estados = (
+        await admin.db.execute(sql`
+          SELECT recall_attempt_id, status FROM outbound_messages
+           WHERE recall_attempt_id IN (${intentoA.attemptId}::uuid, ${intentoB.attemptId}::uuid)
+        `)
+      ).rows as unknown as { recall_attempt_id: string; status: string }[];
+      const porIntento = new Map(estados.map((e) => [e.recall_attempt_id, e.status]));
+      expect(porIntento.get(intentoA.attemptId)).toBe('cancelled');
+      expect(porIntento.get(intentoB.attemptId)).toBe('pending');
     });
 
     it('descartar exige motivo y lo deja en bitácora', async () => {

@@ -132,3 +132,23 @@ export class IntentoEnCursoError extends DomainError {
     super('Ya hay una gestión en curso para este control. Regístrala antes de hacer otra.');
   }
 }
+
+/**
+ * No se pudo cerrar el intento: no existe, no pertenece a ese control, o ya
+ * estaba cerrado o cancelado.
+ *
+ * Una sola causa hacia afuera a propósito. Distinguirlas exigiría una consulta
+ * extra y no cambiaría lo que el usuario debe hacer —recargar y mirar el
+ * estado real—, mientras que el `UPDATE` que no toca ninguna fila ya trae la
+ * respuesta. Lo que NO puede pasar es que un cierre fallido devuelva 200: eso
+ * dejaría a recepción creyendo que registró una gestión que no quedó.
+ */
+export class IntentoNoActualizableError extends DomainError {
+  readonly code = 'IntentoNoActualizable';
+  readonly httpStatus = 409;
+  constructor() {
+    super(
+      'No se pudo registrar el resultado: esa gestión ya no está abierta o no es de este control.',
+    );
+  }
+}
