@@ -3,8 +3,9 @@
 > Documento operativo para una IA o equipo de ingeniería.
 >
 > Baseline original: `main` en `5195d8c` (`0049_outbox_polimorfica.sql`).
-> Baseline actual: `main` en `967ed26` (`0050_recall_automation.sql`), con los commits 4 y
-> su hardening ya aplicados.
+> Baseline actual: `main` en `8d8e3d7` (`0051_worker_recall_permisos.sql`), con los commits
+> 4 y 5 y sus hardenings aplicados. `origin/main` estaba en `6beb09d` al empezar este
+> trabajo.
 > Fecha de revisión: 2026-09-12.
 >
 > Este documento reemplaza el orden de ejecución futuro de los README anteriores cuando
@@ -57,13 +58,20 @@ Recall **ya tiene** (commits 4 y siguientes de hardening):
 - las dos barreras de contacto: una gestión sin entregar bloquea siempre, y entregada la
   anterior manda el espaciado del tipo.
 
+Y desde el commit 5 y su hardening:
+
+- los ocho productores de eventos, emitiendo dentro de su transacción de negocio;
+- `MarcarNoAsistioUseCase` con la tolerancia en la entidad;
+- los cuatro consumidores, registrados en `AppEventConsumerRegistry` — Nest **no** tiene
+  multi-providers, y el `multi: true` de la Fase A se ignoraba en silencio;
+- los permisos del rol `healthflow_worker` para ejecutar esos consumidores: auditoría por
+  `record_system_audit` y cancelación de outbox por función acotada, sin `UPDATE` general.
+
 Recall **todavía no tiene**:
 
-- productores de eventos conectados (nadie emite: el bus sigue sin fuentes reales);
-- consumidores registrados;
-- `MarcarNoAsistioUseCase`;
 - API;
 - frontend;
+- vínculo manual entre un control y una cita interna (ver contrato abajo);
 - invocación del barrido desde el worker;
 - fechas inmutables de transición, sin las cuales las métricas de conversión no se publican;
 - actualización de `recall_attempts` desde el webhook del proveedor (ADR 0004 §D8);
@@ -219,8 +227,8 @@ Todos deben:
 ### 5.5 Criterio de aceptación del commit 4
 
 > **Estado: hecho** (2026-09-12). Migración `0050_recall_automation.sql` y su compensatoria.
-> Evidencia al cierre del hardening: **707 pruebas en verde** — 530 de dominio y 177 de
-> integración —, de las cuales 34 de integración en
+> Evidencia al cierre del commit 5 y sus hardenings: **731 pruebas en verde** — 537 de
+> dominio y 194 de integración —, de las cuales 34 de integración en
 > `recalls-casos-de-uso.integration.spec.ts` y 22 de dominio en
 > `recall-use-cases.domain.spec.ts`. `pnpm lint`, `pnpm build` y `git diff --check` limpios.
 >
@@ -356,12 +364,51 @@ POST   /recalls
 POST   /recalls/:id/contact
 POST   /recalls/:id/outcome
 POST   /recalls/:id/dismiss
+POST   /recalls/:id/link
+POST   /recalls/:id/unlink
 POST   /appointments/:id/no-show
 ```
 
 `GET /recalls/metrics` **NO va en este commit**. Convertidos, recuperados y agotados se
 fechan hoy con `updated_at`, que es mutable, y "vencidos" es backlog y no una cifra del
 periodo. El endpoint entra en el commit 8, después de las fechas inmutables de transición.
+
+### Vínculo manual entre un control y una cita interna
+
+Falta y hace falta. La asociación automática exige que `appointment.service_id` coincida con
+`recall_types.booking_service_id`, y **una cita interna no tiene servicio**: la agenda
+recepción a mano, sin pasar por la reserva pública. El productor emite `serviceId: null` a
+propósito y el consumidor no vincula nada. Consecuencia práctica: si recepción llama al
+paciente y le agenda la cita ella misma —que es el caso más común cuando el recall
+funciona—, el control se queda en `contacted` para siempre y la conversión marca cero justo
+en el caso de éxito.
+
+Contrato:
+
+```text
+POST /recalls/:id/link      { appointmentId }     → vincula
+POST /recalls/:id/unlink                          → deshace el vínculo
+```
+
+Reglas:
+
+- La cita y el control deben ser del mismo paciente. No es cosmética: vincular la cita de
+  otro paciente cerraría un control que sigue pendiente y mandaría la métrica al revés.
+- La cita no puede estar `cancelada` ni `no_asistio`; vincular algo ya muerto dejaría el
+  control esperando un cierre que no llega.
+- Una cita se vincula a UN control: si ya tiene otro, se responde 409 con el control actual
+  en vez de mover el vínculo en silencio.
+- El control debe estar vivo (`pending`, `due` o `contacted`). Uno ya `scheduled` se
+  desvincula primero — explícito, no implícito.
+- `unlink` devuelve el control a `due`, no a `pending`: si ya venció, sigue vencido.
+- Ambas operaciones auditan con el actor autenticado (vía `record`, no `recordSystem`) y
+  registran qué cita se vinculó o se soltó.
+- CASL: `contactar` sobre `Recall` — es trabajo de recepción, igual que registrar la gestión
+  que llevó a esa cita.
+- Idempotente: volver a vincular la misma cita al mismo control no es un error.
+
+Desde el frontend (commit 7) vive en el panel del expediente y en la worklist: "ya le
+agendé cita" es la acción natural después de una llamada.
 
 Seguridad:
 
@@ -849,27 +896,32 @@ docs/adr/0004-diseno-recall-y-entitlements.md antes de editar. Verifica git stat
 la rama activa, el último número de migración y los cambios existentes; preserva trabajo
 ajeno.
 
-Implementa únicamente el “Commit 5 — Emisores, no-show, finalización y consumidores”. El
-commit 4 y su hardening ya están aplicados: hay migración 0050, repositorio, casos de uso,
-auditoría de sistema y las dos barreras de contacto. NO avances a API (commit 6), frontend
-(commit 7) ni worker/métricas/E2E (commit 8).
+Implementa únicamente el “Commit 6 — API y contratos”. Los commits 4 y 5 y sus hardenings
+ya están aplicados: hay migraciones hasta 0051, repositorio, casos de uso, productores,
+consumidores registrados en AppEventConsumerRegistry, MarcarNoAsistioUseCase y los permisos
+del rol del worker. NO avances a frontend (commit 7) ni a worker/métricas/E2E (commit 8).
 
-Conecta los productores de eventos dentro de la transacción de negocio que ya existe, en
-presupuestos, citas internas y PublicBookingService. Construye MarcarNoAsistioUseCase con la
-regla de tolerancia: sólo desde 'agendada' o 'en_espera', y sólo después de
-fin_programado + 30 minutos, con el reloj inyectado y AusenciaPrematuraError (409) que
-incluya allowedAt. Registra los cuatro consumidores con nombres estables y versionados, que
-usen los casos de uso existentes y no escriban SQL desde el manejador.
+Construye los controllers, los DTOs validados y los tipos compartidos de las rutas de
+Recall y de POST /appointments/:id/no-show. Incluye el vínculo manual entre control y cita
+interna (POST /recalls/:id/link y /unlink) con el contrato descrito en este documento: sin
+él, una cita agendada por recepción nunca cierra su control y la conversión marca cero en
+el caso de éxito.
 
-Reprogramar emite UN solo appointment.rescheduled y no toca el control vinculado. La
-asociación automática exige que appointment.service_id coincida con
-recall_types.booking_service_id; un tipo sin servicio requiere vínculo manual.
+NO construyas GET /recalls/metrics. Sus cifras de conversión se fechan con una columna
+mutable y no son publicables hasta que existan fechas inmutables de transición (commit 8).
+
+Cursor opaco con orden estable (due_date, id), máximo 100 por página, @RequiereModulo a
+nivel de controller, CASL según la matriz, y los códigos de error de dominio que ya
+existen: 409 para transición/conflicto/ausencia prematura/contacto demasiado pronto, 422
+para DTO inválido, 402 para suscripción sin escritura, 404 para módulo no disponible o
+recurso de otro tenant. Los errores que llevan allowedAt deben exponerlo.
 
 Mantén dominio puro, transacciones, RLS forzado, grants mínimos, idempotencia y aislamiento
-entre dos tenants. No uses Promise.all sobre el mismo tx. No atrapes violaciones de unicidad
-para lograr idempotencia: en PostgreSQL abortan la transacción — usa ON CONFLICT. Ejecuta
-pruebas de dominio e integración con PostgreSQL real, pnpm lint, pnpm test, pnpm build y
-git diff --check, y conserva verdes las suites históricas sin debilitarlas. Actualiza el
-checklist del plan sólo con evidencia verificable y entrega un resumen de archivos,
-migraciones, decisiones, pruebas y riesgos pendientes. No hagas push.
+entre dos tenants. No uses Promise.all sobre el mismo tx. No atrapes violaciones de
+unicidad para lograr idempotencia: en PostgreSQL abortan la transacción — usa ON CONFLICT.
+Si algo lo va a ejecutar el worker, pruébalo con la conexión del worker y no con la de la
+aplicación. Ejecuta pruebas de dominio e integración con PostgreSQL real, pnpm lint,
+pnpm test, pnpm build y git diff --check, y conserva verdes las suites históricas sin
+debilitarlas. Actualiza el checklist del plan sólo con evidencia verificable y entrega un
+resumen de archivos, migraciones, decisiones, pruebas y riesgos pendientes. No hagas push.
 ```
