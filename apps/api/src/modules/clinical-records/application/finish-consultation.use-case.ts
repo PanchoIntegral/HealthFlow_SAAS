@@ -7,6 +7,7 @@ import type {
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { RequestContextService } from '../../../common/tenant-context/request-context';
 import { AuditService } from '../../../common/audit/audit.service';
+import { AppEventsService } from '../../../common/events/app-events.service';
 import {
   APPOINTMENT_REPOSITORY,
   type AppointmentRepository,
@@ -31,6 +32,7 @@ export class FinishConsultationUseCase {
     private readonly tenantDb: TenantDbService,
     private readonly ctx: RequestContextService,
     private readonly audit: AuditService,
+    private readonly eventos: AppEventsService,
     @Inject(APPOINTMENT_REPOSITORY) private readonly appointments: AppointmentRepository,
     @Inject(CLINICAL_RECORD_REPOSITORY) private readonly records: ClinicalRecordRepository,
     @Inject(WAITING_ROOM_NOTIFIER) private readonly notifier: WaitingRoomNotifier,
@@ -66,6 +68,16 @@ export class FinishConsultationUseCase {
         entidadId: note.id,
         accion: 'close_note',
         detalle: { appointmentId },
+      });
+
+      // La cita se atendió de verdad: es lo que cierra el ciclo de un control
+      // de Recall. Ojo con la diferencia — `treatment_item.completed` abre el
+      // SIGUIENTE ciclo; esto cierra el actual.
+      await this.eventos.emitir(tx, {
+        tipo: 'appointment.completed',
+        entidad: 'appointment',
+        entidadId: appointmentId,
+        payload: { patientId: appointment.patientId, doctorId: appointment.doctorId },
       });
 
       const view = await this.appointments.findWaitingRoomEntry(tx, appointmentId);

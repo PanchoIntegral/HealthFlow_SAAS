@@ -1,5 +1,18 @@
 import type { AppointmentStatus } from '@healthflow/shared-types';
-import { InvalidAppointmentRangeError, InvalidAppointmentTransitionError } from './appointment.errors';
+import {
+  AusenciaPrematuraError,
+  InvalidAppointmentRangeError,
+  InvalidAppointmentTransitionError,
+} from './appointment.errors';
+
+/**
+ * Cuánto se espera tras la hora de fin antes de poder marcar una ausencia.
+ *
+ * Treinta minutos es una suposición razonable, no un dato: hay que validarla
+ * con recepción. Vive aquí como constante para que cambiarla sea un cambio y
+ * no una búsqueda, y el caso de uso puede pasar otro umbral.
+ */
+export const TOLERANCIA_AUSENCIA_MINUTOS = 30;
 
 /**
  * Mapa explícito de transiciones permitidas. Los estados terminales
@@ -9,7 +22,9 @@ import { InvalidAppointmentRangeError, InvalidAppointmentTransitionError } from 
 export const ALLOWED_TRANSITIONS: Readonly<
   Record<AppointmentStatus, readonly AppointmentStatus[]>
 > = {
-  agendada: ['en_espera', 'cancelada'],
+  // 'no_asistio' desde 'agendada' además de desde 'en_espera': el caso
+  // típico es justamente el paciente que nunca llegó a registrarse.
+  agendada: ['en_espera', 'cancelada', 'no_asistio'],
   en_espera: ['en_consulta', 'no_asistio'],
   en_consulta: ['finalizada'],
   finalizada: [],
@@ -23,6 +38,8 @@ export interface AppointmentProps {
   patientId: string;
   doctorId: string;
   estatus: AppointmentStatus;
+  /** Hora de fin prevista. Es la base de la tolerancia de ausencia. */
+  finProgramado: Date;
   checkinAt: Date | null;
   inicioReal: Date | null;
   finReal: Date | null;
@@ -99,8 +116,29 @@ export class Appointment {
     }
   }
 
-  markNoShow(): void {
+  /**
+   * Marca la ausencia, pero sólo cuando ya pasó la tolerancia.
+   *
+   * El reloj se INYECTA y no se consulta dentro: es lo que permite probar la
+   * regla sin esperar media hora, y lo que evita que dos capas discrepen
+   * sobre qué hora es.
+   */
+  markNoShow(now: Date, toleranciaMinutos: number = TOLERANCIA_AUSENCIA_MINUTOS): void {
+    const permitidoDesde = new Date(
+      this.props.finProgramado.getTime() + toleranciaMinutos * 60_000,
+    );
+    // La tolerancia se comprueba ANTES que la transición: a un paciente que
+    // sigue en consulta hay que decirle que el estado no corresponde, pero a
+    // uno cuya cita acaba de empezar, que todavía no es hora.
+    if (this.canTransitionTo('no_asistio') && now.getTime() < permitidoDesde.getTime()) {
+      throw new AusenciaPrematuraError(permitidoDesde);
+    }
     this.transition('no_asistio');
+  }
+
+  /** Desde cuándo se puede marcar la ausencia. Para la UI. */
+  ausenciaPermitidaDesde(toleranciaMinutos: number = TOLERANCIA_AUSENCIA_MINUTOS): Date {
+    return new Date(this.props.finProgramado.getTime() + toleranciaMinutos * 60_000);
   }
 
   toState(): AppointmentProps {

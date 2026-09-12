@@ -1,9 +1,10 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { isAppEventType, type AppEventType } from '@healthflow/shared-types';
 import { DB } from '../../db/drizzle.module';
 import { runInTenant, type Database } from '../../db/drizzle';
-import { APP_EVENT_CONSUMER, type AppEventConsumer, type AppEventEnvelope } from './app-event.types';
+import type { AppEventConsumer, AppEventEnvelope } from './app-event.types';
+import { AppEventConsumerRegistry } from './app-event-consumer.registry';
 import { CapacidadService } from '../capacidad/capacidad.service';
 import { permite, razonDe } from '../capacidad/capacidad';
 
@@ -41,14 +42,18 @@ interface FilaReclamada {
 @Injectable()
 export class AppEventsDispatcher {
   private readonly logger = new Logger(AppEventsDispatcher.name);
-  private readonly consumidores: AppEventConsumer[];
 
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly capacidad: CapacidadService,
-    @Optional() @Inject(APP_EVENT_CONSUMER) consumidores?: AppEventConsumer[] | AppEventConsumer,
-  ) {
-    this.consumidores = consumidores ? ([] as AppEventConsumer[]).concat(consumidores) : [];
+    private readonly registro: AppEventConsumerRegistry,
+  ) {}
+
+  private get consumidores(): readonly AppEventConsumer[] {
+    // Se lee en cada vuelta y no en el constructor: los módulos registran sus
+    // consumidores en `onModuleInit`, que corre DESPUÉS de construirse el
+    // despachador.
+    return this.registro.todos;
   }
 
   /** Una vuelta completa. Devuelve cuántos eventos se entregaron. */

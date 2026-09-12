@@ -57,6 +57,7 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
       patientId: row.patientId,
       doctorId: row.doctorId,
       estatus: row.estatus as AppointmentStatus,
+      finProgramado: row.finProgramado,
       checkinAt: row.checkinAt,
       inicioReal: row.inicioReal,
       finReal: row.finReal,

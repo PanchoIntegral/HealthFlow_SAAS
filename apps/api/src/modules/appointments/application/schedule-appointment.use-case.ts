@@ -8,6 +8,7 @@ import type {
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { RequestContextService } from '../../../common/tenant-context/request-context';
 import { AuditService } from '../../../common/audit/audit.service';
+import { AppEventsService } from '../../../common/events/app-events.service';
 import { Appointment } from '../domain/appointment.entity';
 import { DoctorDoubleBookedError } from '../domain/appointment.errors';
 import {
@@ -34,6 +35,7 @@ export class ScheduleAppointmentUseCase {
     private readonly tenantDb: TenantDbService,
     private readonly ctx: RequestContextService,
     private readonly audit: AuditService,
+    private readonly eventos: AppEventsService,
     @Inject(APPOINTMENT_REPOSITORY) private readonly repo: AppointmentRepository,
     @Inject(WAITING_ROOM_NOTIFIER) private readonly notifier: WaitingRoomNotifier,
     @Optional() @Inject(MESSAGE_SCHEDULER) private readonly messages?: MessageScheduler,
@@ -62,6 +64,26 @@ export class ScheduleAppointmentUseCase {
         entidadId: id,
         accion: 'schedule',
         detalle: { patientId: input.patientId, doctorId: input.doctorId },
+      });
+
+      // Dentro de la transacción de negocio: si la cita se revierte, el evento
+      // se va con ella. Es lo que permite a Recall cerrar el seguimiento sin
+      // que nadie tenga que acordarse de avisarle.
+      await this.eventos.emitir(tx, {
+        tipo: 'appointment.scheduled',
+        entidad: 'appointment',
+        entidadId: id,
+        payload: {
+          patientId: input.patientId,
+          doctorId: input.doctorId,
+          // Una cita interna no tiene servicio de reserva pública: la agenda
+          // recepción a mano. El consumidor de Recall sólo vincula por
+          // servicio declarado, así que ésta NO cierra un control sola —
+          // hace falta el vínculo manual, que es del commit 6.
+          serviceId: null,
+          inicioProgramado: new Date(input.inicioProgramado).toISOString(),
+          origen: 'interno',
+        },
       });
 
       if (this.messages) {

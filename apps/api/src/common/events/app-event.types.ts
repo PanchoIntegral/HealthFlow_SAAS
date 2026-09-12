@@ -57,5 +57,8 @@ export interface AppEventConsumer {
   manejar(evento: AppEventEnvelope, tx: Tx): Promise<void>;
 }
 
-/** Token multi-provider: cada módulo registra sus consumidores con él. */
-export const APP_EVENT_CONSUMER = 'APP_EVENT_CONSUMER';
+/**
+ * Los consumidores se registran en `AppEventConsumerRegistry` desde el
+ * `onModuleInit` de su módulo. NO existe un token multi-provider: Nest no
+ * tiene multi-providers, y el que había aquí antes se ignoraba en silencio.
+ */

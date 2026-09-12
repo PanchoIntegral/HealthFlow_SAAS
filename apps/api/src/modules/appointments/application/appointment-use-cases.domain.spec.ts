@@ -3,6 +3,7 @@ import type { Tx } from '../../../db/drizzle';
 import type { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import type { RequestContextService } from '../../../common/tenant-context/request-context';
 import type { AuditService, AuditEntry } from '../../../common/audit/audit.service';
+import type { AppEventsService } from '../../../common/events/app-events.service';
 import type {
   AppointmentView,
   DoctorSummary,
@@ -53,6 +54,7 @@ class FakeAppointmentRepository implements AppointmentRepository {
         patientId: over.patientId,
         doctorId: over.doctorId,
         estatus: over.estatus ?? 'agendada',
+        finProgramado: new Date(finProgramado),
         checkinAt: null,
         inicioReal: null,
         finReal: null,
@@ -203,6 +205,20 @@ function fakeAudit() {
   };
 }
 
+/** Doble del bus: guarda lo emitido para poder afirmarlo. */
+function fakeEventos() {
+  const emitidos: { tipo: string; payload?: Record<string, unknown> }[] = [];
+  return {
+    eventos: {
+      emitir: async (_tx: Tx, evento: { tipo: string; payload?: Record<string, unknown> }) => {
+        emitidos.push(evento);
+        return 'evt-1';
+      },
+    } as unknown as AppEventsService,
+    emitidos,
+  };
+}
+
 function fakeWaitingRoomNotifier() {
   const eventos: { tenantId: string; entry: WaitingRoomEntry; previousStatus: string | null }[] = [];
   return {
@@ -230,7 +246,7 @@ describe('ScheduleAppointmentUseCase', () => {
     const repo = new FakeAppointmentRepository();
     const { audit } = fakeAudit();
     const { notifier } = fakeWaitingRoomNotifier();
-    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier);
+    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier);
 
     const inicio = new Date(Date.now() + 3600_000);
     const view = await useCase.execute({
@@ -248,7 +264,7 @@ describe('ScheduleAppointmentUseCase', () => {
     const repo = new FakeAppointmentRepository();
     const { audit } = fakeAudit();
     const { notifier } = fakeWaitingRoomNotifier();
-    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier);
+    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier);
 
     const t = new Date().toISOString();
     await expect(
@@ -268,7 +284,7 @@ describe('ScheduleAppointmentUseCase', () => {
     });
     const { audit } = fakeAudit();
     const { notifier } = fakeWaitingRoomNotifier();
-    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier);
+    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier);
 
     await expect(
       useCase.execute({
@@ -292,7 +308,7 @@ describe('ScheduleAppointmentUseCase', () => {
     });
     const { audit } = fakeAudit();
     const { notifier } = fakeWaitingRoomNotifier();
-    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier);
+    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier);
 
     const view = await useCase.execute({
       patientId: 'pac-beto',
@@ -307,7 +323,7 @@ describe('ScheduleAppointmentUseCase', () => {
     const repo = new FakeAppointmentRepository();
     const { audit, llamadas } = fakeAudit();
     const { notifier } = fakeWaitingRoomNotifier();
-    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier);
+    const useCase = new ScheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier);
 
     const inicio = new Date(Date.now() + 3600_000);
     await useCase.execute({
@@ -406,7 +422,7 @@ describe('CancelAppointmentUseCase', () => {
     const { notifier } = fakeWaitingRoomNotifier();
     const notifications = new FakeNotificationRepository();
     const { notifier: notiNotifier } = fakeNotificationsNotifier();
-    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier, notifications, notiNotifier);
+    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier, notifications, notiNotifier);
 
     const view = await useCase.execute(id, 'Paciente reagenda');
 
@@ -422,7 +438,7 @@ describe('CancelAppointmentUseCase', () => {
     const { notifier } = fakeWaitingRoomNotifier();
     const notifications = new FakeNotificationRepository();
     const { notifier: notiNotifier } = fakeNotificationsNotifier();
-    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier, notifications, notiNotifier);
+    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier, notifications, notiNotifier);
 
     await useCase.execute(idAna);
 
@@ -436,7 +452,7 @@ describe('CancelAppointmentUseCase', () => {
     const { notifier } = fakeWaitingRoomNotifier();
     const notifications = new FakeNotificationRepository();
     const { notifier: notiNotifier } = fakeNotificationsNotifier();
-    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier, notifications, notiNotifier);
+    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier, notifications, notiNotifier);
 
     await expect(useCase.execute('no-existe')).rejects.toThrow(NotFoundException);
   });
@@ -448,7 +464,7 @@ describe('CancelAppointmentUseCase', () => {
     const { notifier } = fakeWaitingRoomNotifier();
     const notifications = new FakeNotificationRepository();
     const { notifier: notiNotifier } = fakeNotificationsNotifier();
-    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, repo, notifier, notifications, notiNotifier);
+    const useCase = new CancelAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, fakeEventos().eventos, repo, notifier, notifications, notiNotifier);
 
     await expect(useCase.execute(id)).rejects.toThrow(InvalidAppointmentTransitionError);
   });

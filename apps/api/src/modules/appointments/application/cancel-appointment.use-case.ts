@@ -8,6 +8,7 @@ import type {
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { RequestContextService } from '../../../common/tenant-context/request-context';
 import { AuditService } from '../../../common/audit/audit.service';
+import { AppEventsService } from '../../../common/events/app-events.service';
 import {
   APPOINTMENT_REPOSITORY,
   type AppointmentRepository,
@@ -39,6 +40,7 @@ export class CancelAppointmentUseCase {
     private readonly tenantDb: TenantDbService,
     private readonly ctx: RequestContextService,
     private readonly audit: AuditService,
+    private readonly eventos: AppEventsService,
     @Inject(APPOINTMENT_REPOSITORY) private readonly repo: AppointmentRepository,
     @Inject(WAITING_ROOM_NOTIFIER) private readonly notifier: WaitingRoomNotifier,
     @Inject(NOTIFICATION_REPOSITORY) private readonly notifications: NotificationRepository,
@@ -60,6 +62,15 @@ export class CancelAppointmentUseCase {
         entidadId: appointmentId,
         accion: 'cancel',
         detalle: { motivo: motivo ?? null },
+      });
+
+      // Una cancelación es definitiva: reprogramar NO pasa por aquí, emite
+      // `appointment.rescheduled` y no reabre ningún seguimiento.
+      await this.eventos.emitir(tx, {
+        tipo: 'appointment.cancelled',
+        entidad: 'appointment',
+        entidadId: appointmentId,
+        payload: { patientId: appointment.patientId, doctorId: appointment.doctorId },
       });
 
       if (this.messages) {

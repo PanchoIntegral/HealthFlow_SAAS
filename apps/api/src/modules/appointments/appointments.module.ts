@@ -10,6 +10,9 @@ import { ListWaitingRoomUseCase } from './application/list-waiting-room.use-case
 import { ScheduleAppointmentUseCase } from './application/schedule-appointment.use-case';
 import { ListAppointmentsUseCase } from './application/list-appointments.use-case';
 import { CancelAppointmentUseCase } from './application/cancel-appointment.use-case';
+// Sin ruta todavía: POST /appointments/:id/no-show es del commit 6. Se
+// registra ya porque los consumidores y las pruebas lo necesitan.
+import { MarcarNoAsistioUseCase } from './application/marcar-no-asistio.use-case';
 import { ListDoctorsUseCase } from './application/list-doctors.use-case';
 import { DrizzleAppointmentRepository } from './infrastructure/appointment.drizzle-repo';
 import { AppointmentsController } from './infrastructure/appointments.controller';
@@ -31,6 +34,7 @@ import { MessagingModule } from '../messaging/messaging.module';
     ScheduleAppointmentUseCase,
     ListAppointmentsUseCase,
     CancelAppointmentUseCase,
+    MarcarNoAsistioUseCase,
     ListDoctorsUseCase,
     CaslAbilityFactory,
     PoliciesGuard,

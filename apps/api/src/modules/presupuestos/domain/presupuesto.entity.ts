@@ -87,6 +87,14 @@ export class Presupuesto {
   get id(): string {
     return this.props.id;
   }
+  /** De quién es el plan. Lo necesita el evento de partida terminada. */
+  get patientId(): string {
+    return this.props.patientId;
+  }
+  /** Quién lo cotiza; se propaga como médico asignado del control. */
+  get doctorId(): string {
+    return this.props.doctorId;
+  }
   get estatus(): EstatusPresupuesto {
     return this.props.estatus;
   }

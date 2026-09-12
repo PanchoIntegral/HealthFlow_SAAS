@@ -11,6 +11,7 @@ import type {
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { RequestContextService } from '../../../common/tenant-context/request-context';
 import { AuditService } from '../../../common/audit/audit.service';
+import { AppEventsService } from '../../../common/events/app-events.service';
 import { Presupuesto } from '../domain/presupuesto.entity';
 import { PresupuestoNoEncontradoError } from '../domain/presupuesto.errors';
 import {
@@ -29,6 +30,7 @@ export class PresupuestosUseCases {
     private readonly tenantDb: TenantDbService,
     private readonly ctx: RequestContextService,
     private readonly audit: AuditService,
+    private readonly eventos: AppEventsService,
     @Inject(PRESUPUESTO_REPOSITORY) private readonly repo: PresupuestoRepository,
   ) {}
 
@@ -101,6 +103,26 @@ export class PresupuestosUseCases {
     return this.conPresupuesto(id, async (tx, presupuesto) => {
       presupuesto.cambiarEstatusPartida(partidaId, estatus, appointmentId);
       await this.repo.guardar(tx, presupuesto);
+
+      // Sólo al TERMINAR: es el hecho clínico que abre el siguiente control.
+      // El evento no decide si habrá recall ni de qué tipo — eso lo resuelve
+      // el consumidor leyendo `presupuesto_partidas.recall_type_id`, que es
+      // explícito. Aquí no se infiere nada del texto de la partida.
+      if (estatus === 'terminado') {
+        const partida = presupuesto.partidas.find((p) => p.id === partidaId);
+        await this.eventos.emitir(tx, {
+          tipo: 'treatment_item.completed',
+          entidad: 'presupuesto_partida',
+          entidadId: partidaId,
+          payload: {
+            presupuestoId: id,
+            patientId: presupuesto.patientId,
+            doctorId: presupuesto.doctorId,
+            appointmentId: partida?.appointmentId ?? null,
+            recallTypeId: partida?.recallTypeId ?? null,
+          },
+        });
+      }
     });
   }
 

@@ -8,6 +8,7 @@ import { runInTenant, type Database, type Tx } from '../../db/drizzle';
 import { TenantDbService } from '../../common/tenant-context/tenant-db.service';
 import { env } from '../../config/env';
 import { OutboxService } from '../messaging/outbox.service';
+import { AppEventsService } from '../../common/events/app-events.service';
 import type { AvailabilityExceptionDto, AvailabilityRuleDto, UpdateBookingSettingsDto, UpsertBookingServiceDto } from './booking.dto';
 import { decidePublicAction, rejectMessage, type PublicAction, type TransitionDecision } from './booking.transitions';
 
@@ -26,7 +27,7 @@ export const PLANES_CON_RESERVA=['individual','consultorio','clinica','pro'];
 
 @Injectable()
 export class BookingServiceApp {
-  constructor(@Inject(DB) private readonly db:Database,private readonly tenantDb:TenantDbService,private readonly outbox:OutboxService){}
+  constructor(@Inject(DB) private readonly db:Database,private readonly tenantDb:TenantDbService,private readonly outbox:OutboxService,private readonly eventos:AppEventsService){}
 
   async directory(query:string|undefined,specialty:string|undefined,page:number,pageSize:number):Promise<PublicDirectoryPage>{
     const safePage=Math.max(1,page),safePageSize=Math.max(1,Math.min(pageSize,24)),offset=(safePage-1)*safePageSize;
@@ -114,6 +115,12 @@ export class BookingServiceApp {
       const appointment=(await tx.execute(sql`INSERT INTO appointments(id,tenant_id,patient_id,doctor_id,service_id,motivo,inicio_programado,fin_programado,estatus,origen,estado_confirmacion,public_manage_token_hash,manage_token_expires_at) VALUES(${appointmentId},current_tenant_id(),${patient.id},${chosen.doctorId},${input.serviceId},NULL,${start.toISOString()},${end.toISOString()},'agendada','publico','pendiente',${hash},${new Date(end.getTime()+86400000).toISOString()}) RETURNING id`)).rows[0] as {id:string};
       await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${appointment.id},'public_schedule',jsonb_build_object('doctorId',${chosen.doctorId}::text,'serviceId',${input.serviceId}::text))`);
       await this.outbox.schedule(tx,{appointmentId:appointment.id,patientId:patient.id,startsAt:start,email:contact.email,phone:contact.phone,whatsappOptIn:optIn,preferredChannel:contact.channel,reminderHours:cfg.recordatorios_horas});
+      // Éste es el camino que cierra el ciclo de Recall: el paciente que
+      // recibió el mensaje reserva AQUÍ, no en recepción. Sin este evento la
+      // conversión quedaría en cero justo en el caso que el módulo existe para
+      // medir. Va con `serviceId` porque es lo que permite la asociación
+      // automática con el tipo de control.
+      await this.eventos.emitir(tx,{tipo:'appointment.scheduled',entidad:'appointment',entidadId:appointment.id,payload:{patientId:patient.id,doctorId:chosen.doctorId,serviceId:input.serviceId,inicioProgramado:start.toISOString(),origen:'publico'}});
       const clinic=(await tx.execute(sql`SELECT nombre_clinica FROM tenants LIMIT 1`)).rows[0] as {nombre_clinica:string};
       return {clinicName:clinic.nombre_clinica,doctorName:chosen.doctorName,start:start.toISOString(),end:end.toISOString(),status:'agendada',confirmationStatus:'pendiente',timezone:cfg.timezone,manageUrl:`${env.appUrl}/cita/${token}`};
     }); } catch(error){ if(isExclusion(error)) throw new ConflictException('El horario acaba de ocuparse; consulta la disponibilidad actualizada'); throw error; }
@@ -142,6 +149,9 @@ export class BookingServiceApp {
     await this.outbox.schedule(tx,{appointmentId:row.id,patientId:row.patient_id,startsAt:new Date(row.inicio_programado),email:row.email,phone:row.telefono_normalizado,whatsappOptIn:!!row.whatsapp_opt_in_at,preferredChannel:row.canal_preferido,reminderHours:[],kind:'cancelled'});
     await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${row.id},'public_cancel','{}'::jsonb)`);
     await this.event(tx,row.id,'cancelled');
+    // `messaging_events` (arriba) es telemetría del proveedor; esto es el bus
+    // de negocio. Son cosas distintas y no se sustituyen.
+    await this.eventos.emitir(tx,{tipo:'appointment.cancelled',entidad:'appointment',entidadId:row.id,payload:{patientId:row.patient_id,doctorId:row.doctor_id}});
     return this.summary(tx,hash);
   }); }
 
@@ -164,6 +174,12 @@ export class BookingServiceApp {
       await this.outbox.schedule(tx,{appointmentId:row.id,patientId:row.patient_id,startsAt:start,email:row.email,phone:row.telefono_normalizado,whatsappOptIn:!!row.whatsapp_opt_in_at,preferredChannel:row.canal_preferido,reminderHours:cfg?.recordatorios_horas??[48,24],kind:'rescheduled'});
       await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${row.id},'public_reschedule',jsonb_build_object('doctorId',${chosen.doctorId}::text,'previousStart',${new Date(row.inicio_programado).toISOString()}::text))`);
       await this.event(tx,row.id,'rescheduled');
+      // UN solo evento, no cancelación + alta. El par obligaría a cada
+      // consumidor a correlacionar dos eventos en una ventana temporal, y
+      // bastaría con que uno escuchara sólo `appointment.cancelled` para
+      // reabrir un seguimiento con la cita nueva ya agendada. El control
+      // vinculado conserva su `appointment_id` y no cambia de estado.
+      await this.eventos.emitir(tx,{tipo:'appointment.rescheduled',entidad:'appointment',entidadId:row.id,payload:{patientId:row.patient_id,doctorId:chosen.doctorId,inicioAnterior:new Date(row.inicio_programado).toISOString(),inicioNuevo:start.toISOString()}});
       return this.summary(tx,hash);
     });}catch(error){if(isExclusion(error))throw new ConflictException('El horario acaba de ocuparse');throw error;}
   }

@@ -28,7 +28,7 @@ describe('reserva pública y privacidad de mensajería', () => {
       doctor_id:'8b38ee56-d68b-4cc4-8528-97ab4823fa27',doctor_name:'Dra. Ana López',
       specialty:'Pediatría',total_count:'1',
     }]})};
-    const booking=new BookingServiceApp(db as never,{} as never,{} as never);
+    const booking=new BookingServiceApp(db as never,{} as never,{} as never,{} as never);
 
     await expect(booking.directory(' pediatría ','Pediatría',1,100)).resolves.toEqual({
       items:[{clinicName:'Clínica Centro',clinicAddress:'Zona Río',slug:'clinica-centro',
@@ -40,7 +40,7 @@ describe('reserva pública y privacidad de mensajería', () => {
 
   it('convierte una especialidad vacía en NULL para no filtrar de más', async () => {
     const db={execute:jest.fn().mockResolvedValue({rows:[]})};
-    const booking=new BookingServiceApp(db as never,{} as never,{} as never);
+    const booking=new BookingServiceApp(db as never,{} as never,{} as never,{} as never);
 
     await expect(booking.directory('centro','   ',1,12)).resolves.toEqual({
       items:[],total:0,page:1,pageSize:12,
@@ -58,7 +58,7 @@ describe('reserva pública y privacidad de mensajería', () => {
     const db={execute:jest.fn().mockResolvedValue({rows:[
       {specialty:'Pediatría',total:'3'},{specialty:'Cardiología',total:1},
     ]})};
-    const booking=new BookingServiceApp(db as never,{} as never,{} as never);
+    const booking=new BookingServiceApp(db as never,{} as never,{} as never,{} as never);
 
     await expect(booking.directorySpecialties()).resolves.toEqual([
       {specialty:'Pediatría',total:3},{specialty:'Cardiología',total:1},

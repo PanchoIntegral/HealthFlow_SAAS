@@ -37,3 +37,29 @@ export class DoctorDoubleBookedError extends DomainError {
     super('El médico ya tiene una cita agendada en ese horario');
   }
 }
+
+/**
+ * Se quiso marcar la ausencia antes de que terminara la tolerancia.
+ *
+ * La regla existe por un riesgo concreto: un dedazo en la sala de espera
+ * marcaría como ausente a un paciente que va llegando, y esa ausencia no se
+ * queda quieta — dispara `appointment.no_show`, que crea un seguimiento de
+ * reactivación y le manda un mensaje a alguien que está sentado en la sala.
+ * Una cadena automática nacida de un clic equivocado, y sobre un estado que
+ * además es terminal: no se puede deshacer.
+ *
+ * `allowedAt` viaja al cliente para que el botón se muestre deshabilitado con
+ * la hora a partir de la cual sí se puede, en vez de dejar al usuario probar.
+ */
+export class AusenciaPrematuraError extends DomainError {
+  readonly code = 'AusenciaPrematura';
+  readonly httpStatus = 409;
+
+  constructor(readonly allowedAt: Date) {
+    super('Todavía no puedes marcar la ausencia de esta cita.');
+  }
+
+  override details(): Record<string, unknown> {
+    return { allowedAt: this.allowedAt.toISOString() };
+  }
+}
