@@ -2,7 +2,9 @@
 
 > Documento operativo para una IA o equipo de ingeniería.
 >
-> Baseline verificado: `main` en `5195d8c` (`0049_outbox_polimorfica.sql`).
+> Baseline original: `main` en `5195d8c` (`0049_outbox_polimorfica.sql`).
+> Baseline actual: `main` en `967ed26` (`0050_recall_automation.sql`), con los commits 4 y
+> su hardening ya aplicados.
 > Fecha de revisión: 2026-09-12.
 >
 > Este documento reemplaza el orden de ejecución futuro de los README anteriores cuando
@@ -40,19 +42,31 @@ tiempo de incorporación y retención de clínicas piloto.
 - Presupuestos, partidas, abonos, caja y facturación.
 - Roles/CASL, RLS, auditoría, suscripciones, feature flags y entitlements.
 - Bus interno persistente de eventos y reconciliación de eventos aplazados.
-- Recall: esquema `0048`, dominio puro y outbox polimórfica `0049`.
+- Recall: esquema `0048`, dominio puro, outbox polimórfica `0049`, y —desde el commit 4—
+  configuración de automatización `0050`, repositorio, casos de uso y auditoría de sistema.
 
 ### 2.2 Empezado pero no utilizable por una clínica
 
-Recall todavía no tiene:
+Recall **ya tiene** (commits 4 y siguientes de hardening):
 
-- repositorio;
-- casos de uso;
-- productores ni consumidores conectados;
+- relación explícita partida→tipo de control y configuración de reactivación por no-show;
+- `AuditService.recordSystem()` para el worker y la reserva pública, sin contexto HTTP;
+- puerto `RecallRepository` y adaptador Drizzle;
+- quince casos de uso, con capacidad efectiva por modo y reloj inyectado;
+- barrido `pending → due` (`ProcessDueRecallsUseCase`), pendiente de invocar desde el worker;
+- las dos barreras de contacto: una gestión sin entregar bloquea siempre, y entregada la
+  anterior manda el espaciado del tipo.
+
+Recall **todavía no tiene**:
+
+- productores de eventos conectados (nadie emite: el bus sigue sin fuentes reales);
+- consumidores registrados;
+- `MarcarNoAsistioUseCase`;
 - API;
 - frontend;
-- barrido de vencimientos;
-- métricas completas;
+- invocación del barrido desde el worker;
+- fechas inmutables de transición, sin las cuales las métricas de conversión no se publican;
+- actualización de `recall_attempts` desde el webhook del proveedor (ADR 0004 §D8);
 - E2E del ciclo clínico.
 
 ### 2.3 No implementado aunque existan nombres, flags o permisos
@@ -205,9 +219,10 @@ Todos deben:
 ### 5.5 Criterio de aceptación del commit 4
 
 > **Estado: hecho** (2026-09-12). Migración `0050_recall_automation.sql` y su compensatoria.
-> Evidencia: 690 pruebas, de las cuales 25 de integración en
-> `recalls-casos-de-uso.integration.spec.ts` y 14 de dominio en
-> `recall-use-cases.domain.spec.ts`.
+> Evidencia al cierre del hardening: **707 pruebas en verde** — 530 de dominio y 177 de
+> integración —, de las cuales 34 de integración en
+> `recalls-casos-de-uso.integration.spec.ts` y 22 de dominio en
+> `recall-use-cases.domain.spec.ts`. `pnpm lint`, `pnpm build` y `git diff --check` limpios.
 >
 > | Criterio | Evidencia |
 > |---|---|
@@ -220,14 +235,26 @@ Todos deben:
 > | Auditoría del worker se persiste sin contexto HTTP | «la auditoría del worker se persiste sin contexto HTTP, con user_id nulo» |
 > | RLS bloquea lectura y escritura cruzada | «RLS impide ver o tocar los controles de la otra clínica» |
 >
-> **Hardening posterior** (commit aparte): se vinculó `attemptId` con
-> `recallId` al cerrar una gestión —RLS acota el tenant, pero dentro de una
-> clínica no distingue un control de otro—, se exige que el intento siga
-> `pending`, y un `UPDATE` que no toca ninguna fila levanta
-> `IntentoNoActualizable` en vez de devolver éxito. Además, declinar ahora
-> cancela de verdad el mensaje que seguía en cola para esa gestión: el orden
-> estaba invertido y el paciente recibía el correo del control que acababa de
-> rechazar.
+> **Hardening posterior** (`218527e`, `00ef6f8`, `967ed26`):
+>
+> - Cerrar una gestión exige el vínculo `attemptId`↔`recallId`. RLS acota el
+>   tenant, pero dentro de una clínica no distingue un control de otro. Un
+>   `UPDATE` que no toca ninguna fila levanta `IntentoNoActualizable` (409) en
+>   vez de devolver éxito.
+> - El estado admitido al cerrar es **`pending` o `sent`**, no sólo `pending`:
+>   el webhook mueve el intento a `sent` al entregar el mensaje (ADR §D8), y es
+>   justo entonces cuando el paciente contesta. Con `pending` a secas, las
+>   gestiones que sí funcionaban eran las imposibles de cerrar. `closed` y
+>   `cancelled` siguen en 409.
+> - Declinar cancela de verdad el mensaje que seguía en cola: el orden estaba
+>   invertido y el paciente recibía el correo del control que acababa de
+>   rechazar.
+> - Admitir `sent` abrió un hueco simétrico —la barrera de "gestión en curso"
+>   cae al entregar—, así que programar el siguiente contacto exige además
+>   `ahora >= next_attempt_at`, con `ContactoDemasiadoPronto` (409) y
+>   `allowedAt`. No hacerlo permitía un segundo correo idéntico minutos
+>   después: el canal se vuelve a elegir solo y no pasa a teléfono.
+>   Llamar antes de tiempo queda como acción explícita separada, sin construir.
 >
 > **Pendiente declarado:** el selector de tipo de control en la UI de partidas
 > (§5.1) NO se implementó. Necesita `GET /recalls/types`, que es del commit 6, y
@@ -329,9 +356,12 @@ POST   /recalls
 POST   /recalls/:id/contact
 POST   /recalls/:id/outcome
 POST   /recalls/:id/dismiss
-GET    /recalls/metrics?from=&to=
 POST   /appointments/:id/no-show
 ```
+
+`GET /recalls/metrics` **NO va en este commit**. Convertidos, recuperados y agotados se
+fechan hoy con `updated_at`, que es mutable, y "vencidos" es backlog y no una cifra del
+periodo. El endpoint entra en el commit 8, después de las fechas inmutables de transición.
 
 Seguridad:
 
@@ -354,7 +384,11 @@ Errores esperados:
 
 ### `/recalls`
 
-- Tarjetas KPI: vencidos, contactados, convertidos y agotados.
+- Tarjetas KPI: **sólo "pendientes por contactar"**, etiquetado como el backlog de hoy y
+  fuera de cualquier bloque con selector de fechas. Convertidos y agotados NO se pintan
+  todavía: sus cifras se mueven solas hasta que existan fechas inmutables (commit 8), y una
+  conversión que cambia sola es peor que no mostrarla — es el número con el que la clínica
+  juzga si el módulo sirve.
 - Tabla: paciente, tipo, vencimiento, médico, último intento, siguiente acción y estado.
 - Filtros sincronizados en URL.
 - Acciones: llamar, enviar, registrar resultado, descartar y abrir paciente.
@@ -815,14 +849,27 @@ docs/adr/0004-diseno-recall-y-entitlements.md antes de editar. Verifica git stat
 la rama activa, el último número de migración y los cambios existentes; preserva trabajo
 ajeno.
 
-Implementa únicamente el “Commit 4 — Configuración de automatización, repositorio y casos
-de uso”. No avances a emisores, API o frontend. Primero demuestra en pruebas los dos huecos
-del modelo: relación explícita partida→tipo de recall y configuración explícita del recall
-por no-show. Agrega auditoría segura para actores de sistema, sin fabricar contexto HTTP.
+Implementa únicamente el “Commit 5 — Emisores, no-show, finalización y consumidores”. El
+commit 4 y su hardening ya están aplicados: hay migración 0050, repositorio, casos de uso,
+auditoría de sistema y las dos barreras de contacto. NO avances a API (commit 6), frontend
+(commit 7) ni worker/métricas/E2E (commit 8).
+
+Conecta los productores de eventos dentro de la transacción de negocio que ya existe, en
+presupuestos, citas internas y PublicBookingService. Construye MarcarNoAsistioUseCase con la
+regla de tolerancia: sólo desde 'agendada' o 'en_espera', y sólo después de
+fin_programado + 30 minutos, con el reloj inyectado y AusenciaPrematuraError (409) que
+incluya allowedAt. Registra los cuatro consumidores con nombres estables y versionados, que
+usen los casos de uso existentes y no escriban SQL desde el manejador.
+
+Reprogramar emite UN solo appointment.rescheduled y no toca el control vinculado. La
+asociación automática exige que appointment.service_id coincida con
+recall_types.booking_service_id; un tipo sin servicio requiere vínculo manual.
 
 Mantén dominio puro, transacciones, RLS forzado, grants mínimos, idempotencia y aislamiento
-entre dos tenants. No uses Promise.all sobre el mismo tx. Ejecuta pruebas de dominio e
-integración con PostgreSQL real, pnpm lint, pnpm test, pnpm build y git diff --check.
-Actualiza el checklist del plan sólo con evidencia verificable y entrega un resumen de
-archivos, migraciones, decisiones, pruebas y riesgos pendientes. No hagas push.
+entre dos tenants. No uses Promise.all sobre el mismo tx. No atrapes violaciones de unicidad
+para lograr idempotencia: en PostgreSQL abortan la transacción — usa ON CONFLICT. Ejecuta
+pruebas de dominio e integración con PostgreSQL real, pnpm lint, pnpm test, pnpm build y
+git diff --check, y conserva verdes las suites históricas sin debilitarlas. Actualiza el
+checklist del plan sólo con evidencia verificable y entrega un resumen de archivos,
+migraciones, decisiones, pruebas y riesgos pendientes. No hagas push.
 ```
