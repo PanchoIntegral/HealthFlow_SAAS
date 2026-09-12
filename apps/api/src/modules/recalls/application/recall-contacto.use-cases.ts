@@ -8,6 +8,7 @@ import type { Tx } from '../../../db/drizzle';
 import { PatientRecall, cierraElSeguimiento } from '../domain/recall.entity';
 import { RECALL_REPOSITORY, type RecallRepository } from '../domain/recall.repository';
 import {
+  ContactoDemasiadoProntoError,
   IntentoEnCursoError,
   IntentoNoActualizableError,
   IntentoYaRegistradoError,
@@ -66,10 +67,28 @@ export class ScheduleRecallAttemptUseCase {
     // el primero.
     const estado = await this.repo.cargarParaActualizar(tx, recallId);
     if (!estado) throw new RecallNoEncontradoError();
-    // Un doble clic en "contactar" no debe mandarle dos mensajes idénticos al
-    // paciente. La unicidad de (recall, número) protege los datos, pero el
-    // segundo intento tomaría el número siguiente y saldría igual.
+
+    // Dos barreras distintas, y hacen falta las dos:
+    //
+    //  1. Una gestión SIN ENTREGAR bloquea siempre. Un doble clic en
+    //     "contactar" no debe mandarle dos mensajes idénticos al paciente: la
+    //     unicidad de (recall, número) protege los datos, pero el segundo
+    //     intento tomaría el número siguiente y saldría igual.
     if (await this.repo.hayIntentoPendiente(tx, recallId)) throw new IntentoEnCursoError();
+    //
+    //  2. Entregada la anterior, manda el espaciado del tipo. Sin esto, el
+    //     webhook que mueve el intento a `sent` levantaría la barrera 1 y
+    //     recepción podría disparar otro en el acto — y no sería una llamada:
+    //     `elegirCanal` vuelve a resolver por consentimiento y destinos, así
+    //     que con un correo utilizable elegiría correo otra vez. Dos correos
+    //     idénticos con minutos de diferencia.
+    //
+    // Llamar antes de tiempo es legítimo, pero es otra acción: registrar una
+    // gestión telefónica explícita, no saltarse ésta.
+    if (estado.nextAttemptAt && ahora.getTime() < estado.nextAttemptAt.getTime()) {
+      throw new ContactoDemasiadoProntoError(estado.nextAttemptAt);
+    }
+
     const tipo = await this.repo.buscarTipo(tx, estado.recallTypeId);
     if (!tipo) throw new TipoRecallNoEncontradoError();
 

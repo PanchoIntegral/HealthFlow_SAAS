@@ -323,6 +323,79 @@ describe('Casos de uso de Recall (ramas de decisión)', () => {
     });
   });
 
+  describe('espaciado entre contactos', () => {
+    function caso(over: Partial<RecallRepository>) {
+      const { repo, llamadas } = repoFalso(over);
+      const { audit } = auditFalso();
+      return {
+        uso: new ScheduleRecallAttemptUseCase(
+          {} as never, capacidadFalsa(), audit, {} as never, repo,
+        ),
+        llamadas,
+      };
+    }
+
+    it('un intento sin entregar bloquea siempre, venza o no el espaciado', async () => {
+      const { uso, llamadas } = caso({
+        hayIntentoPendiente: async () => true,
+        cargarParaActualizar: async () =>
+          estado({ nextAttemptAt: new Date('2020-01-01T00:00:00Z') }),
+      } as Partial<RecallRepository>);
+      await expect(
+        uso.enTransaccion(TX, 'r1', { tipo: 'usuario' }, 'u1', AHORA),
+      ).rejects.toMatchObject({ code: 'IntentoEnCurso' });
+      expect(llamadas).not.toContain('crearIntento');
+    });
+
+    it('entregado el anterior, manda el espaciado del tipo', async () => {
+      const permitidoDesde = new Date('2026-09-19T18:00:00Z');
+      const { uso, llamadas } = caso({
+        hayIntentoPendiente: async () => false,
+        cargarParaActualizar: async () => estado({ nextAttemptAt: permitidoDesde }),
+      } as Partial<RecallRepository>);
+
+      const error = await uso
+        .enTransaccion(TX, 'r1', { tipo: 'usuario' }, 'u1', AHORA)
+        .catch((e) => e);
+      expect(error.code).toBe('ContactoDemasiadoPronto');
+      expect(error.details()).toEqual({ allowedAt: permitidoDesde.toISOString() });
+      // Y no se encoló nada: el paciente no recibe un segundo mensaje.
+      expect(llamadas).not.toContain('encolarMensajeDeIntento');
+    });
+
+    it('el canal se vuelve a elegir solo: sin espaciado saldría OTRO CORREO', async () => {
+      // Es el motivo de que la barrera exista. El caso de uso no "pasa a
+      // teléfono" tras un correo entregado; elegirCanal resuelve por
+      // consentimiento y destinos, y este paciente tiene correo utilizable.
+      const { uso } = caso({
+        hayIntentoPendiente: async () => false,
+        cargarParaActualizar: async () => estado({ nextAttemptAt: null, intentos: 1 }),
+      } as Partial<RecallRepository>);
+      const resultado = await uso.enTransaccion(TX, 'r1', { tipo: 'usuario' }, 'u1', AHORA);
+      expect(resultado.channel).toBe('email');
+    });
+
+    it('justo al cumplirse la fecha ya procede, no un instante después', async () => {
+      const { uso } = caso({
+        hayIntentoPendiente: async () => false,
+        cargarParaActualizar: async () => estado({ nextAttemptAt: AHORA }),
+      } as Partial<RecallRepository>);
+      await expect(
+        uso.enTransaccion(TX, 'r1', { tipo: 'usuario' }, 'u1', AHORA),
+      ).resolves.toBeDefined();
+    });
+
+    it('el primer contacto no espera: no hay anterior', async () => {
+      const { uso } = caso({
+        hayIntentoPendiente: async () => false,
+        cargarParaActualizar: async () => estado({ nextAttemptAt: null }),
+      } as Partial<RecallRepository>);
+      await expect(
+        uso.enTransaccion(TX, 'r1', { tipo: 'usuario' }, 'u1', AHORA),
+      ).resolves.toBeDefined();
+    });
+  });
+
   describe('registrar el resultado de una gestión', () => {
     /** Caso de uso con un doble que además apunta el ORDEN de las llamadas. */
     function armar(cerrado: boolean) {

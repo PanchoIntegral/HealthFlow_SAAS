@@ -414,6 +414,70 @@ describe('Casos de uso de Recall', () => {
       expect(fila).toMatchObject({ status: 'pending', result: null });
     });
 
+    it('entregar un mensaje NO habilita mandar otro en el acto', async () => {
+      // El webhook mueve el intento a 'sent' y con eso cae la barrera de
+      // "gestión en curso". Sin el espaciado, recepción podría disparar otro
+      // inmediatamente — y no sería una llamada: elegirCanal vuelve a resolver
+      // por consentimiento y este paciente tiene correo, así que saldría un
+      // segundo correo idéntico minutos después del primero.
+      const { recallId } = await crearControlVivo();
+      const primero = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(recallId, new Date('2026-09-12T18:00:00Z')),
+      );
+      await admin.db.execute(sql`
+        UPDATE recall_attempts SET status='sent', sent_at=now() WHERE id=${primero.attemptId}::uuid
+      `);
+
+      const error = await comoUsuario(() =>
+        app
+          .get(ScheduleRecallAttemptUseCase)
+          .ejecutar(recallId, new Date('2026-09-12T18:05:00Z')),
+      ).catch((e) => e);
+      expect(error).toMatchObject({ code: 'ContactoDemasiadoPronto' });
+      // La pantalla necesita saber DESDE CUÁNDO para deshabilitar el botón.
+      expect(error.details()).toEqual({ allowedAt: '2026-09-19T18:00:00.000Z' });
+
+      const mensajes = (
+        await admin.db.execute(sql`
+          SELECT count(*)::int n FROM outbound_messages
+           WHERE recall_attempt_id IN (
+             SELECT id FROM recall_attempts WHERE patient_recall_id=${recallId}::uuid)
+        `)
+      ).rows[0] as unknown as { n: number };
+      expect(mensajes.n).toBe(1);
+    });
+
+    it('al llegar la fecha de separación, el siguiente contacto sí procede', async () => {
+      const { recallId } = await crearControlVivo();
+      const primero = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(recallId, new Date('2026-09-12T18:00:00Z')),
+      );
+      await admin.db.execute(sql`
+        UPDATE recall_attempts SET status='sent', sent_at=now() WHERE id=${primero.attemptId}::uuid
+      `);
+
+      // Siete días después, según attempt_spacing_days del tipo.
+      const segundo = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(recallId, new Date('2026-09-19T18:00:00Z')),
+      );
+      expect(segundo.attemptId).not.toBe(primero.attemptId);
+
+      const numeros = (
+        await admin.db.execute(sql`
+          SELECT attempt_number FROM recall_attempts
+           WHERE patient_recall_id=${recallId}::uuid ORDER BY attempt_number
+        `)
+      ).rows as unknown as { attempt_number: number }[];
+      expect(numeros.map((n) => n.attempt_number)).toEqual([1, 2]);
+    });
+
+    it('el primer contacto no tiene nada que esperar', async () => {
+      const { recallId } = await crearControlVivo();
+      await expect(
+        comoUsuario(() => app.get(ScheduleRecallAttemptUseCase).ejecutar(recallId)),
+      ).resolves.toMatchObject({ channel: 'email' });
+    });
+
     it('una gestión YA ENTREGADA sigue pudiendo registrar su resultado', async () => {
       // El webhook mueve el intento a 'sent' en cuanto el proveedor entrega el
       // mensaje (ADR §D8), y es justo entonces cuando el paciente contesta.

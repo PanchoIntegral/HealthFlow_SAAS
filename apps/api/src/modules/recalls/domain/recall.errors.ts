@@ -152,3 +152,34 @@ export class IntentoNoActualizableError extends DomainError {
     );
   }
 }
+
+/**
+ * Todavía no toca el siguiente contacto.
+ *
+ * Existe porque levantar el bloqueo de "una gestión en curso" cuando el
+ * proveedor entrega el mensaje abría un agujero: el intento deja de estar
+ * `pending`, y sin esta regla recepción podía programar otro en el acto. Y no
+ * sería una llamada — `elegirCanal` vuelve a resolver el canal por
+ * consentimiento y destinos, así que con un correo utilizable elegiría correo
+ * otra vez: dos correos idénticos con minutos de diferencia.
+ *
+ * El espaciado del tipo (`attempt_spacing_days`) es lo que separa un
+ * seguimiento de un acoso. Si recepción de verdad necesita llamar antes, eso
+ * es una acción distinta y explícita —registrar una gestión telefónica—, no
+ * saltarse ésta.
+ *
+ * `allowedAt` viaja al cliente para que la pantalla pueda deshabilitar el
+ * botón y decir desde cuándo, en vez de dejar al usuario adivinar.
+ */
+export class ContactoDemasiadoProntoError extends DomainError {
+  readonly code = 'ContactoDemasiadoPronto';
+  readonly httpStatus = 409;
+
+  constructor(readonly allowedAt: Date) {
+    super('Todavía no toca el siguiente contacto de este control.');
+  }
+
+  details(): Record<string, unknown> {
+    return { allowedAt: this.allowedAt.toISOString() };
+  }
+}
