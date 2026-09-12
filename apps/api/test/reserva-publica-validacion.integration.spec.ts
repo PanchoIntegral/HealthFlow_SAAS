@@ -18,11 +18,32 @@ describe('Validación estricta de la reserva pública', () => {
   const admin = createAdminDb();
   let app: INestApplication;
   let tenantId: string; let doctorId: string; let serviceId: string; let slug: string;
-  let visitas = 0; let slots = 0;
+  let visitas = 0;
+  /** Último hueco entregado. Ver `slot()`. */
+  let cursor: Date | null = null;
 
+  /**
+   * Un hueco libre distinto en cada llamada, siempre en día hábil.
+   *
+   * Avanza desde el hueco ANTERIOR y no desde hoy con un desplazamiento
+   * creciente, que era como estaba y fallaba de forma intermitente: el salto
+   * de fin de semana hacía converger índices distintos en el mismo día. Con
+   * la suite corriendo un sábado, tres reservas caían en el mismo lunes a las
+   * 16:00 y la segunda chocaba con la restricción de traslape del médico — un
+   * 409 que no tenía nada que ver con lo que el test quería probar.
+   *
+   * Al avanzar siempre al menos un día desde el último, las fechas son
+   * estrictamente crecientes y no pueden repetirse, corra el día que corra.
+   *
+   * 16:00 UTC son las 10:00 en México, dentro de la disponibilidad 08:00–20:00
+   * que carga el `beforeAll`.
+   */
   function slot(): string {
-    const d = new Date(); d.setUTCDate(d.getUTCDate() + 7 + slots++); d.setUTCHours(16, 0, 0, 0);
+    const d = cursor ? new Date(cursor) : new Date();
+    d.setUTCDate(d.getUTCDate() + (cursor ? 1 : 7));
+    d.setUTCHours(16, 0, 0, 0);
     while ([0, 6].includes(d.getUTCDay())) d.setUTCDate(d.getUTCDate() + 1);
+    cursor = d;
     return d.toISOString();
   }
 
