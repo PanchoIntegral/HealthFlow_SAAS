@@ -266,16 +266,20 @@ export class DrizzleRecallRepository implements RecallRepository {
     resultado: RecallAttemptResult,
     nota: string | null,
   ): Promise<boolean> {
-    // Las tres condiciones del WHERE son la validación: pertenencia al
-    // control, y que siga abierto. RLS acota al tenant, pero DENTRO de un
-    // tenant no distingue un intento de otro control.
+    // Las condiciones del WHERE son la validación: pertenencia al control y
+    // que siga abierto. RLS acota al tenant, pero DENTRO de un tenant no
+    // distingue un intento de otro control.
+    //
+    // 'sent' entra junto con 'pending' porque el webhook mueve ahí el intento
+    // en cuanto el proveedor entrega el mensaje (ADR §D8), y es entonces
+    // cuando el paciente contesta. 'closed' y 'cancelled' quedan fuera.
     const filas = await tx.execute(sql`
       UPDATE recall_attempts
          SET status='closed', result=${resultado}, note=${nota},
              sent_at=coalesce(sent_at, now()), updated_at=now()
        WHERE id=${attemptId}::uuid
          AND patient_recall_id=${patientRecallId}::uuid
-         AND status='pending'
+         AND status IN ('pending','sent')
       RETURNING id
     `);
     return filas.rows.length > 0;
@@ -365,6 +369,9 @@ export class DrizzleRecallRepository implements RecallRepository {
     const fila = (
       await tx.execute(sql`
         SELECT
+          -- Sin filtro de fechas a propósito: es el BACKLOG DE HOY, no
+          -- "cuántos vencieron en el periodo" — eso exigiría un histórico de
+          -- estados que no existe. La pantalla tiene que etiquetarlo así.
           (SELECT count(*)::int FROM patient_recalls
             WHERE status='due') AS vencidos,
           -- Controles ÚNICOS con intento en el periodo, no número de mensajes:

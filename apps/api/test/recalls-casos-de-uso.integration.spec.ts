@@ -414,6 +414,74 @@ describe('Casos de uso de Recall', () => {
       expect(fila).toMatchObject({ status: 'pending', result: null });
     });
 
+    it('una gestión YA ENTREGADA sigue pudiendo registrar su resultado', async () => {
+      // El webhook mueve el intento a 'sent' en cuanto el proveedor entrega el
+      // mensaje (ADR §D8), y es justo entonces cuando el paciente contesta.
+      // Admitir sólo 'pending' haría imposible cerrar las gestiones que sí
+      // funcionaron.
+      const { recallId } = await crearControlVivo();
+      const intento = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(recallId),
+      );
+      await admin.db.execute(sql`
+        UPDATE recall_attempts SET status='sent', sent_at=now() WHERE id=${intento.attemptId}::uuid
+      `);
+
+      await expect(
+        comoUsuario(() =>
+          app.get(RecordRecallOutcomeUseCase).ejecutar({
+            recallId,
+            attemptId: intento.attemptId,
+            resultado: 'booked',
+          }),
+        ),
+      ).resolves.toBeDefined();
+
+      const fila = (
+        await admin.db.execute(sql`
+          SELECT status, result FROM recall_attempts WHERE id=${intento.attemptId}::uuid
+        `)
+      ).rows[0] as unknown as { status: string; result: string };
+      expect(fila).toMatchObject({ status: 'closed', result: 'booked' });
+    });
+
+    it('una gestión entregada y cerrada no admite un segundo resultado', async () => {
+      const { recallId } = await crearControlVivo();
+      const intento = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(recallId),
+      );
+      await admin.db.execute(sql`
+        UPDATE recall_attempts SET status='sent', sent_at=now() WHERE id=${intento.attemptId}::uuid
+      `);
+      await comoUsuario(() =>
+        app.get(RecordRecallOutcomeUseCase).ejecutar({
+          recallId, attemptId: intento.attemptId, resultado: 'answered',
+        }),
+      );
+      await expect(
+        comoUsuario(() =>
+          app.get(RecordRecallOutcomeUseCase).ejecutar({
+            recallId, attemptId: intento.attemptId, resultado: 'booked',
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'IntentoNoActualizable' });
+    });
+
+    it('una gestión cancelada no se resucita con un resultado', async () => {
+      const a = await crearControlVivo();
+      const intento = await comoUsuario(() =>
+        app.get(ScheduleRecallAttemptUseCase).ejecutar(a.recallId),
+      );
+      await comoUsuario(() => app.get(DismissRecallUseCase).ejecutar(a.recallId, 'Se mudó'));
+      await expect(
+        comoUsuario(() =>
+          app.get(RecordRecallOutcomeUseCase).ejecutar({
+            recallId: a.recallId, attemptId: intento.attemptId, resultado: 'answered',
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'IntentoNoActualizable' });
+    });
+
     it('cerrar dos veces la misma gestión falla la segunda, en vez de reescribir el resultado', async () => {
       const { recallId } = await crearControlVivo();
       const intento = await comoUsuario(() =>

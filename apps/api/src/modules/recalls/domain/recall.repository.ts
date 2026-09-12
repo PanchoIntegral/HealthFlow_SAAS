@@ -95,7 +95,16 @@ export interface PaginaWorklist {
  * necesita fechas inmutables de transición antes de salir a pantalla.
  */
 export interface MetricasRecall {
-  /** Controles vencidos sin cerrar. Recalls, NO mensajes. */
+  /**
+   * Controles en `due` AHORA MISMO. Recalls, NO mensajes.
+   *
+   * Es el BACKLOG ACTUAL, no una cifra histórica: ignora el rango de fechas a
+   * propósito, porque "cuántos estaban vencidos en marzo" no se puede
+   * reconstruir sin un histórico de estados que no existe. Pedir enero-marzo
+   * devuelve el pendiente de hoy, y la pantalla tiene que decirlo con esas
+   * palabras — presentarlo dentro de un informe por periodo haría creer que
+   * es del periodo.
+   */
   vencidos: number;
   /** Controles ÚNICOS con al menos un intento en el periodo. */
   contactados: number;
@@ -170,13 +179,20 @@ export interface RecallRepository {
    */
   encolarMensajeDeIntento(tx: Tx, input: NuevoMensajeDeIntento): Promise<boolean>;
   /**
-   * Cierra un intento, exigiendo que sea DE ESTE control y que siga pendiente.
+   * Cierra un intento, exigiendo que sea DE ESTE control y que siga abierto.
    *
    * El `patientRecallId` no es decorativo: sin él, un id de intento de otro
-   * control del mismo tenant pasaría RLS y cerraría la gestión equivocada. Y
-   * el filtro por `status='pending'` impide reescribir el resultado de algo
-   * que ya se cerró — un `UPDATE` que no encuentra fila no es un éxito
-   * silencioso.
+   * control del mismo tenant pasaría RLS y cerraría la gestión equivocada.
+   *
+   * "Abierto" son DOS estados, `pending` y `sent`, y la diferencia importa: en
+   * cuanto el proveedor entrega el mensaje, el webhook mueve el intento a
+   * `sent` (ADR §D8) — y es justo entonces cuando el paciente contesta y
+   * recepción tiene que registrar `answered`, `declined` o `booked`. Admitir
+   * sólo `pending` haría imposible cerrar precisamente las gestiones que sí
+   * funcionaron.
+   *
+   * `closed` y `cancelled` siguen fuera: un resultado ya registrado no se
+   * reescribe, y una gestión cancelada no se resucita.
    *
    * Devuelve `false` cuando no actualizó ninguna fila; quien llama decide qué
    * error levantar.
@@ -198,7 +214,14 @@ export interface RecallRepository {
   cancelarMensajesDeIntento(tx: Tx, attemptId: string): Promise<void>;
   /** Cancela intentos pendientes y sus mensajes: el ciclo terminó. */
   cancelarPendientes(tx: Tx, patientRecallId: string): Promise<void>;
-  /** ¿Hay una gestión todavía sin entregar ni cerrar? */
+  /**
+   * ¿Hay una gestión todavía SIN ENTREGAR?
+   *
+   * Sólo `pending`, a diferencia de `cerrarIntento`. La asimetría es
+   * deliberada: lo que hay que evitar es mandar dos mensajes idénticos, y en
+   * cuanto el primero se entregó (`sent`) una segunda gestión —una llamada
+   * después del correo— es seguimiento legítimo, no un duplicado.
+   */
   hayIntentoPendiente(tx: Tx, patientRecallId: string): Promise<boolean>;
 
   // ── Consultas ──

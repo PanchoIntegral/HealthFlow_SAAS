@@ -53,9 +53,17 @@ export class ListRecallWorklistUseCase {
  * transición, y que ninguna edición posterior toque. Eso es una migración, y
  * va en el commit 8 junto con el resto de la observabilidad.
  *
- * Lo que sí es correcto hoy: "vencidos" (se calcula sobre el estado actual,
- * sin fecha) y "contactados", que se fecha con `recall_attempts.created_at`
- * —inmutable por construcción, un intento no se re-crea.
+ * Lo que sí es correcto hoy: "contactados", que se fecha con
+ * `recall_attempts.created_at` —inmutable por construcción, un intento no se
+ * re-crea— y "vencidos", con una salvedad que la pantalla debe respetar:
+ *
+ * **"vencidos" es el BACKLOG ACTUAL, no una cifra histórica.** Ignora el rango
+ * de fechas a propósito: reconstruir "cuántos estaban vencidos en marzo"
+ * exigiría un histórico de estados que no existe. Pedir enero–marzo devuelve
+ * el pendiente de hoy. Es un número útil —es la lista que recepción tiene que
+ * trabajar— pero ponerlo junto a las demás dentro de un informe por periodo
+ * haría creer que pertenece al periodo, y esa lectura equivocada es
+ * exactamente la clase de error que estas advertencias existen para evitar.
  *
  * Cada cifra declara su unidad en el tipo (`MetricasRecall`) porque mezclarlas
  * es el error clásico: contar mensajes como pacientes convierte a un paciente

@@ -299,11 +299,17 @@ Tres denominadores distintos, etiquetados en la UI:
 
 | Métrica | Cuenta | Definición | ¿Publicable hoy? |
 |---|---|---|---|
-| Vencidos | recalls | `status='due'` al cierre del periodo | Sí — no depende de fechas |
+| Vencidos | recalls | `status='due'` **ahora mismo** | Sí, con etiqueta: es backlog, no histórico |
 | Contactados | recalls únicos | recalls con ≥1 intento en el periodo — **no** intentos | Sí — se fecha con `recall_attempts.created_at`, inmutable |
 | Convertidos | recalls | `status` pasó a `scheduled` | **No** (ver abajo) |
 | Recuperados | pacientes únicos | pacientes con cita **finalizada** originada en un recall | **No** (ver abajo) |
 | Agotados | recalls | se consumieron los intentos sin respuesta | **No** (ver abajo) |
+
+### "Vencidos" es el backlog de hoy, no una cifra del periodo
+
+La consulta ignora el rango de fechas a propósito, y eso tiene que verse en la pantalla. Reconstruir "cuántos controles estaban vencidos en marzo" exigiría un histórico de estados que no existe: `patient_recalls` guarda el estado actual, no su línea de tiempo. Pedir enero–marzo devuelve el pendiente de **hoy**.
+
+Es un número útil —es literalmente la lista que recepción tiene que trabajar— pero ponerlo junto a las demás dentro de un informe por periodo haría creer que pertenece al periodo. Se muestra aparte y etiquetado como pendiente actual, nunca dentro del bloque con selector de fechas.
 
 ### Las métricas de conversión no pueden exponerse todavía
 
@@ -337,6 +343,8 @@ Mapeo, derivado del estado del mensaje y no del texto del proveedor:
 |---|---|---|---|
 | `sent` | `sent` | sin tocar | Salió, pero entregar no es responder. El resultado lo pone una persona o la reserva. |
 | `delivered` | `sent` | sin tocar | Igual: llegó, no contestó. |
+
+Consecuencia para el cierre manual, ya implementada: `cerrarIntento` admite `status IN ('pending','sent')`. Un intento entregado es justo el que el paciente contesta, y aceptar sólo `pending` haría imposible registrar `answered`, `declined` o `booked` en las gestiones que sí funcionaron. `closed` y `cancelled` siguen devolviendo 409. La comprobación de "gestión en curso" que bloquea abrir otra sí mira sólo `pending`: lo que hay que evitar es un segundo mensaje idéntico, y tras la entrega una llamada de seguimiento es legítima.
 | `bounced` / `dead` / `complained` | `closed` | `failed` | Ese canal no sirve para este paciente. |
 | `cancelled` | `cancelled` | — | Lo canceló el opt-out, el descarte o el cierre del intento. |
 | `failed` reintentable | sin tocar | — | Sigue en cola; el intento continúa abierto. |
