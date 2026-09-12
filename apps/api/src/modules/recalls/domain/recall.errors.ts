@@ -55,3 +55,80 @@ const MENSAJES: Record<'archivado' | 'sin_canal' | 'opt_out', string> = {
   sin_canal: 'Este paciente no tiene un canal de contacto autorizado.',
   opt_out: 'Este paciente pidió no recibir mensajes.',
 };
+
+/** El control pedido no existe, o es de otra clínica (RLS no lo deja ver). */
+export class RecallNoEncontradoError extends DomainError {
+  readonly code = 'RecallNoEncontrado';
+  readonly httpStatus = 404;
+  constructor() {
+    super('Ese control de seguimiento no existe.');
+  }
+}
+
+export class TipoRecallNoEncontradoError extends DomainError {
+  readonly code = 'TipoRecallNoEncontrado';
+  readonly httpStatus = 404;
+  constructor() {
+    super('Ese tipo de control no existe.');
+  }
+}
+
+/** Se intentó usar un tipo desactivado para crear algo nuevo. */
+export class TipoRecallInactivoError extends DomainError {
+  readonly code = 'TipoRecallInactivo';
+  readonly httpStatus = 409;
+  constructor(readonly nombre: string) {
+    super(`El tipo de control '${nombre}' está desactivado.`);
+  }
+}
+
+/** Ya existe un tipo activo con ese nombre en la clínica. */
+export class TipoRecallDuplicadoError extends DomainError {
+  readonly code = 'TipoRecallDuplicado';
+  readonly httpStatus = 409;
+  constructor(readonly nombre: string) {
+    super(`Ya existe un tipo de control activo llamado '${nombre}'.`);
+  }
+}
+
+/**
+ * La reactivación por inasistencia no está configurada.
+ *
+ * Es un ESTADO, no un error de programación: el consumidor lo trata como
+ * "no hay nada que hacer" y cierra el evento. Nunca se inventa un tipo.
+ */
+export class ReactivacionNoConfiguradaError extends DomainError {
+  readonly code = 'ReactivacionNoConfigurada';
+  readonly httpStatus = 409;
+  constructor() {
+    super('Esta clínica no configuró el seguimiento por inasistencia.');
+  }
+}
+
+/**
+ * Ya existe un intento con ese número. Lo produce el índice único
+ * (recall, attempt_number) cuando dos procesos reclaman el mismo control a la
+ * vez: el segundo se entera aquí, no creando un intento duplicado.
+ */
+export class IntentoYaRegistradoError extends DomainError {
+  readonly code = 'IntentoYaRegistrado';
+  readonly httpStatus = 409;
+  constructor(readonly numero: number) {
+    super(`El intento ${numero} de este control ya estaba registrado.`);
+  }
+}
+
+/**
+ * Ya hay una gestión en curso para este control.
+ *
+ * Evita el caso real: recepción hace doble clic en "contactar" y al paciente
+ * le llegan dos mensajes idénticos. La restricción de unicidad protege los
+ * datos, pero no evita el segundo envío — eso lo evita esta regla.
+ */
+export class IntentoEnCursoError extends DomainError {
+  readonly code = 'IntentoEnCurso';
+  readonly httpStatus = 409;
+  constructor() {
+    super('Ya hay una gestión en curso para este control. Regístrala antes de hacer otra.');
+  }
+}

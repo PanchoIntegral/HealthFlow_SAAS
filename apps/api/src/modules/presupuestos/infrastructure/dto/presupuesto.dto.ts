@@ -58,6 +58,15 @@ export class NuevaPartidaDto {
   @IsInt()
   @Min(0)
   valorUnitarioCentavos!: number;
+
+  /**
+   * Tipo de control que se abre al terminar esta partida. Opcional: sin él no
+   * se genera seguimiento. Que el tipo exista y sea de esta clínica lo
+   * comprueba el trigger de 0050, no una consulta desde aquí.
+   */
+  @IsOptional()
+  @IsUUID()
+  recallTypeId?: string | null;
 }
 
 export class CrearPresupuestoDto {

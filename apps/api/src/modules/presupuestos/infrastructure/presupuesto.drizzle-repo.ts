@@ -32,6 +32,7 @@ interface PartidaRow {
   descripcion: string;
   piezas: string[] | null;
   fase: number;
+  recall_type_id: string | null;
   cantidad: string;
   valor_unitario_centavos: string;
   estatus: EstatusPartida;
@@ -276,6 +277,7 @@ export class DrizzlePresupuestoRepository implements PresupuestoRepository {
         valorUnitarioCentavos: p.valorUnitarioCentavos,
         estatus: p.estatus,
         appointmentId: p.appointmentId,
+        recallTypeId: p.recallTypeId,
         orden: i,
       })),
     );
@@ -284,7 +286,7 @@ export class DrizzlePresupuestoRepository implements PresupuestoRepository {
   private async leerPartidas(tx: Tx, presupuestoId: string): Promise<PresupuestoPartida[]> {
     const res = await tx.execute(sql`
       SELECT id, descripcion, piezas, fase, cantidad, valor_unitario_centavos,
-             estatus, appointment_id, orden
+             estatus, appointment_id, recall_type_id, orden
         FROM presupuesto_partidas
        WHERE presupuesto_id = ${presupuestoId}
        ORDER BY fase ASC, orden ASC
@@ -301,6 +303,7 @@ export class DrizzlePresupuestoRepository implements PresupuestoRepository {
         valorUnitarioCentavos,
         estatus: r.estatus,
         appointmentId: r.appointment_id,
+        recallTypeId: r.recall_type_id,
         // Se recalcula al leer en vez de guardarse: misma regla que en la
         // entidad, un importe almacenado podría desfasarse de sus factores.
         importeCentavos: Math.round(cantidad * valorUnitarioCentavos),

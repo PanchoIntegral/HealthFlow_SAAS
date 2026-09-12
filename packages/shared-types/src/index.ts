@@ -1447,6 +1447,8 @@ export interface PresupuestoPartida {
   estatus: EstatusPartida;
   /** Cita donde se ejecutó; null mientras no se realiza. */
   appointmentId: string | null;
+  /** Tipo de control que se abre al terminarla. `null` = ninguno. */
+  recallTypeId: string | null;
   /** Importe = cantidad × valor unitario, derivado por el backend. */
   importeCentavos: number;
 }
@@ -1502,6 +1504,13 @@ export interface NuevaPartida {
   fase?: number;
   cantidad: number;
   valorUnitarioCentavos: number;
+  /**
+   * Tipo de control que se abre al TERMINAR esta partida. Opcional y
+   * explícito: sin él no se genera ningún seguimiento. Nunca se infiere de
+   * `descripcion`, que es texto libre — adivinar ahí produce controles
+   * fantasma que recepción tiene que limpiar a mano.
+   */
+  recallTypeId?: string | null;
 }
 
 export interface RegistrarAbonoRequest {

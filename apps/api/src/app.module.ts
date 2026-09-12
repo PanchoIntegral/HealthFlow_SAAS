@@ -34,6 +34,7 @@ import { PlantillasModule } from './modules/plantillas/plantillas.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { PublicBookingModule } from './modules/public-booking/public-booking.module';
 import { ModulosModule } from './modules/modulos/modulos.module';
+import { RecallsModule } from './modules/recalls/recalls.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { ModulosModule } from './modules/modulos/modulos.module';
     MessagingModule,
     PublicBookingModule,
     ModulosModule,
+    RecallsModule,
   ],
   providers: [
     // Global: primera línea de defensa, antes de tocar la base de datos.

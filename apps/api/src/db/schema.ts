@@ -313,6 +313,8 @@ export const presupuestoPartidas = pgTable('presupuesto_partidas', {
   valorUnitarioCentavos: bigint('valor_unitario_centavos', { mode: 'number' }).notNull(),
   estatus: text('estatus').notNull().default('pendiente'),
   appointmentId: uuid('appointment_id'),
+  /** Tipo de control que se abre al terminar la partida (ver 0050). */
+  recallTypeId: uuid('recall_type_id'),
   orden: integer('orden').notNull().default(0),
 });
 

@@ -198,6 +198,7 @@ function construirPartida(p: NuevaPartida, orden: number): PresupuestoPartida {
     valorUnitarioCentavos: p.valorUnitarioCentavos,
     estatus: 'pendiente',
     appointmentId: null,
+    recallTypeId: p.recallTypeId ?? null,
     importeCentavos: Math.round(p.cantidad * p.valorUnitarioCentavos),
   };
 }
