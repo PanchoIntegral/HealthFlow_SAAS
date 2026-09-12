@@ -62,3 +62,52 @@ export interface AppEventConsumer {
  * `onModuleInit` de su módulo. NO existe un token multi-provider: Nest no
  * tiene multi-providers, y el que había aquí antes se ignoraba en silencio.
  */
+
+/**
+ * Un evento llegó sin los datos que su contrato promete.
+ *
+ * No se ignora en silencio. Un `return` dejaría la consumición en `done` y el
+ * efecto sin ocurrir: el control nunca se crearía, nadie se enteraría, y la
+ * clínica vería que "a veces no se generan los seguimientos". Al lanzar, la
+ * consumición pasa por los reintentos y acaba en `dead`, que es justamente lo
+ * que las alertas del módulo vigilan — un productor que emite mal se ve.
+ */
+export class PayloadDeEventoIncompletoError extends Error {
+  constructor(
+    readonly tipo: string,
+    readonly eventId: string,
+    readonly faltantes: readonly string[],
+  ) {
+    // Los campos que faltan van PRIMERO: `complete_app_event` recorta el
+    // código de error a 80 caracteres, y lo que tiene que sobrevivir a ese
+    // recorte es lo accionable, no el prefijo.
+    super(`Payload sin ${faltantes.join(', ')} — ${tipo} (${eventId})`);
+    this.name = 'PayloadDeEventoIncompletoError';
+  }
+}
+
+/**
+ * Comprueba que el evento traiga lo que el consumidor necesita y devuelve los
+ * campos ya tipados. Lanza `PayloadDeEventoIncompletoError` si falta algo.
+ *
+ * Los nombres de los campos que faltan SÍ van en el mensaje —son nombres de
+ * contrato, no datos del paciente—, pero los VALORES nunca.
+ */
+export function exigirDelEvento<K extends string>(
+  evento: AppEventEnvelope,
+  campos: readonly K[],
+  opciones: { exigeEntidadId?: boolean } = {},
+): Record<K, string> {
+  const faltantes: string[] = [];
+  const resultado = {} as Record<K, string>;
+  for (const campo of campos) {
+    const valor = evento.payload[campo];
+    if (typeof valor === 'string' && valor.length > 0) resultado[campo] = valor;
+    else faltantes.push(campo);
+  }
+  if (opciones.exigeEntidadId !== false && !evento.entidadId) faltantes.push('entidadId');
+  if (faltantes.length > 0) {
+    throw new PayloadDeEventoIncompletoError(evento.tipo, evento.id, faltantes);
+  }
+  return resultado;
+}

@@ -87,7 +87,15 @@ export class AuditService {
       throw new TenantDeAuditoriaInvalidoError(tenantId, activo ?? '(ninguno)');
     }
 
-    await this.insertar(tx, tenantId, null, { ...entry, detalle });
+    // Función acotada, no un INSERT: el rol del worker no tiene permiso sobre
+    // `audit_log` (ver 0051). Además la función fija `user_id` NULL y deja la
+    // fecha a PostgreSQL, así que "el sistema no puede hacerse pasar por una
+    // persona ni fechar hacia atrás" deja de ser una convención del código.
+    await tx.execute(sql`
+      SELECT record_system_audit(
+        ${tenantId}::uuid, ${entry.entidad}, ${entry.entidadId ?? null}::uuid,
+        ${entry.accion}, ${JSON.stringify(detalle)}::jsonb)
+    `);
   }
 
   private async insertar(

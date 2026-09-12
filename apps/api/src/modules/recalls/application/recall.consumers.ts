@@ -1,7 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { AppEventType } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
-import type { AppEventConsumer, AppEventEnvelope } from '../../../common/events/app-event.types';
+import {
+  exigirDelEvento,
+  type AppEventConsumer,
+  type AppEventEnvelope,
+} from '../../../common/events/app-event.types';
 import { ReactivacionNoConfiguradaError, TipoRecallInactivoError } from '../domain/recall.errors';
 import {
   GenerateRecallFromCompletedTreatmentUseCase,
@@ -38,17 +42,16 @@ export class GenerarRecallPorTratamientoConsumer implements AppEventConsumer {
   constructor(private readonly caso: GenerateRecallFromCompletedTreatmentUseCase) {}
 
   async manejar(evento: AppEventEnvelope, tx: Tx): Promise<void> {
-    const p = evento.payload as {
-      patientId?: string;
-      doctorId?: string | null;
-      presupuestoId?: string;
-    };
-    if (!p.patientId || !evento.entidadId) return;
+    // Falta algo del contrato = se lanza. Un `return` silencioso dejaría la
+    // consumición en 'done' y el control sin crear: nadie se enteraría, y la
+    // clínica vería que "a veces no se generan los seguimientos".
+    const { patientId } = exigirDelEvento(evento, ['patientId']);
+    const doctorId = evento.payload.doctorId;
     await this.caso.ejecutar(tx, {
       tenantId: evento.tenantId,
-      patientId: p.patientId,
-      partidaId: evento.entidadId,
-      doctorId: p.doctorId ?? null,
+      patientId,
+      partidaId: evento.entidadId!,
+      doctorId: typeof doctorId === 'string' ? doctorId : null,
       // La fecha del HECHO, no la de hoy: un evento reconciliado con retraso
       // no debe correr el vencimiento del control.
       ocurrioEn: evento.occurredAt,
@@ -66,15 +69,16 @@ export class VincularCitaConRecallConsumer implements AppEventConsumer {
   constructor(private readonly caso: MatchAppointmentToRecallUseCase) {}
 
   async manejar(evento: AppEventEnvelope, tx: Tx): Promise<void> {
-    const p = evento.payload as { patientId?: string; serviceId?: string | null };
-    if (!p.patientId || !evento.entidadId) return;
+    const { patientId } = exigirDelEvento(evento, ['patientId']);
+    // `serviceId` es opcional por contrato, no un dato que falte: una cita
+    // interna no tiene servicio de reserva pública. Sin él no hay asociación
+    // automática y el control exige vínculo manual.
+    const serviceId = evento.payload.serviceId;
     await this.caso.ejecutar(tx, {
       tenantId: evento.tenantId,
-      patientId: p.patientId,
-      appointmentId: evento.entidadId,
-      // Sin servicio no hay asociación automática. Es el caso de la cita
-      // interna, que recepción agenda a mano: exige vínculo manual.
-      serviceId: p.serviceId ?? null,
+      patientId,
+      appointmentId: evento.entidadId!,
+      serviceId: typeof serviceId === 'string' ? serviceId : null,
     });
   }
 }
@@ -103,19 +107,21 @@ export class CicloDeCitaConsumer implements AppEventConsumer {
   constructor(private readonly caso: UpdateRecallOnAppointmentUseCase) {}
 
   async manejar(evento: AppEventEnvelope, tx: Tx): Promise<void> {
-    if (!evento.entidadId) return;
+    // Sin payload obligatorio: a este consumidor le basta la cita. Pero la
+    // cita SÍ es obligatoria.
+    exigirDelEvento(evento, []);
     if (evento.tipo === 'appointment.rescheduled') return;
     if (evento.tipo === 'appointment.completed') {
       await this.caso.completar(tx, {
         tenantId: evento.tenantId,
-        appointmentId: evento.entidadId,
+        appointmentId: evento.entidadId!,
         ahora: evento.occurredAt,
       });
       return;
     }
     await this.caso.reabrir(tx, {
       tenantId: evento.tenantId,
-      appointmentId: evento.entidadId,
+      appointmentId: evento.entidadId!,
     });
   }
 }
@@ -130,13 +136,12 @@ export class ReactivarPorNoShowConsumer implements AppEventConsumer {
   constructor(private readonly caso: GenerateRecallFromNoShowUseCase) {}
 
   async manejar(evento: AppEventEnvelope, tx: Tx): Promise<void> {
-    const p = evento.payload as { patientId?: string };
-    if (!p.patientId || !evento.entidadId) return;
+    const { patientId } = exigirDelEvento(evento, ['patientId']);
     try {
       await this.caso.ejecutar(tx, {
         tenantId: evento.tenantId,
-        patientId: p.patientId,
-        appointmentId: evento.entidadId,
+        patientId,
+        appointmentId: evento.entidadId!,
         ocurrioEn: evento.occurredAt,
       });
     } catch (error) {

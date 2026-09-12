@@ -286,23 +286,20 @@ export class DrizzleRecallRepository implements RecallRepository {
   }
 
   async cancelarMensajesDeIntento(tx: Tx, attemptId: string): Promise<void> {
-    await tx.execute(sql`
-      UPDATE outbound_messages SET status='cancelled', updated_at=now()
-       WHERE recall_attempt_id=${attemptId}::uuid AND status IN ('pending','failed')
-    `);
+    // Función con nombre en vez de un UPDATE directo: el rol del worker NO
+    // tiene UPDATE sobre `outbound_messages` —se lo daría todo, incluido
+    // marcar como enviado algo que nunca salió— y sólo puede ejecutar esta
+    // operación acotada. Ver 0051.
+    await tx.execute(sql`SELECT cancel_recall_attempt_messages(${attemptId}::uuid)`);
   }
 
   async cancelarPendientes(tx: Tx, patientRecallId: string): Promise<void> {
     // El mensaje se cancela ANTES que el intento: si la transacción fallara en
     // medio, es preferible un intento vivo sin mensaje (recepción lo ve y lo
-    // cierra) que un mensaje en camino cuyo intento ya nadie mira.
-    await tx.execute(sql`
-      UPDATE outbound_messages SET status='cancelled', updated_at=now()
-       WHERE recall_attempt_id IN (
-         SELECT id FROM recall_attempts
-          WHERE patient_recall_id=${patientRecallId}::uuid AND status='pending'
-       ) AND status IN ('pending','failed')
-    `);
+    // cierra) que un mensaje en camino cuyo intento ya nadie mira. Y el orden
+    // importa además para la propia consulta: la función busca los intentos
+    // que siguen `pending`.
+    await tx.execute(sql`SELECT cancel_recall_pending_messages(${patientRecallId}::uuid)`);
     await tx.execute(sql`
       UPDATE recall_attempts SET status='cancelled', updated_at=now()
        WHERE patient_recall_id=${patientRecallId}::uuid AND status='pending'
