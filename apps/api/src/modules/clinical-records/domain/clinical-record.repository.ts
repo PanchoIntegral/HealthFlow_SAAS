@@ -45,11 +45,31 @@ export interface ClinicalRecordRepository {
   /** True si el expediente ya tiene alguna nota (de cualquier tipo/estatus). */
   hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean>;
 
-  findNoteByAppointment(tx: Tx, appointmentId: string): Promise<ClinicalNote | null>;
-  saveNote(tx: Tx, note: ClinicalNote): Promise<void>;
+  /**
+   * `forUpdate` bloquea la fila hasta el fin de la transacción: el cierre lo
+   * usa para que ningún autosave concurrente se cuele entre validar y firmar.
+   */
+  findNoteByAppointment(
+    tx: Tx,
+    appointmentId: string,
+    opts?: { forUpdate?: boolean },
+  ): Promise<ClinicalNote | null>;
 
-  /** Datos de firma del médico (para estampar al cerrar la nota). */
-  getDoctorSignature(tx: Tx, doctorId: string): Promise<{ nombre: string; cedula: string | null }>;
+  /**
+   * Persiste el contenido de un BORRADOR. Condicionado a `estatus='borrador'`
+   * en la propia sentencia: devuelve false si la nota se cerró entre la
+   * lectura y la escritura, en vez de pisar el documento firmado.
+   */
+  saveDraftContent(tx: Tx, note: ClinicalNote): Promise<boolean>;
+
+  /** Persiste el cierre (contenido firmado, estatus y fecha). False si ya estaba cerrada. */
+  saveClosedNote(tx: Tx, note: ClinicalNote): Promise<boolean>;
+
+  /** Datos de firma del médico (para estampar al cerrar la nota). null si el usuario no existe. */
+  getDoctorSignature(
+    tx: Tx,
+    doctorId: string,
+  ): Promise<{ nombre: string; cedula: string | null } | null>;
 
   /** Especialidad configurada del médico, para estampar la nota al abrirla. */
   getDoctorEspecialidad(tx: Tx, doctorId: string): Promise<EspecialidadKey>;

@@ -5,7 +5,11 @@ import type {
   NotaEvolucionContent,
 } from '@healthflow/shared-types';
 import { EspecialidadValidator } from './especialidad-validator';
-import { IncompleteClinicalNoteError, NoteAlreadyClosedError } from './clinical-note.errors';
+import {
+  FirmaIncompletaError,
+  IncompleteClinicalNoteError,
+  NoteAlreadyClosedError,
+} from './clinical-note.errors';
 
 export interface ClinicalNoteProps {
   id: string;
@@ -34,6 +38,9 @@ export class ClinicalNote {
   get id(): string {
     return this.props.id;
   }
+  get doctorId(): string {
+    return this.props.doctorId;
+  }
   get estatus(): ClinicalNoteStatus {
     return this.props.estatus;
   }
@@ -58,6 +65,14 @@ export class ClinicalNote {
    */
   close(contenido: NotaEvolucionContent, firma: FirmaMedica, now: Date = new Date()): void {
     this.assertEditable();
+
+    const faltantesFirma = [
+      ...(firma.medicoNombre?.trim() ? [] : (['medicoNombre'] as const)),
+      ...(firma.cedula?.trim() ? [] : (['cedula'] as const)),
+    ];
+    if (faltantesFirma.length > 0) {
+      throw new FirmaIncompletaError(faltantesFirma);
+    }
 
     const missing = EspecialidadValidator.validar(contenido);
     if (missing.length > 0) {

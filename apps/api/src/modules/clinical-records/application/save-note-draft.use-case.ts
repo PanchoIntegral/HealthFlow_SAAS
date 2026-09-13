@@ -5,6 +5,7 @@ import {
   CLINICAL_RECORD_REPOSITORY,
   type ClinicalRecordRepository,
 } from '../domain/clinical-record.repository';
+import { NoteAlreadyClosedError } from '../domain/clinical-note.errors';
 
 /** Autosave del borrador de la nota (mientras la consulta está en curso). */
 @Injectable()
@@ -19,7 +20,11 @@ export class SaveNoteDraftUseCase {
       const note = await this.records.findNoteByAppointment(tx, appointmentId);
       if (!note) throw new NotFoundException('Nota no encontrada');
       note.saveDraft(contenido); // lanza NoteAlreadyClosedError si ya está cerrada
-      await this.records.saveNote(tx, note);
+      // La comprobación en memoria no basta: la nota pudo cerrarse después de
+      // leerla. El UPDATE condicionado es la barrera real.
+      if (!(await this.records.saveDraftContent(tx, note))) {
+        throw new NoteAlreadyClosedError();
+      }
     });
   }
 }

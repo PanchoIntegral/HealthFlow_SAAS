@@ -20,6 +20,7 @@ import {
   CLINICAL_RECORD_REPOSITORY,
   type ClinicalRecordRepository,
 } from '../domain/clinical-record.repository';
+import { NotaDeOtroMedicoError, NoteAlreadyClosedError } from '../domain/clinical-note.errors';
 
 /**
  * Cierre de consulta: en_consulta → finalizada. Valida NOM-004 (dominio), cierra
@@ -43,22 +44,32 @@ export class FinishConsultationUseCase {
     contenido: NotaEvolucionContent,
   ): Promise<FinishConsultationResponse> {
     const { entry, response } = await this.tenantDb.run(async (tx) => {
-      const note = await this.records.findNoteByAppointment(tx, appointmentId);
+      // FOR UPDATE: un autosave concurrente espera a que el cierre termine y
+      // entonces su UPDATE condicionado ya no encuentra la nota en borrador.
+      const note = await this.records.findNoteByAppointment(tx, appointmentId, {
+        forUpdate: true,
+      });
       if (!note) throw new NotFoundException('Nota no encontrada');
 
       const appointment = await this.appointments.findById(tx, appointmentId);
       if (!appointment) throw new NotFoundException('Cita no encontrada');
 
-      const firma = await this.records.getDoctorSignature(tx, this.ctx.get().userId);
+      const { userId } = this.ctx.get();
+      if (note.doctorId !== userId) throw new NotaDeOtroMedicoError();
+
+      const firma = await this.records.getDoctorSignature(tx, userId);
       const now = new Date();
 
-      // Valida NOM-004 y cierra (inmutable). Lanza IncompleteClinicalNoteError si falta algo.
+      // Valida firma y NOM-004 y cierra (inmutable). Lanza FirmaIncompletaError
+      // o IncompleteClinicalNoteError si falta algo.
       note.close(
         contenido,
-        { medicoNombre: firma.nombre, cedula: firma.cedula, fecha: now.toISOString() },
+        { medicoNombre: firma?.nombre ?? '', cedula: firma?.cedula ?? null, fecha: now.toISOString() },
         now,
       );
-      await this.records.saveNote(tx, note);
+      if (!(await this.records.saveClosedNote(tx, note))) {
+        throw new NoteAlreadyClosedError();
+      }
 
       appointment.finish(now); // en_consulta → finalizada
       await this.appointments.save(tx, appointment);

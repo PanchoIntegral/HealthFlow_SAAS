@@ -132,13 +132,18 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     return result.rows.length > 0;
   }
 
-  async findNoteByAppointment(tx: Tx, appointmentId: string): Promise<ClinicalNote | null> {
+  async findNoteByAppointment(
+    tx: Tx,
+    appointmentId: string,
+    opts: { forUpdate?: boolean } = {},
+  ): Promise<ClinicalNote | null> {
     const result = await tx.execute(sql`
       SELECT id, clinical_record_id, appointment_id, doctor_id, tipo_nota,
              estatus, contenido_nom004, cerrado_en, created_at
         FROM clinical_notes
        WHERE appointment_id = ${appointmentId}
        LIMIT 1
+       ${opts.forUpdate ? sql`FOR UPDATE` : sql``}
     `);
     const row = (result.rows as unknown as NoteRow[])[0];
     if (!row) return null;
@@ -155,26 +160,43 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     });
   }
 
-  async saveNote(tx: Tx, note: ClinicalNote): Promise<void> {
+  async saveDraftContent(tx: Tx, note: ClinicalNote): Promise<boolean> {
     const s = note.toState();
-    await tx.execute(sql`
+    // Sin tocar estatus ni cerrado_en, y sólo si sigue en borrador. Antes el
+    // autosave reescribía las tres columnas sin condición: uno que hubiera
+    // leído la nota justo antes del cierre la devolvía a 'borrador' con el
+    // contenido previo a la firma.
+    const result = await tx.execute(sql`
+      UPDATE clinical_notes
+         SET contenido_nom004 = ${JSON.stringify(s.contenido)}::jsonb
+       WHERE id = ${s.id} AND estatus = 'borrador'
+      RETURNING id
+    `);
+    return result.rows.length > 0;
+  }
+
+  async saveClosedNote(tx: Tx, note: ClinicalNote): Promise<boolean> {
+    const s = note.toState();
+    const result = await tx.execute(sql`
       UPDATE clinical_notes
          SET contenido_nom004 = ${JSON.stringify(s.contenido)}::jsonb,
              estatus = ${s.estatus},
              cerrado_en = ${s.cerradoEn ? s.cerradoEn.toISOString() : null}
-       WHERE id = ${s.id}
+       WHERE id = ${s.id} AND estatus = 'borrador'
+      RETURNING id
     `);
+    return result.rows.length > 0;
   }
 
   async getDoctorSignature(
     tx: Tx,
     doctorId: string,
-  ): Promise<{ nombre: string; cedula: string | null }> {
+  ): Promise<{ nombre: string; cedula: string | null } | null> {
     const result = await tx.execute(sql`
       SELECT nombre, cedula_profesional AS cedula FROM users WHERE id = ${doctorId} LIMIT 1
     `);
     const row = (result.rows as unknown as { nombre: string; cedula: string | null }[])[0];
-    return row ?? { nombre: 'Médico', cedula: null };
+    return row ?? null;
   }
 
   async getDoctorEspecialidad(tx: Tx, doctorId: string): Promise<EspecialidadKey> {

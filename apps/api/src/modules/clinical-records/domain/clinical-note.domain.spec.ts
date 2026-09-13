@@ -1,6 +1,10 @@
 import { ClinicalNote } from './clinical-note.entity';
 import { NOM004Validator } from './nom004-validator';
-import { IncompleteClinicalNoteError, NoteAlreadyClosedError } from './clinical-note.errors';
+import {
+  FirmaIncompletaError,
+  IncompleteClinicalNoteError,
+  NoteAlreadyClosedError,
+} from './clinical-note.errors';
 import {
   EMPTY_NOTA_EVOLUCION,
   type FirmaMedica,
@@ -85,6 +89,19 @@ describe('ClinicalNote (inmutabilidad y cierre)', () => {
       expect((err as IncompleteClinicalNoteError).missing).toContain('planTerapeutico');
     }
     expect(note.estatus).toBe('borrador'); // no se cerró
+  });
+
+  it('no firma sin nombre ni cédula: FirmaIncompletaError y la nota sigue en borrador', () => {
+    const note = draft();
+    try {
+      note.close(completa(), { ...FIRMA, medicoNombre: '  ', cedula: null });
+      fail('debió lanzar');
+    } catch (err) {
+      expect(err).toBeInstanceOf(FirmaIncompletaError);
+      expect((err as FirmaIncompletaError).faltantes).toEqual(['medicoNombre', 'cedula']);
+    }
+    expect(note.estatus).toBe('borrador');
+    expect(() => note.close(completa(), { ...FIRMA, cedula: '' })).toThrow(FirmaIncompletaError);
   });
 
   it('una nota cerrada es inmutable: saveDraft y close lanzan NoteAlreadyClosedError', () => {
