@@ -1,11 +1,14 @@
 import type {
   ClinicalNoteStatus,
   ClinicalNoteType,
+  EspecialidadKey,
   FirmaMedica,
   NotaEvolucionContent,
 } from '@healthflow/shared-types';
 import { EspecialidadValidator } from './especialidad-validator';
+import { validarEstructuraNota } from './estructura-nota';
 import {
+  EstructuraNotaInvalidaError,
   FirmaIncompletaError,
   IncompleteClinicalNoteError,
   NoteAlreadyClosedError,
@@ -51,10 +54,18 @@ export class ClinicalNote {
     return this.props.cerradoEn;
   }
 
-  /** Autosave del borrador. Prohibido si la nota ya está cerrada. */
-  saveDraft(contenido: NotaEvolucionContent): void {
+  /**
+   * Autosave del borrador. Prohibido si la nota ya está cerrada.
+   *
+   * `especialidad` la resuelve el servidor (la actual del médico mientras la
+   * nota sea borrador); si no se da, se conserva la guardada.
+   */
+  saveDraft(
+    contenido: NotaEvolucionContent,
+    especialidad: EspecialidadKey | undefined = this.props.contenido.especialidad,
+  ): void {
     this.assertEditable();
-    this.props.contenido = contenido;
+    this.props.contenido = this.sellar(contenido, especialidad);
   }
 
   /**
@@ -63,8 +74,14 @@ export class ClinicalNote {
    * IncompleteClinicalNoteError con la lista. Estampa la firma del médico y la
    * fecha de cierre.
    */
-  close(contenido: NotaEvolucionContent, firma: FirmaMedica, now: Date = new Date()): void {
+  close(
+    contenido: NotaEvolucionContent,
+    firma: FirmaMedica,
+    now: Date = new Date(),
+    especialidad: EspecialidadKey | undefined = this.props.contenido.especialidad,
+  ): void {
     this.assertEditable();
+    const sellado = this.sellar(contenido, especialidad);
 
     const faltantesFirma = [
       ...(firma.medicoNombre?.trim() ? [] : (['medicoNombre'] as const)),
@@ -74,14 +91,42 @@ export class ClinicalNote {
       throw new FirmaIncompletaError(faltantesFirma);
     }
 
-    const missing = EspecialidadValidator.validar(contenido);
+    const missing = EspecialidadValidator.validar(sellado);
     if (missing.length > 0) {
       throw new IncompleteClinicalNoteError(missing);
     }
 
-    this.props.contenido = { ...contenido, firma };
+    this.props.contenido = { ...sellado, firma };
     this.props.estatus = 'cerrada';
     this.props.cerradoEn = now;
+  }
+
+  /**
+   * El contenido llega entero del cliente, pero hay campos que el cliente NO
+   * decide: el tipo de nota, la especialidad, la plantilla y el contexto los
+   * fija el servidor, y la firma sólo se estampa al cerrar. Sin este sello un
+   * navegador modificado podía mandar `tipoNota: 'nota_evolucion'` en una
+   * historia clínica y cerrarla sin los antecedentes que exige NOM-004.
+   *
+   * También valida la forma del contenido antes de aceptarlo.
+   */
+  private sellar(
+    contenido: NotaEvolucionContent,
+    especialidad: EspecialidadKey | undefined,
+  ): NotaEvolucionContent {
+    const errores = validarEstructuraNota(contenido);
+    if (errores.length > 0) throw new EstructuraNotaInvalidaError(errores);
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { firma, esquemaAlCierre, ...resto } = contenido;
+    const guardado = this.props.contenido;
+    return {
+      ...resto,
+      tipoNota: this.props.tipoNota,
+      especialidad,
+      plantillaVersion: guardado.plantillaVersion,
+      contextoNota: guardado.contextoNota,
+    };
   }
 
   private assertEditable(): void {

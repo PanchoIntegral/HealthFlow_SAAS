@@ -241,6 +241,51 @@ describe('Notas clínicas cerradas inmutables', () => {
     });
   });
 
+  describe('lo que el cliente no decide', () => {
+    it('el autosave no cambia el tipo de nota ni guarda una firma', async () => {
+      const { citaId, noteId } = await abrirConsulta(tokenMedico, medico, 270);
+      await request(app.getHttpServer())
+        .put(`/api/consultations/${citaId}/note`)
+        .set(auth(tokenMedico))
+        .send({
+          contenido: {
+            ...completa(),
+            tipoNota: 'nota_evolucion',
+            plantillaVersion: 'v1',
+            firma: { medicoNombre: 'Falso', cedula: '1', fecha: '2026-01-01' },
+          },
+        })
+        .expect(200);
+
+      const fila = await runInTenant(appDb.db, tenantId, (tx) =>
+        tx.execute(sql`
+          SELECT tipo_nota,
+                 contenido_nom004->>'tipoNota' AS tipo_contenido,
+                 contenido_nom004 ? 'firma' AS con_firma,
+                 contenido_nom004 ? 'plantillaVersion' AS con_plantilla
+            FROM clinical_notes WHERE id = ${noteId}
+        `),
+      );
+      // La consulta anterior de este paciente ya abrió su historia clínica,
+      // así que ésta es evolución; lo que importa es que coincidan.
+      const { tipo_nota, tipo_contenido, con_firma, con_plantilla } = fila.rows[0] as Record<string, unknown>;
+      expect(tipo_contenido).toBe(tipo_nota);
+      expect(con_firma).toBe(false);
+      expect(con_plantilla).toBe(false);
+    });
+
+    it('rechaza contenido con forma inválida devolviendo sólo rutas', async () => {
+      const { citaId } = await abrirConsulta(tokenMedico, medico, 330);
+      const res = await request(app.getHttpServer())
+        .put(`/api/consultations/${citaId}/note`)
+        .set(auth(tokenMedico))
+        .send({ contenido: { ...completa(), diagnosticos: [{ cie10: 7, descripcion: 'Dato clínico' }] } })
+        .expect(422);
+      expect(res.body.error).toBe('EstructuraNotaInvalida');
+      expect(JSON.stringify(res.body)).not.toContain('Dato clínico');
+    });
+  });
+
   it('un autosave que leyó el borrador antes del cierre no lo reabre', async () => {
     const { citaId, noteId } = await abrirConsulta(tokenMedico, medico, 210);
 

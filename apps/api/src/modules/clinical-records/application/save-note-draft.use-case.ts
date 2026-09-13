@@ -19,7 +19,10 @@ export class SaveNoteDraftUseCase {
     return this.tenantDb.run(async (tx) => {
       const note = await this.records.findNoteByAppointment(tx, appointmentId);
       if (!note) throw new NotFoundException('Nota no encontrada');
-      note.saveDraft(contenido); // lanza NoteAlreadyClosedError si ya está cerrada
+      // La especialidad de un borrador es la ACTUAL del médico (igual que al
+      // leerlo en GetConsultationNoteUseCase), nunca la que diga el cliente.
+      const especialidad = await this.records.getDoctorEspecialidad(tx, note.doctorId);
+      note.saveDraft(contenido, especialidad); // lanza NoteAlreadyClosedError si ya está cerrada
       // La comprobación en memoria no basta: la nota pudo cerrarse después de
       // leerla. El UPDATE condicionado es la barrera real.
       if (!(await this.records.saveDraftContent(tx, note))) {

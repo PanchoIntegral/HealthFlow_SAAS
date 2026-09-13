@@ -58,6 +58,7 @@ export class FinishConsultationUseCase {
       if (note.doctorId !== userId) throw new NotaDeOtroMedicoError();
 
       const firma = await this.records.getDoctorSignature(tx, userId);
+      const especialidad = await this.records.getDoctorEspecialidad(tx, note.doctorId);
       const now = new Date();
 
       // Valida firma y NOM-004 y cierra (inmutable). Lanza FirmaIncompletaError
@@ -66,6 +67,7 @@ export class FinishConsultationUseCase {
         contenido,
         { medicoNombre: firma?.nombre ?? '', cedula: firma?.cedula ?? null, fecha: now.toISOString() },
         now,
+        especialidad,
       );
       if (!(await this.records.saveClosedNote(tx, note))) {
         throw new NoteAlreadyClosedError();

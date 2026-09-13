@@ -11,6 +11,23 @@ export class NoteAlreadyClosedError extends DomainError {
 }
 
 /**
+ * El contenido recibido no tiene la forma de una nota: tipos, catálogos o
+ * tamaños inválidos. Sólo se devuelven rutas, jamás valores clínicos.
+ */
+export class EstructuraNotaInvalidaError extends DomainError {
+  readonly code = 'EstructuraNotaInvalida';
+  readonly httpStatus = 422;
+
+  constructor(readonly rutas: string[]) {
+    super('El contenido de la nota tiene datos con formato inválido');
+  }
+
+  override details(): Record<string, unknown> {
+    return { rutas: this.rutas };
+  }
+}
+
+/**
  * No se puede firmar: al médico le falta nombre o cédula profesional.
  *
  * Antes se estampaba "Médico" con cédula nula como respaldo. Una nota firmada

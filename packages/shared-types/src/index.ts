@@ -1821,6 +1821,229 @@ export interface NotaEvolucionContent {
   antecedentesHeredofamiliares?: string;
   antecedentesPersonalesPatologicos?: string;
   antecedentesPersonalesNoPatologicos?: string;
+  /**
+   * Versión de la plantilla con la que se abrió la nota. La estampa el
+   * servidor al crear el borrador y el cliente no puede cambiarla. Ausente =
+   * nota anterior a las plantillas versionadas ⇒ se lee como `legacy-v0`
+   * (ver `plantillaDe`); jamás se reescribe una nota vieja para agregarla.
+   */
+  plantillaVersion?: PlantillaVersion;
+  /**
+   * Qué clase de valoración es: la historia clínica general, la primera
+   * valoración en la especialidad o un seguimiento. Complementa a `tipoNota`
+   * sin reemplazarlo. La estampa el servidor.
+   */
+  contextoNota?: ContextoNota;
+  /**
+   * Datos que el médico decidió NO capturar, con el porqué. Llaveado por la
+   * ruta del campo (`signosVitales.ta`, `extension.car_ecg`,
+   * `bloques.medicamentos`). Existe para que "no aplica" sea una decisión
+   * escrita y no un campo en blanco: un string vacío nunca cuenta como tal.
+   */
+  noCapturado?: Record<string, DatoNoCapturado>;
+  /** Datos clínicos estructurados que no caben como texto libre. */
+  bloques?: BloquesNota;
+  /**
+   * Instantánea de los campos y requisitos con que se evaluó la nota al
+   * firmarla, para poder interpretarla igual aunque el catálogo cambie.
+   */
+  esquemaAlCierre?: EsquemaNota;
+}
+
+// ── Notas clínicas v2: plantillas, no captura y bloques estructurados ──
+
+/**
+ * Versiones de plantilla. `legacy-v0` es el catálogo tal como existía antes
+ * del versionado; una nota sin versión se interpreta con él.
+ */
+export const PLANTILLA_VERSIONES = ['legacy-v0', 'v1'] as const;
+export type PlantillaVersion = (typeof PLANTILLA_VERSIONES)[number];
+export const PLANTILLA_LEGACY: PlantillaVersion = 'legacy-v0';
+
+/** Versión con la que debe leerse una nota. Nunca lanza: lo desconocido es legacy. */
+export function plantillaDe(contenido: Pick<NotaEvolucionContent, 'plantillaVersion'>): PlantillaVersion {
+  const v = contenido.plantillaVersion;
+  return (PLANTILLA_VERSIONES as readonly string[]).includes(v ?? '') ? v! : PLANTILLA_LEGACY;
+}
+
+export const CONTEXTOS_NOTA = ['general', 'inicial_especialidad', 'seguimiento'] as const;
+export type ContextoNota = (typeof CONTEXTOS_NOTA)[number];
+
+export const ESTADOS_NO_CAPTURADO = ['no_aplica', 'no_valorado', 'rechazado_por_paciente'] as const;
+export type EstadoNoCapturado = (typeof ESTADOS_NO_CAPTURADO)[number];
+
+export interface DatoNoCapturado {
+  estado: EstadoNoCapturado;
+  /** Motivo breve. Algunas reglas lo exigen; el motor lo valida, no el tipo. */
+  motivo?: string;
+}
+
+/**
+ * Nivel de exigencia de un campo tal como lo DECLARA el catálogo. El motor de
+ * reglas lo resuelve, para una nota concreta, en requerido u opcional.
+ */
+export type NivelRequisito = 'opcional' | 'requerido' | 'condicional';
+
+/**
+ * Regla determinista que activa un requisito. Sin IA y sin inferencias: sólo
+ * compara datos que el médico ya capturó con listas explícitas del catálogo.
+ * Todas las condiciones presentes deben cumplirse (AND); una lista vacía o
+ * ausente no restringe.
+ */
+export interface ReglaCampo {
+  /** Id estable: queda en la instantánea de la nota para explicar por qué se pidió. */
+  id: string;
+  cuando: {
+    tiposNota?: readonly ClinicalNoteType[];
+    contextosNota?: readonly ContextoNota[];
+    /** Ids de MOTIVOS_CONSULTA, nunca texto libre. */
+    motivos?: readonly string[];
+    /** Prefijos CIE-10 explícitos ('I50' cubre I50.x). */
+    diagnosticosCie10?: readonly string[];
+  };
+  requisito: Exclude<NivelRequisito, 'condicional'>;
+}
+
+/** Un campo ya evaluado para una nota concreta. */
+export interface CampoEsquema {
+  /** Ruta del campo: `padecimientoActual`, `extension.car_ecg`, `bloques.problemas`. */
+  ruta: string;
+  requisito: 'requerido' | 'opcional';
+  /** Estados de no captura que el médico puede declarar en lugar del dato. */
+  estadosPermitidos: readonly EstadoNoCapturado[];
+  requiereMotivo: boolean;
+  /** Regla que lo activó, si alguna. */
+  reglaId?: string;
+}
+
+export interface EsquemaNota {
+  plantillaVersion: PlantillaVersion;
+  contextoNota?: ContextoNota;
+  campos: CampoEsquema[];
+}
+
+export interface BloquesNota {
+  problemas?: ListaEstructurada<ProblemaClinico, 'sin_problemas_activos'>;
+  medicamentos?: ListaEstructurada<
+    MedicamentoConciliado,
+    'sin_medicamentos' | 'no_fue_posible_conciliar'
+  >;
+  estudios?: ListaEstructurada<EstudioRegistrado, never>;
+  seguimiento?: PlanSeguimiento;
+  riesgoCv?: RegistroRiesgoCv[];
+  pes?: DiagnosticoPes[];
+  /**
+   * Fecha ISO en que el médico verificó las alergias del paciente. Las
+   * alergias viven en `patients.alergias`; la nota sólo deja constancia de la
+   * verificación, no copia la lista.
+   */
+  alergiasVerificadasEn?: string;
+}
+
+/**
+ * Lista con declaración explícita. Una lista vacía es ambigua —¿no hay nada,
+ * o nadie preguntó?—, igual que las alergias (0013): la declaración la
+ * resuelve y, si el caso lo pide, lleva motivo.
+ */
+export interface ListaEstructurada<T, D extends string> {
+  items: T[];
+  declaracion?: D;
+  motivo?: string;
+}
+
+export const ESTADOS_PROBLEMA = ['activo', 'en_estudio', 'controlado', 'resuelto'] as const;
+
+export interface ProblemaClinico {
+  id: string;
+  descripcion: string;
+  cie10?: string;
+  estado: (typeof ESTADOS_PROBLEMA)[number];
+  evidencia?: string;
+  objetivo?: string;
+  plan?: string;
+}
+
+export const ADHERENCIAS = ['adecuada', 'parcial', 'nula', 'no_valorada'] as const;
+export const CAMBIOS_MEDICAMENTO = ['sin_cambio', 'inicia', 'ajusta', 'suspende'] as const;
+
+export interface MedicamentoConciliado {
+  id: string;
+  nombre: string;
+  indicacion?: string;
+  dosis?: string;
+  via?: string;
+  frecuencia?: string;
+  adherencia?: (typeof ADHERENCIAS)[number];
+  tolerancia?: string;
+  contraindicaciones?: string;
+  monitoreo?: string;
+  cambio: (typeof CAMBIOS_MEDICAMENTO)[number];
+  /** Obligatorio cuando `cambio !== 'sin_cambio'` (lo valida el motor). */
+  razonCambio?: string;
+}
+
+export const TIPOS_ESTUDIO = [
+  'laboratorio',
+  'ecg',
+  'ecocardiograma',
+  'holter',
+  'prueba_esfuerzo',
+  'cateterismo',
+  'imagen',
+  'otro',
+] as const;
+
+export interface EstudioRegistrado {
+  id: string;
+  tipo: (typeof TIPOS_ESTUDIO)[number];
+  nombre: string;
+  /** Fecha ISO (YYYY-MM-DD) de realización. */
+  fecha?: string;
+  /** Laboratorio, institución o "traído por el paciente". */
+  fuente?: string;
+  resultado?: string;
+  valorNumerico?: number;
+  unidad?: string;
+  interpretacion?: string;
+  accion?: string;
+  /** Referencia a un archivo ya almacenado (id de radiografía/anexo); nunca el binario. */
+  referenciaArchivo?: string;
+  /** true si se solicita en esta consulta en lugar de revisarse. */
+  solicitado?: boolean;
+}
+
+export interface PlanSeguimiento {
+  declaracion?: 'seguimiento_no_requerido';
+  motivo?: string;
+  /** Texto corto: "2 semanas", "al tener resultados". */
+  plazo?: string;
+  fecha?: string;
+  signosAlarma?: string;
+  referencia?: string;
+}
+
+/**
+ * Registro de un riesgo cardiovascular que el MÉDICO obtuvo con la herramienta
+ * de su elección. HealthFlow no lo calcula: calcular riesgo es una finalidad
+ * de prevención y cruzaría la frontera de dispositivo médico (COFEPRIS). Por
+ * eso cada campo que hace reproducible el resultado es obligatorio.
+ */
+export interface RegistroRiesgoCv {
+  algoritmo: string;
+  version: string;
+  /** Fecha ISO del cálculo. */
+  fecha: string;
+  entradas: { clave: string; valor: string | number; unidad?: string }[];
+  resultado: number | string;
+  /** Unidad del resultado: "% a 10 años", "categoría". */
+  unidad: string;
+}
+
+/** Diagnóstico nutricional PES: problema, etiología, signos y síntomas. */
+export interface DiagnosticoPes {
+  problema: string;
+  etiologia: string;
+  signosSintomas: string;
 }
 
 /** Contenido vacío inicial de un borrador de nota de evolución. */
@@ -2380,6 +2603,14 @@ export interface CampoExtra {
    * campo que no se muestra no puede bloquear el cierre de la nota.
    */
   soloHistoriaClinica?: boolean;
+  /**
+   * Reglas condicionales (plantilla v1). Si existen, prevalecen sobre
+   * `obligatorio`/`soloHistoriaClinica`, que se conservan para `legacy-v0`.
+   */
+  reglas?: readonly ReglaCampo[];
+  /** Estados que el médico puede declarar en lugar del dato. Vacío = ninguno. */
+  estadosPermitidos?: readonly EstadoNoCapturado[];
+  requiereMotivoNoCapturado?: boolean;
 }
 
 /**
