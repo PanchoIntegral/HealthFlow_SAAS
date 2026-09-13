@@ -24,8 +24,12 @@ export class GetConsultationNoteUseCase {
       // especialidad ACTUAL del médico, no la que tenía cuando se abrió la
       // consulta. Cerrada, se congela para siempre (NOM-004) — ver
       // CreateDraftNoteInput.especialidad en clinical-record.repository.ts.
+      //
+      // Excepción: una nota con plantilla versionada conserva la especialidad
+      // estampada, porque su contexto (primera valoración o seguimiento) se
+      // calculó para esa especialidad.
       const especialidad =
-        s.estatus === 'borrador'
+        s.estatus === 'borrador' && !s.contenido.plantillaVersion
           ? await this.records.getDoctorEspecialidad(tx, s.doctorId)
           : s.contenido.especialidad;
 

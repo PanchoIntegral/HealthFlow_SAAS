@@ -2,19 +2,22 @@ import type {
   CorreccionNota,
   ClinicalNoteType,
   ClinicalRecordView,
+  ContextoNota,
   EspecialidadKey,
   MapaCorporal,
   Odontograma,
+  PlantillaVersion,
   Podograma,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
 import type { ClinicalNote } from './clinical-note.entity';
+import type { HistorialContexto } from './contexto-nota';
 
 export interface CreateDraftNoteInput {
   clinicalRecordId: string;
   appointmentId: string;
   doctorId: string;
-  /** 'historia_clinica' si es la primera nota del expediente, si no 'nota_evolucion'. */
+  /** Lo decide el servidor al iniciar consulta (ver decidirContexto para v1). */
   tipoNota: ClinicalNoteType;
   /**
    * Se estampa en el contenido de la nota al crearla y ya no cambia. Si el
@@ -28,6 +31,12 @@ export interface CreateDraftNoteInput {
   podograma?: Podograma;
   /** Ubicaciones de heridas heredadas de la última nota cerrada. */
   mapaCorporal?: MapaCorporal;
+  /**
+   * Presente sólo si notas_v2 está activo para la especialidad: estampa
+   * plantilla y contexto en columnas y contenido. Ausente = nota legacy, con
+   * las columnas en NULL, exactamente como antes.
+   */
+  v2?: { plantillaVersion: PlantillaVersion; contextoNota: ContextoNota };
 }
 
 /**
@@ -41,6 +50,16 @@ export interface ClinicalRecordRepository {
 
   /** Crea la nota borrador ligada a la cita y devuelve su id. */
   createDraftNote(tx: Tx, input: CreateDraftNoteInput): Promise<string>;
+
+  /** notas_v2 encendido para esta especialidad en la clínica activa. Sin fila = apagado. */
+  notasV2Habilitado(tx: Tx, especialidad: EspecialidadKey): Promise<boolean>;
+
+  /** Qué valoraciones CERRADAS tiene el expediente, para decidir el contexto de la nota. */
+  historialContexto(
+    tx: Tx,
+    clinicalRecordId: string,
+    especialidad: EspecialidadKey,
+  ): Promise<HistorialContexto>;
 
   /** True si el expediente ya tiene alguna nota (de cualquier tipo/estatus). */
   hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean>;

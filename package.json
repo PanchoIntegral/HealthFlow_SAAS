@@ -15,6 +15,7 @@
     "db:migrate": "pnpm --filter @healthflow/api db:migrate",
     "db:seed": "pnpm --filter @healthflow/api db:seed",
     "db:grant-module": "pnpm --filter @healthflow/api db:grant-module",
+    "db:notas-v2": "pnpm --filter @healthflow/api db:notas-v2",
     "db:setup": "pnpm --filter @healthflow/api db:setup"
   },
   "devDependencies": {

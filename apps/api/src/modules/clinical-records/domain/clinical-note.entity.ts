@@ -126,7 +126,11 @@ export class ClinicalNote {
     return {
       ...resto,
       tipoNota: this.props.tipoNota,
-      especialidad,
+      // Con plantilla versionada, la especialidad quedó estampada al crear el
+      // borrador junto con el contexto que se calculó para ella: seguir la
+      // especialidad actual del médico los desalinearía. Legacy conserva el
+      // comportamiento anterior (la actual mientras sea borrador).
+      especialidad: guardado.plantillaVersion ? guardado.especialidad : especialidad,
       plantillaVersion: guardado.plantillaVersion,
       contextoNota: guardado.contextoNota,
     };

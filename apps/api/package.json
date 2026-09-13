@@ -17,6 +17,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:create-account": "tsx src/db/create-account.ts",
     "db:grant-module": "tsx src/db/grant-module.ts",
+    "db:notas-v2": "tsx src/db/notas-v2.ts",
     "load-test": "tsx test/load/load-test.ts",
     "db:seed:directory": "tsx src/db/seed-directory.ts"
   },

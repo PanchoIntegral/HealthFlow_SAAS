@@ -10,11 +10,13 @@ import {
   type ClinicalNoteType,
   type ClinicalNoteStatus,
   type ClinicalRecordView,
+  type ContextoNota,
   type CorreccionNota,
   type EspecialidadKey,
   type MapaCorporal,
   type NotaEvolucionContent,
   type Odontograma,
+  type PlantillaVersion,
   type Podograma,
   type SexoPaciente,
 } from '@healthflow/shared-types';
@@ -26,6 +28,7 @@ import type {
   NuevaCorreccionInput,
   PaginaNotas,
 } from '../domain/clinical-record.repository';
+import type { HistorialContexto } from '../domain/contexto-nota';
 
 /**
  * El cursor es opaco a propósito: es `<created_at ISO>|<id>` en base64url, y
@@ -60,6 +63,33 @@ interface NoteRow {
   contenido_nom004: NotaEvolucionContent;
   cerrado_en: Date | null;
   created_at: Date;
+  especialidad: string | null;
+  contexto_nota: ContextoNota | null;
+  plantilla_version: PlantillaVersion | null;
+}
+
+/** Columnas de una nota, en el orden que espera `NoteRow`. */
+const COLUMNAS_NOTA = sql`id, clinical_record_id, appointment_id, doctor_id, tipo_nota,
+       estatus, contenido_nom004, cerrado_en, created_at,
+       especialidad, contexto_nota, plantilla_version`;
+
+/**
+ * Contenido de la nota con los sellos de las COLUMNAS impuestos sobre el
+ * jsonb. En una nota versionada la columna es la fuente de verdad: aunque el
+ * contenido dijera otra cosa, se lee lo que estampó el servidor. Una nota
+ * legacy (columnas NULL) se devuelve tal cual, sin agregarle nada.
+ */
+function contenidoDeFila(row: NoteRow): NotaEvolucionContent {
+  if (!row.plantilla_version) return row.contenido_nom004;
+  return {
+    ...row.contenido_nom004,
+    tipoNota: row.tipo_nota,
+    plantillaVersion: row.plantilla_version,
+    contextoNota: row.contexto_nota ?? undefined,
+    especialidad: esEspecialidadValida(row.especialidad ?? undefined)
+      ? (row.especialidad as EspecialidadKey)
+      : 'general',
+  };
 }
 
 /**
@@ -106,6 +136,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     const contenido = JSON.stringify({
       ...base,
       especialidad: input.especialidad,
+      ...(input.v2 ? { plantillaVersion: input.v2.plantillaVersion, contextoNota: input.v2.contextoNota } : {}),
       extension: {},
       // Arrastra el estado dental de la visita anterior: el dentista marca lo
       // que CAMBIÓ, no vuelve a dibujar la boca entera cada vez.
@@ -118,11 +149,52 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       ...(input.mapaCorporal ? { mapaCorporal: input.mapaCorporal } : {}),
     } satisfies NotaEvolucionContent);
     const result = await tx.execute(sql`
-      INSERT INTO clinical_notes (clinical_record_id, appointment_id, doctor_id, tipo_nota, contenido_nom004, estatus)
-      VALUES (${input.clinicalRecordId}, ${input.appointmentId}, ${input.doctorId}, ${input.tipoNota}, ${contenido}::jsonb, 'borrador')
+      INSERT INTO clinical_notes (clinical_record_id, appointment_id, doctor_id, tipo_nota, contenido_nom004, estatus,
+                                  especialidad, contexto_nota, plantilla_version)
+      VALUES (${input.clinicalRecordId}, ${input.appointmentId}, ${input.doctorId}, ${input.tipoNota}, ${contenido}::jsonb, 'borrador',
+              ${input.v2 ? input.especialidad : null}, ${input.v2?.contextoNota ?? null}, ${input.v2?.plantillaVersion ?? null})
       RETURNING id
     `);
     return (result.rows[0] as { id: string }).id;
+  }
+
+  async notasV2Habilitado(tx: Tx, especialidad: EspecialidadKey): Promise<boolean> {
+    const result = await tx.execute(sql`
+      SELECT 1 FROM notas_v2_rollout WHERE especialidad = ${especialidad} AND habilitado LIMIT 1
+    `);
+    return result.rows.length > 0;
+  }
+
+  async historialContexto(
+    tx: Tx,
+    clinicalRecordId: string,
+    especialidad: EspecialidadKey,
+  ): Promise<HistorialContexto> {
+    // Sólo notas CERRADAS: un borrador abandonado no es una valoración.
+    //
+    // Historia general: cualquier historia clínica que no sea la inicial de
+    // otra especialidad. Las legacy (contexto NULL) cuentan — eran la
+    // historia clínica NOM-004 del expediente, se abrieran donde se abrieran.
+    //
+    // Inicial de especialidad: la v1 con ese contexto, o una historia legacy
+    // firmada en esa misma especialidad, que es la valoración completa que se
+    // hizo entonces. La especialidad legacy sólo vive en el jsonb.
+    const result = await tx.execute(sql`
+      SELECT
+        bool_or(tipo_nota = 'historia_clinica'
+                AND coalesce(contexto_nota, 'general') = 'general') AS historia_general,
+        bool_or(coalesce(especialidad, contenido_nom004->>'especialidad', 'general') = ${especialidad}
+                AND (contexto_nota = 'inicial_especialidad'
+                     OR (contexto_nota IS NULL AND tipo_nota = 'historia_clinica'))) AS inicial_especialidad
+        FROM clinical_notes
+       WHERE clinical_record_id = ${clinicalRecordId}
+         AND estatus = 'cerrada'
+    `);
+    const row = result.rows[0] as { historia_general: boolean | null; inicial_especialidad: boolean | null };
+    return {
+      historiaGeneral: row?.historia_general === true,
+      inicialEspecialidad: row?.inicial_especialidad === true,
+    };
   }
 
   async hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean> {
@@ -138,8 +210,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     opts: { forUpdate?: boolean } = {},
   ): Promise<ClinicalNote | null> {
     const result = await tx.execute(sql`
-      SELECT id, clinical_record_id, appointment_id, doctor_id, tipo_nota,
-             estatus, contenido_nom004, cerrado_en, created_at
+      SELECT ${COLUMNAS_NOTA}
         FROM clinical_notes
        WHERE appointment_id = ${appointmentId}
        LIMIT 1
@@ -154,7 +225,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       doctorId: row.doctor_id,
       tipoNota: row.tipo_nota,
       estatus: row.estatus,
-      contenido: row.contenido_nom004,
+      contenido: contenidoDeFila(row),
       cerradoEn: row.cerrado_en ? new Date(row.cerrado_en) : null,
       createdAt: new Date(row.created_at),
     });
@@ -294,8 +365,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     // migraciones) tendrían un orden inestable entre páginas, y una nota
     // podría repetirse o desaparecer al pasar de página.
     const notesRes = await tx.execute(sql`
-      SELECT id, clinical_record_id, appointment_id, doctor_id, tipo_nota,
-             estatus, contenido_nom004, cerrado_en, created_at
+      SELECT ${COLUMNAS_NOTA}
         FROM clinical_notes
        WHERE clinical_record_id = ${record.record_id}
          ${desde ? sql`AND (created_at, id) < (${desde.createdAt}::timestamptz, ${desde.id}::uuid)` : sql``}
@@ -338,7 +408,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         doctorId: row.doctor_id,
         tipoNota: row.tipo_nota,
         estatus: row.estatus,
-        contenido: row.contenido_nom004,
+        contenido: contenidoDeFila(row),
         cerradoEn: row.cerrado_en ? new Date(row.cerrado_en).toISOString() : null,
         createdAt: new Date(row.created_at).toISOString(),
         correcciones: correccionesPorNota.get(row.id) ?? [],
