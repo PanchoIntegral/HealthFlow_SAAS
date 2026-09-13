@@ -71,7 +71,10 @@ export class TranscribirConsultaUseCase {
        * el editor: una nota abierta con odontología se llena con campos de
        * odontología aunque su autor haya cambiado de especialidad ayer.
        */
-      return { noteId: note.id, perfil: perfilDe(note.contenido.especialidad) };
+      return {
+        noteId: note.id,
+        perfil: perfilDe(note.contenido.especialidad, note.contenido.plantillaVersion),
+      };
     });
 
     // Fase 2 (sin transacción abierta): el modelo.

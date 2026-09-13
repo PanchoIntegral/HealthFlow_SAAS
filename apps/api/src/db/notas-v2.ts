@@ -8,6 +8,10 @@
  * campos esté aprobada por los responsables clínico y legal — no es algo que
  * el titular de una clínica deba poder encender desde Ajustes.
  *
+ * Encender exige además que el catálogo v1 de la especialidad esté APROBADO
+ * en el código (ver CATALOGO_NOTAS_V1 y motivoParaNoActivar). No hay forma de
+ * forzarlo desde aquí: mientras sea borrador, el script se niega.
+ *
  * Apagar sólo afecta a las consultas NUEVAS: una nota creada con v1 conserva
  * la plantilla que quedó estampada.
  *
@@ -17,7 +21,8 @@
  *   pnpm db:notas-v2 --tenant <uuid> --list
  */
 import { Client } from 'pg';
-import { esEspecialidadValida } from '@healthflow/shared-types';
+import { CATALOGO_NOTAS_V1, esEspecialidadValida } from '@healthflow/shared-types';
+import { motivoParaNoActivar } from '../modules/clinical-records/domain/activacion-notas-v2';
 import { loadDotEnv, env } from '../config/env';
 
 loadDotEnv();
@@ -63,6 +68,10 @@ async function main(): Promise<void> {
       throw new Error(`--especialidad inválida: ${o.especialidad ?? '(falta)'}`);
     }
     if (o.habilitar === undefined) throw new Error('Indica --on o --off');
+    if (o.habilitar) {
+      const rechazo = motivoParaNoActivar(o.especialidad);
+      if (rechazo) throw new Error(`No se puede encender notas_v2: ${rechazo}`);
+    }
     // Encender sin dejar constancia de la aprobación es justo lo que no debe pasar.
     if (o.habilitar && !o.nota?.trim()) {
       throw new Error('Encender requiere --nota con la referencia de la aprobación clínico-legal');
@@ -103,8 +112,16 @@ async function listar(client: Client, tenant: string): Promise<void> {
        FROM notas_v2_rollout WHERE tenant_id=$1 ORDER BY especialidad`,
     [tenant],
   );
-  if (filas.rowCount === 0) return console.log('(sin filas: notas_v2 apagado en todas las especialidades)');
-  console.table(filas.rows);
+  if (filas.rowCount === 0) console.log('(sin filas: notas_v2 apagado en todas las especialidades)');
+  else console.table(filas.rows);
+  console.log('Catálogo v1:');
+  console.table(
+    Object.entries(CATALOGO_NOTAS_V1.especialidades).map(([especialidad, c]) => ({
+      especialidad,
+      estado: c.estado,
+      aprobacion: c.aprobacion?.referencia ?? '—',
+    })),
+  );
 }
 
 main().catch((err) => {

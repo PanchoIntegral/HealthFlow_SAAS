@@ -44,7 +44,7 @@ const CAMPOS_HISTORIA_CLINICA = [
 
 export function evaluarEsquema(
   contenido: NotaEvolucionContent,
-  perfil: PerfilEspecialidad = perfilDe(contenido.especialidad),
+  perfil: PerfilEspecialidad = perfilDe(contenido.especialidad, plantillaDe(contenido)),
 ): EsquemaNota {
   const plantillaVersion = plantillaDe(contenido);
   const conReglas = plantillaVersion !== 'legacy-v0';
@@ -92,7 +92,7 @@ export function evaluarEsquema(
 export function validarCierre(
   contenido: NotaEvolucionContent,
   esquema: EsquemaNota,
-  perfil: PerfilEspecialidad = perfilDe(contenido.especialidad),
+  perfil: PerfilEspecialidad = perfilDe(contenido.especialidad, plantillaDe(contenido)),
 ): ErrorCierre[] {
   const primeros: ErrorCierre[] = [];
   const finales: ErrorCierre[] = [];
@@ -140,7 +140,15 @@ function resolver(
     // catálogo es, por tanto, su prioridad.
     const regla = def.reglas.find((r) => reglaAplica(r, contenido));
     return regla
-      ? { ...base, requisito: regla.requisito, reglaId: regla.id }
+      ? {
+          ...base,
+          requisito: regla.requisito,
+          reglaId: regla.id,
+          // La regla puede afinar qué alternativas acepta en su escenario.
+          ...(regla.estadosPermitidos ? { estadosPermitidos: regla.estadosPermitidos } : {}),
+          ...(regla.requiereMotivo !== undefined ? { requiereMotivo: regla.requiereMotivo } : {}),
+          ...(regla.ayuda ? { ayuda: regla.ayuda } : {}),
+        }
       : { ...base, requisito: 'opcional' };
   }
   return { ...base, requisito: def.obligatorio ? 'requerido' : 'opcional' };

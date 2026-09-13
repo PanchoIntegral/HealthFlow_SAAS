@@ -305,6 +305,28 @@ describe('Notas v2: contexto por especialidad y activación gradual', () => {
       expect(JSON.stringify(guardado.body.pendientes)).not.toContain('DM2');
     });
 
+    it('con el catálogo v1 en borrador, una nota v1 no expone reglas, campos, bloques ni motivos del borrador', async () => {
+      await flag('cardiologia', true);
+      const { citaId } = await abrir(cardio, await nuevoPaciente());
+      const { body } = await request(app.getHttpServer())
+        .get(`/api/consultations/${citaId}/note`)
+        .set(auth(cardio))
+        .expect(200);
+      expect(body.esquema.plantillaVersion).toBe('v1');
+      const rutas: string[] = body.esquema.campos.map((c: { ruta: string }) => c.ruta);
+      expect(rutas.some((r) => r.startsWith('bloques.'))).toBe(false);
+      expect(rutas).not.toContain('extension.car_antecedente_cv');
+      expect(rutas).toContain('extension.car_ecg'); // campo base que el borrador retiraría
+      expect(body.esquema.campos.some((c: { reglaId?: string }) => c.reglaId?.startsWith('v1.'))).toBe(false);
+
+      const res = await request(app.getHttpServer())
+        .put(`/api/consultations/${citaId}/note`)
+        .set(auth(cardio))
+        .send({ contenido: { ...body.contenido, motivoConsulta: 'dolor_toracico' } })
+        .expect(422);
+      expect(res.body).toMatchObject({ error: 'EstructuraNotaInvalida', rutas: ['motivoConsulta'] });
+    });
+
     it('una nota legacy recibe su esquema legacy, sin referencia', async () => {
       await flag('nutricion', false);
       const { citaId } = await abrir(nutri, await nuevoPaciente());

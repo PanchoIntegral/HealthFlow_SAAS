@@ -45,6 +45,7 @@ import { Modal } from '../../../components/modal';
 import { GrabadorIa } from '../../../components/grabador-ia';
 import { pesos } from '../../../components/presupuesto-panel';
 import { BloqueNota } from '../../../components/nota/bloques-nota';
+import { ControlNoCapturado } from '../../../components/nota/control-no-capturado';
 import { PendientesFirma } from '../../../components/nota/pendientes-firma';
 import { VerificacionAntecedentes } from '../../../components/nota/verificacion-antecedentes';
 import {
@@ -400,7 +401,10 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
    * seis meses debe seguir mostrando los campos con los que se firmó, aunque
    * su autor haya cambiado de especialidad desde entonces.
    */
-  const perfil = useMemo(() => perfilDe(content.especialidad), [content.especialidad]);
+  const perfil = useMemo(
+    () => perfilDe(content.especialidad, content.plantillaVersion),
+    [content.especialidad, content.plantillaVersion],
+  );
   /**
    * Qué campos de la especialidad se muestran lo dice el esquema de la API, en
    * su orden; el catálogo sólo aporta cómo se ven (etiqueta, tipo, opciones).
@@ -633,6 +637,27 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             </Section>
           )}
 
+          {/* Sólo si el catálogo ACTIVO de la nota ofrece motivos: elegir uno
+              puede activar requisitos, que la API recalcula al autoguardar. */}
+          {(perfil.motivosConsulta?.length ?? 0) > 0 && (
+            <Section title="Motivo de consulta">
+              <select
+                aria-label="Motivo de consulta"
+                value={content.motivoConsulta ?? ''}
+                disabled={readOnly}
+                onChange={(e) => setContent((c) => ({ ...c, motivoConsulta: e.target.value || undefined }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue disabled:bg-slate-50"
+              >
+                <option value="">Sin especificar</option>
+                {perfil.motivosConsulta!.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </Section>
+          )}
+
           <Section title="Padecimiento actual" required={requerido('padecimientoActual')} missing={isMissing('padecimientoActual')}>
             <RichTextEditor
               value={content.padecimientoActual}
@@ -817,11 +842,20 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
               required={campo.requisito === 'requerido'}
               missing={resaltadas.some((r) => r === campo.ruta || r.startsWith(`${campo.ruta}.`))}
             >
+              {campo.ayuda && campo.requisito === 'requerido' && (
+                <p className="mb-2 text-xs text-amber-700">{campo.ayuda}</p>
+              )}
               <BloqueNota
                 def={def}
-                campo={campo}
                 bloques={content.bloques ?? {}}
                 onChange={setBloques}
+                readOnly={readOnly}
+                errores={erroresDe(pendientes, campo.ruta)}
+              />
+              <ControlNoCapturado
+                campo={campo}
+                valor={content.noCapturado?.[campo.ruta]}
+                onChange={(v) => setNoCapturado(campo.ruta, v)}
                 readOnly={readOnly}
                 errores={erroresDe(pendientes, campo.ruta)}
               />

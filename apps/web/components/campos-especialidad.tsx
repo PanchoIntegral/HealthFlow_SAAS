@@ -73,6 +73,10 @@ export function CamposEspecialidad({
             />
 
             {campo.ayuda && <p className="mt-1 text-xs text-slate-400">{campo.ayuda}</p>}
+            {/* Por qué la regla activa lo pide en ESTA consulta. */}
+            {enEsquema?.ayuda && enEsquema.requisito === 'requerido' && (
+              <p className="mt-1 text-xs text-amber-700">{enEsquema.ayuda}</p>
+            )}
 
             {enEsquema && (
               <ControlNoCapturado

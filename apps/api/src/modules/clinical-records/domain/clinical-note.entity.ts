@@ -1,9 +1,10 @@
-import type {
-  ClinicalNoteStatus,
-  ClinicalNoteType,
-  EspecialidadKey,
-  FirmaMedica,
-  NotaEvolucionContent,
+import {
+  perfilDe,
+  type ClinicalNoteStatus,
+  type ClinicalNoteType,
+  type EspecialidadKey,
+  type FirmaMedica,
+  type NotaEvolucionContent,
 } from '@healthflow/shared-types';
 import { evaluarEsquema, validarCierre } from './motor-reglas';
 import { validarEstructuraNota } from './estructura-nota';
@@ -123,6 +124,17 @@ export class ClinicalNote {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { firma, esquemaAlCierre, ...resto } = contenido;
     const guardado = this.props.contenido;
+    const especialidadSellada = guardado.plantillaVersion ? guardado.especialidad : especialidad;
+
+    // El motivo de consulta activa reglas, así que sólo vale uno del catálogo
+    // ACTIVO de la nota; un borrador no aprobado no ofrece ninguno.
+    if (resto.motivoConsulta !== undefined) {
+      const motivos = perfilDe(especialidadSellada, guardado.plantillaVersion).motivosConsulta ?? [];
+      if (!motivos.some((m) => m.id === resto.motivoConsulta)) {
+        throw new EstructuraNotaInvalidaError(['motivoConsulta']);
+      }
+    }
+
     return {
       ...resto,
       tipoNota: this.props.tipoNota,
@@ -130,7 +142,7 @@ export class ClinicalNote {
       // borrador junto con el contexto que se calculó para ella: seguir la
       // especialidad actual del médico los desalinearía. Legacy conserva el
       // comportamiento anterior (la actual mientras sea borrador).
-      especialidad: guardado.plantillaVersion ? guardado.especialidad : especialidad,
+      especialidad: especialidadSellada,
       plantillaVersion: guardado.plantillaVersion,
       contextoNota: guardado.contextoNota,
     };

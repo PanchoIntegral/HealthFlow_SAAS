@@ -3,7 +3,6 @@
 import type {
   BloqueClinico,
   BloquesNota,
-  CampoEsquema,
   DiagnosticoPes,
   ErrorCierre,
   EstudioRegistrado,
@@ -37,14 +36,12 @@ function nuevoId(): string {
 
 export function BloqueNota({
   def,
-  campo,
   bloques,
   onChange,
   readOnly,
   errores,
 }: {
   def: BloqueClinico;
-  campo: CampoEsquema;
   bloques: BloquesNota;
   onChange: Actualizar;
   readOnly: boolean;
@@ -61,9 +58,7 @@ export function BloqueNota({
       {def.bloque === 'riesgoCv' && <RiesgoCv {...props} />}
       {def.bloque === 'pes' && <Pes {...props} />}
       {def.bloque === 'alergiasVerificadasEn' && <AlergiasVerificadas {...props} />}
-      {campo.reglaId && campo.requisito === 'requerido' && (
-        <p className="mt-2 text-xs text-amber-700">Se pide por el contexto de esta consulta.</p>
-      )}
+
     </div>
   );
 }

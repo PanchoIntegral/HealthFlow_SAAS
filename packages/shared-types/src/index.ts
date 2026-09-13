@@ -1943,6 +1943,12 @@ export interface ReglaCampo {
     diagnosticosCie10?: readonly string[];
   };
   requisito: Exclude<NivelRequisito, 'condicional'>;
+  /** Estados de no captura que acepta ESTA regla; si falta, los del campo. */
+  estadosPermitidos?: readonly EstadoNoCapturado[];
+  /** Si declarar un estado exige motivo en ESTA regla; si falta, lo del campo. */
+  requiereMotivo?: boolean;
+  /** Por qué se pide, en palabras para el profesional. */
+  ayuda?: string;
 }
 
 /** Un campo ya evaluado para una nota concreta. */
@@ -1955,6 +1961,8 @@ export interface CampoEsquema {
   requiereMotivo: boolean;
   /** Regla que lo activó, si alguna. */
   reglaId?: string;
+  /** Explicación de la regla que lo pide, para mostrarla junto al campo. */
+  ayuda?: string;
 }
 
 /**
@@ -2765,6 +2773,8 @@ export interface PerfilEspecialidad {
   permiteOmitirSignosVitales?: boolean;
   /** Bloques estructurados que pide la especialidad (ver BloqueClinico). */
   bloques?: readonly BloqueClinico[];
+  /** Motivos de consulta de catálogo que el profesional puede elegir (sólo plantillas versionadas). */
+  motivosConsulta?: readonly MotivoConsulta[];
 }
 
 const VITALES_COMPLETOS = ['ta', 'fc', 'fr', 'temp', 'spo2', 'peso', 'talla'] as const;
@@ -3993,8 +4003,75 @@ export function esEspecialidadValida(value: unknown): value is EspecialidadKey {
  * se retiró del catálogo) jamás debe impedir que un médico firme su nota.
  * Ante la duda, se aplica la base NOM-004 y ya.
  */
-export function perfilDe(key: string | null | undefined): PerfilEspecialidad {
-  return esEspecialidadValida(key) ? PERFILES[key] : PERFILES.general;
+export function perfilDe(
+  key: string | null | undefined,
+  plantilla?: PlantillaVersion | null,
+): PerfilEspecialidad {
+  const base = esEspecialidadValida(key) ? PERFILES[key] : PERFILES.general;
+  // Una nota legacy JAMÁS recibe nada del catálogo versionado; una v1 sólo lo
+  // que esté aprobado para su especialidad. Un borrador no se expone.
+  if (plantilla !== 'v1') return base;
+  const catalogo = catalogoActivoDe(base.key);
+  return catalogo ? aplicarCatalogo(base, catalogo) : base;
+}
+
+/**
+ * Una especialidad del catálogo sólo cuenta como aprobada con TODOS los datos
+ * de la aprobación: un `estado: 'aprobado'` sin responsables ni referencia es
+ * justo el atajo que esta función existe para impedir.
+ */
+export function catalogoAprobado(catalogo: CatalogoEspecialidadV1 | undefined): boolean {
+  if (!catalogo || catalogo.estado !== 'aprobado' || !catalogo.aprobacion) return false;
+  const a = catalogo.aprobacion;
+  return [a.responsableClinico, a.responsableLegal, a.referencia].every((v) => v.trim().length > 0) &&
+    !Number.isNaN(Date.parse(a.fecha));
+}
+
+/** Catálogo v1 de la especialidad sólo si está aprobado; si no, undefined. */
+export function catalogoActivoDe(
+  especialidad: EspecialidadKey,
+  catalogo: CatalogoNotas = CATALOGO_NOTAS_V1,
+): CatalogoEspecialidadV1 | undefined {
+  const entrada = catalogo.especialidades[especialidad];
+  return catalogoAprobado(entrada) ? entrada : undefined;
+}
+
+/**
+ * Perfil de una especialidad con su catálogo aplicado: retira los campos que
+ * v1 sustituye, agrega los nuevos y los bloques, y cuelga cada regla del campo
+ * o bloque al que apunta, en el orden del catálogo (que es su prioridad).
+ *
+ * Pura y sin comprobar aprobación: `perfilDe` decide si se aplica. Las
+ * pruebas la usan para ejercitar un borrador sin activarlo.
+ */
+export function aplicarCatalogo(
+  base: PerfilEspecialidad,
+  catalogo: CatalogoEspecialidadV1,
+): PerfilEspecialidad {
+  const reglasPara = (coincide: (r: ReglaCatalogo) => boolean): ReglaCampo[] =>
+    catalogo.reglas.filter(coincide).map((r) => ({
+      id: r.id,
+      cuando: r.cuando,
+      requisito: r.requisito,
+      estadosPermitidos: r.estadosPermitidos,
+      requiereMotivo: r.requiereMotivo,
+      ayuda: r.ayuda,
+    }));
+
+  const camposExtra = [
+    ...base.camposExtra.filter((c) => !catalogo.camposRetirados.includes(c.key)),
+    ...catalogo.camposNuevos,
+  ].map((campo) => {
+    const reglas = reglasPara((r) => r.objetivo.tipo === 'campo' && r.objetivo.key === campo.key);
+    return reglas.length > 0 ? { ...campo, reglas } : campo;
+  });
+
+  const bloques = catalogo.bloques.map((b) => ({
+    ...b,
+    reglas: reglasPara((r) => r.objetivo.tipo === 'bloque' && r.objetivo.bloque === b.bloque),
+  }));
+
+  return { ...base, camposExtra, bloques, motivosConsulta: catalogo.motivosConsulta };
 }
 
 /** Opciones para poblar un `<select>`, con 'general' siempre primero. */
@@ -4792,3 +4869,419 @@ export const RECALL_ATTEMPT_RESULTS = [
   'sent', 'answered', 'booked', 'declined', 'unreachable', 'failed',
 ] as const;
 export type RecallAttemptResult = (typeof RECALL_ATTEMPT_RESULTS)[number];
+
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ * Catálogo de notas clínicas, plantilla v1 — BORRADOR.
+ *
+ * ESTO NO ES UNA GUÍA CLÍNICA NI ESTÁ APROBADO. Traduce a datos las "reglas
+ * iniciales sugeridas" de docs/plan-integracion-notas-clinicas.md para que el
+ * responsable clínico y el legal las revisen línea por línea. Mientras una
+ * especialidad esté en `estado: 'borrador'`:
+ *   · `perfilDe()` NO expone nada de aquí (ni reglas, ni campos, ni bloques);
+ *   · `pnpm db:notas-v2 --on` se niega a encender esa especialidad.
+ *
+ * Aprobar = cambiar `estado` a 'aprobado' y registrar `aprobacion` completa,
+ * en un commit revisado. Es deliberadamente un cambio de código: queda en el
+ * historial quién aprobó qué versión y con qué referencia.
+ *
+ * Reglas del catálogo:
+ *   · Ids estables `v1.<especialidad>.<escenario>.<objetivo>`; nunca se
+ *     reutilizan (quedan congelados en `esquemaAlCierre` de notas firmadas).
+ *   · Deterministas: sólo tipo/contexto de nota, motivo de catálogo o prefijo
+ *     CIE-10 capturado por el profesional. Nada se infiere.
+ *   · Tamizajes por edad/sexo y umbrales de guías NO se codifican aquí.
+ *   · El riesgo cardiovascular se REGISTRA; HealthFlow no lo calcula.
+ * ═══════════════════════════════════════════════════════════════════
+ */
+
+export type EstadoCatalogo = 'borrador' | 'aprobado';
+
+export interface AprobacionCatalogo {
+  responsableClinico: string;
+  responsableLegal: string;
+  /** Fecha ISO de la aprobación. */
+  fecha: string;
+  /** Acta, minuta o ticket donde consta. */
+  referencia: string;
+}
+
+export type ObjetivoRegla =
+  | { tipo: 'campo'; key: string }
+  | { tipo: 'bloque'; bloque: keyof BloquesNota };
+
+/** Una regla del catálogo, en la forma en que se revisa. */
+export interface ReglaCatalogo {
+  /** Estable y único. */
+  id: string;
+  /** Escenario clínico en palabras, para quien revisa. */
+  escenario: string;
+  objetivo: ObjetivoRegla;
+  cuando: ReglaCampo['cuando'];
+  requisito: 'requerido' | 'opcional';
+  /** Estados que se aceptan en lugar del dato. Vacío = el dato es obligatorio sin alternativa. */
+  estadosPermitidos: readonly EstadoNoCapturado[];
+  /** Si declarar un estado exige escribir el motivo. */
+  requiereMotivo: boolean;
+  /** Por qué se pide; se muestra al profesional junto al campo. */
+  ayuda: string;
+}
+
+export interface MotivoConsulta {
+  id: string;
+  label: string;
+}
+
+export interface CatalogoEspecialidadV1 {
+  estado: EstadoCatalogo;
+  aprobacion: AprobacionCatalogo | null;
+  /** Campos de texto libre que v1 sustituye por datos estructurados. */
+  camposRetirados: readonly string[];
+  camposNuevos: readonly CampoExtra[];
+  bloques: readonly Omit<BloqueClinico, 'reglas' | 'estadosPermitidos' | 'requiereMotivoNoCapturado' | 'obligatorio'>[];
+  motivosConsulta: readonly MotivoConsulta[];
+  /** En orden de prioridad: para un mismo objetivo, la primera que aplica decide. */
+  reglas: readonly ReglaCatalogo[];
+}
+
+export interface CatalogoNotas {
+  version: 'v1';
+  especialidades: Partial<Record<EspecialidadKey, CatalogoEspecialidadV1>>;
+}
+
+const INICIAL: readonly ContextoNota[] = ['inicial_especialidad'];
+
+export const CATALOGO_NOTAS_V1: CatalogoNotas = {
+  version: 'v1',
+  especialidades: {
+    // ── Medicina general ─────────────────────────────────────────
+    general: {
+      estado: 'borrador',
+      aprobacion: null,
+      camposRetirados: [
+        'gen_conciliacion_medicamentos', // → bloque medicamentos
+        'gen_alergias_revisadas', // → bloque alergiasVerificadasEn
+        'com_resultados_estudios', // → bloque estudios
+        'com_seguimiento', // → bloque seguimiento
+      ],
+      camposNuevos: [
+        {
+          key: 'gen_revision_sistemas',
+          label: 'Revisión y exploración por sistemas',
+          tipo: 'texto-rico',
+          ayuda: 'Sistemas interrogados y explorados, con hallazgos pertinentes y negativos relevantes.',
+        },
+        {
+          key: 'gen_factores_riesgo_prevencion',
+          label: 'Factores de riesgo y prevención',
+          tipo: 'texto-rico',
+          ayuda:
+            'Tabaco/nicotina, alcohol, otras sustancias, actividad física, alimentación, vacunas y tamizajes pertinentes, antecedentes familiares relevantes.',
+        },
+      ],
+      bloques: [
+        { bloque: 'problemas', label: 'Lista de problemas' },
+        { bloque: 'medicamentos', label: 'Conciliación farmacológica' },
+        { bloque: 'alergiasVerificadasEn', label: 'Verificación de alergias' },
+        { bloque: 'estudios', label: 'Estudios revisados o solicitados' },
+        { bloque: 'seguimiento', label: 'Seguimiento' },
+      ],
+      motivosConsulta: [],
+      reglas: [
+        {
+          id: 'v1.general.toda_nota.problemas',
+          escenario: 'Toda nota de medicina general',
+          objetivo: { tipo: 'bloque', bloque: 'problemas' },
+          cuando: {},
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Registra los problemas activos o declara "Sin problemas activos".',
+        },
+        {
+          id: 'v1.general.primera_valoracion.medicamentos',
+          escenario:
+            'Primera valoración (historia clínica general). "Al modificar tratamiento" no se detecta por regla: lo cubre la razón obligatoria de cada cambio de fármaco.',
+          objetivo: { tipo: 'bloque', bloque: 'medicamentos' },
+          cuando: { contextosNota: ['general'] },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Concilia los medicamentos actuales, o declara "No fue posible conciliar" con motivo.',
+        },
+        {
+          id: 'v1.general.toda_nota.seguimiento',
+          escenario: 'Toda nota de medicina general',
+          objetivo: { tipo: 'bloque', bloque: 'seguimiento' },
+          cuando: {},
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Indica plazo o fecha de seguimiento, o declara "Seguimiento no requerido" con justificación.',
+        },
+      ],
+    },
+
+    // ── Cardiología ──────────────────────────────────────────────
+    cardiologia: {
+      estado: 'borrador',
+      aprobacion: null,
+      camposRetirados: [
+        'car_ecg', // → bloque estudios (fecha, fuente, resultado, interpretación)
+        'car_riesgo_ascvd', // → bloque riesgoCv (algoritmo, versión, entradas, resultado)
+        'car_adherencia', // → bloque medicamentos (adherencia, tolerancia, contraindicaciones)
+        'com_resultados_estudios', // → bloque estudios
+        'com_seguimiento', // → bloque seguimiento
+      ],
+      camposNuevos: [
+        {
+          key: 'car_antecedente_cv',
+          label: 'Antecedente cardiovascular',
+          tipo: 'texto-rico',
+          ayuda:
+            'Enfermedad previa, eventos, hospitalizaciones, procedimientos, dispositivos, valvulopatía y antecedente familiar prematuro.',
+        },
+        {
+          key: 'car_congestion',
+          label: 'Signos de congestión',
+          tipo: 'texto-rico',
+          ayuda: 'Ingurgitación yugular, estertores, edema, hepatomegalia, ortopnea.',
+        },
+        {
+          key: 'car_triage_accion',
+          label: 'Signos de alarma y acción tomada',
+          tipo: 'texto-rico',
+          ayuda: 'Qué se valoró y qué acción se tomó (referencia, estudios, indicaciones). El sistema no clasifica urgencias.',
+        },
+      ],
+      bloques: [
+        { bloque: 'medicamentos', label: 'Tratamiento y conciliación' },
+        { bloque: 'alergiasVerificadasEn', label: 'Verificación de alergias' },
+        { bloque: 'estudios', label: 'Estudios cardiovasculares' },
+        { bloque: 'riesgoCv', label: 'Riesgo cardiovascular (registro)' },
+        { bloque: 'seguimiento', label: 'Seguimiento' },
+      ],
+      motivosConsulta: [
+        { id: 'control_cardiovascular', label: 'Control cardiovascular' },
+        { id: 'dolor_toracico', label: 'Dolor torácico' },
+        { id: 'sincope_presincope', label: 'Síncope o presíncope' },
+        { id: 'palpitaciones', label: 'Palpitaciones' },
+        { id: 'prevencion_riesgo_cv', label: 'Prevención / estimación de riesgo' },
+        { id: 'otro', label: 'Otro' },
+      ],
+      reglas: [
+        // Primera valoración cardiológica
+        {
+          id: 'v1.cardiologia.primera_valoracion.antecedente_cv',
+          escenario: 'Primera valoración en cardiología',
+          objetivo: { tipo: 'campo', key: 'car_antecedente_cv' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_valorado'],
+          requiereMotivo: true,
+          ayuda: 'La primera valoración documenta el antecedente cardiovascular.',
+        },
+        {
+          id: 'v1.cardiologia.primera_valoracion.factores_riesgo',
+          escenario: 'Primera valoración en cardiología',
+          objetivo: { tipo: 'campo', key: 'car_riesgo' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_valorado'],
+          requiereMotivo: true,
+          ayuda: 'Presión, diabetes, lípidos, tabaquismo, enfermedad renal, peso/cintura y actividad física.',
+        },
+        {
+          id: 'v1.cardiologia.primera_valoracion.sintomas',
+          escenario: 'Primera valoración en cardiología',
+          objetivo: { tipo: 'campo', key: 'car_sintomas' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_valorado'],
+          requiereMotivo: true,
+          ayuda: 'Dolor torácico, disnea, ortopnea, edema, síncope/presíncope y palpitaciones, incluidos los negados.',
+        },
+        {
+          id: 'v1.cardiologia.primera_valoracion.exploracion',
+          escenario: 'Primera valoración en cardiología',
+          objetivo: { tipo: 'campo', key: 'car_exploracion' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_valorado', 'no_aplica'],
+          requiereMotivo: true,
+          ayuda: 'Ritmo, soplos, yugulares, pulsos, edema y hallazgos periféricos pertinentes.',
+        },
+        {
+          id: 'v1.cardiologia.primera_valoracion.medicamentos',
+          escenario: 'Primera valoración en cardiología',
+          objetivo: { tipo: 'bloque', bloque: 'medicamentos' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Lista de medicamentos, o "No fue posible conciliar" con motivo.',
+        },
+        {
+          id: 'v1.cardiologia.primera_valoracion.alergias',
+          escenario: 'Primera valoración en cardiología',
+          objetivo: { tipo: 'bloque', bloque: 'alergiasVerificadasEn' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_valorado'],
+          requiereMotivo: true,
+          ayuda: 'Verifica las alergias registradas del paciente, o indica por qué no estuvieron disponibles.',
+        },
+        // Insuficiencia cardiaca (CIE-10 I50 capturado por el profesional)
+        {
+          id: 'v1.cardiologia.insuficiencia_cardiaca.nyha',
+          escenario: 'Diagnóstico capturado de insuficiencia cardiaca (I50)',
+          objetivo: { tipo: 'campo', key: 'car_clase_funcional' },
+          cuando: { diagnosticosCie10: ['I50'] },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Con insuficiencia cardiaca se documenta la clase funcional NYHA.',
+        },
+        {
+          id: 'v1.cardiologia.insuficiencia_cardiaca.congestion',
+          escenario: 'Diagnóstico capturado de insuficiencia cardiaca (I50)',
+          objetivo: { tipo: 'campo', key: 'car_congestion' },
+          cuando: { diagnosticosCie10: ['I50'] },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Documenta los signos de congestión presentes o ausentes.',
+        },
+        {
+          id: 'v1.cardiologia.insuficiencia_cardiaca.fevi',
+          escenario: 'Diagnóstico capturado de insuficiencia cardiaca (I50)',
+          objetivo: { tipo: 'campo', key: 'car_fraccion_eyeccion' },
+          cuando: { diagnosticosCie10: ['I50'] },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_valorado'],
+          requiereMotivo: true,
+          ayuda: 'Registra la FEVI si está disponible; si no, indica el motivo.',
+        },
+        {
+          id: 'v1.cardiologia.insuficiencia_cardiaca.medicamentos',
+          escenario: 'Diagnóstico capturado de insuficiencia cardiaca (I50)',
+          objetivo: { tipo: 'bloque', bloque: 'medicamentos' },
+          cuando: { diagnosticosCie10: ['I50'] },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Con insuficiencia cardiaca se documenta el tratamiento.',
+        },
+        {
+          id: 'v1.cardiologia.insuficiencia_cardiaca.seguimiento',
+          escenario: 'Diagnóstico capturado de insuficiencia cardiaca (I50)',
+          objetivo: { tipo: 'bloque', bloque: 'seguimiento' },
+          cuando: { diagnosticosCie10: ['I50'] },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Con insuficiencia cardiaca se documenta el seguimiento.',
+        },
+        // Dolor torácico, síncope o palpitaciones: documentar acción, no decidir urgencias
+        {
+          id: 'v1.cardiologia.signos_alarma.accion',
+          escenario: 'Motivo de consulta: dolor torácico, síncope/presíncope o palpitaciones',
+          objetivo: { tipo: 'campo', key: 'car_triage_accion' },
+          cuando: { motivos: ['dolor_toracico', 'sincope_presincope', 'palpitaciones'] },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Documenta la acción tomada. La decisión clínica es tuya; el sistema no clasifica urgencias.',
+        },
+        {
+          id: 'v1.cardiologia.signos_alarma.seguimiento',
+          escenario: 'Motivo de consulta: dolor torácico, síncope/presíncope o palpitaciones',
+          objetivo: { tipo: 'bloque', bloque: 'seguimiento' },
+          cuando: { motivos: ['dolor_toracico', 'sincope_presincope', 'palpitaciones'] },
+          requisito: 'requerido',
+          estadosPermitidos: [],
+          requiereMotivo: false,
+          ayuda: 'Indica plazo, estudios solicitados, referencia y signos de alarma explicados.',
+        },
+        // Prevención: el riesgo se pide sólo si el profesional eligió el escenario
+        {
+          id: 'v1.cardiologia.prevencion.riesgo_cv',
+          escenario: 'Motivo de consulta: prevención / estimación de riesgo (elegido por el profesional)',
+          objetivo: { tipo: 'bloque', bloque: 'riesgoCv' },
+          cuando: { motivos: ['prevencion_riesgo_cv'] },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_valorado'],
+          requiereMotivo: true,
+          ayuda:
+            'Registra algoritmo, versión, entradas y resultado. Si faltan entradas que el algoritmo requiere, declara "No valorado" con el motivo.',
+        },
+      ],
+    },
+
+    // ── Nutrición (ADIME / PES) ──────────────────────────────────
+    nutricion: {
+      estado: 'borrador',
+      aprobacion: null,
+      camposRetirados: [
+        'nut_diagnostico_pes', // → bloque pes
+        'com_seguimiento', // → bloque seguimiento
+      ],
+      camposNuevos: [
+        {
+          key: 'nut_fuentes_evaluacion',
+          label: 'Fuentes de la evaluación (A)',
+          tipo: 'multi-seleccion',
+          opciones: ['Antropometría', 'Ingesta', 'Bioquímicos', 'Clínica', 'Actividad y conducta', 'Factores sociales'],
+          ayuda: 'Qué componentes de la evaluación nutricional se realizaron.',
+        },
+      ],
+      bloques: [
+        { bloque: 'pes', label: 'Diagnóstico nutricional (PES)' },
+        { bloque: 'seguimiento', label: 'Seguimiento' },
+      ],
+      motivosConsulta: [],
+      reglas: [
+        {
+          id: 'v1.nutricion.primera_valoracion.fuentes',
+          escenario: 'Primera valoración nutricional',
+          objetivo: { tipo: 'campo', key: 'nut_fuentes_evaluacion' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_aplica'],
+          requiereMotivo: true,
+          ayuda: 'Indica al menos una fuente de evaluación, o explica por qué no procede.',
+        },
+        {
+          id: 'v1.nutricion.primera_valoracion.pes',
+          escenario: 'Primera valoración nutricional',
+          objetivo: { tipo: 'bloque', bloque: 'pes' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_aplica'],
+          requiereMotivo: true,
+          ayuda: 'Formula el diagnóstico PES (problema, etiología, signos y síntomas), o explica por qué no procede.',
+        },
+        {
+          id: 'v1.nutricion.primera_valoracion.prescripcion',
+          escenario: 'Primera valoración nutricional',
+          objetivo: { tipo: 'campo', key: 'nut_prescripcion' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_aplica'],
+          requiereMotivo: true,
+          ayuda: 'Prescripción o intervención acordada, o explica por qué no procede.',
+        },
+        {
+          id: 'v1.nutricion.primera_valoracion.monitoreo',
+          escenario: 'Primera valoración nutricional',
+          objetivo: { tipo: 'campo', key: 'nut_monitoreo_evaluacion' },
+          cuando: { contextosNota: INICIAL },
+          requisito: 'requerido',
+          estadosPermitidos: ['no_aplica'],
+          requiereMotivo: true,
+          ayuda: 'Indicador, resultado esperado y fecha de reevaluación, o explica por qué no procede.',
+        },
+      ],
+    },
+  },
+};
