@@ -1,3 +1,4 @@
+import type { ErrorCierre } from '@healthflow/shared-types';
 import { DomainError } from '../../../common/errors/domain.error';
 
 /** Se intentó modificar/cerrar una nota clínica ya cerrada (inmutable, NOM-004). */
@@ -71,11 +72,16 @@ export class IncompleteClinicalNoteError extends DomainError {
   readonly code = 'IncompleteClinicalNote';
   readonly httpStatus = 422; // Unprocessable Entity
 
-  constructor(readonly missing: string[]) {
+  /** Rutas faltantes: el contrato que ya consume la pantalla de consulta. */
+  readonly missing: string[];
+
+  constructor(readonly errores: ErrorCierre[]) {
+    const missing = errores.map((e) => e.ruta);
     super(`Faltan campos obligatorios para cerrar la nota: ${missing.join(', ')}`);
+    this.missing = missing;
   }
 
   override details(): Record<string, unknown> {
-    return { missing: this.missing };
+    return { missing: this.missing, errores: this.errores };
   }
 }

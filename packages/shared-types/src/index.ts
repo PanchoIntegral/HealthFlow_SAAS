@@ -1835,6 +1835,12 @@ export interface NotaEvolucionContent {
    */
   contextoNota?: ContextoNota;
   /**
+   * Motivo de consulta elegido de un catálogo interno (id estable), NO texto
+   * libre: es lo único que permite que una regla dependa de él sin inferir
+   * nada. El relato del paciente sigue en `padecimientoActual`.
+   */
+  motivoConsulta?: string;
+  /**
    * Datos que el médico decidió NO capturar, con el porqué. Llaveado por la
    * ruta del campo (`signosVitales.ta`, `extension.car_ecg`,
    * `bloques.medicamentos`). Existe para que "no aplica" sea una decisión
@@ -1913,6 +1919,43 @@ export interface CampoEsquema {
   estadosPermitidos: readonly EstadoNoCapturado[];
   requiereMotivo: boolean;
   /** Regla que lo activó, si alguna. */
+  reglaId?: string;
+}
+
+/**
+ * Bloque estructurado que un perfil de especialidad pide en la nota. Mismo
+ * modelo de exigencia que `CampoExtra`: `obligatorio` para siempre, `reglas`
+ * para requisitos condicionales (sólo en plantillas versionadas).
+ */
+export interface BloqueClinico {
+  bloque: keyof BloquesNota;
+  label: string;
+  ayuda?: string;
+  obligatorio?: boolean;
+  reglas?: readonly ReglaCampo[];
+  estadosPermitidos?: readonly EstadoNoCapturado[];
+  requiereMotivoNoCapturado?: boolean;
+}
+
+/**
+ * Declaraciones de lista que, por sí solas, no bastan: dicen que algo NO se
+ * hizo y deben explicar por qué.
+ */
+export const DECLARACIONES_CON_MOTIVO = ['no_fue_posible_conciliar', 'seguimiento_no_requerido'] as const;
+
+/** Códigos estables del rechazo de cierre; la UI traduce el mensaje por código. */
+export const CODIGOS_ERROR_CIERRE = [
+  'CAMPO_REQUERIDO',
+  'MOTIVO_REQUERIDO',
+  'ESTADO_NO_PERMITIDO',
+  'FUERA_DE_RANGO',
+] as const;
+export type CodigoErrorCierre = (typeof CODIGOS_ERROR_CIERRE)[number];
+
+/** Un requisito incumplido. Nunca lleva el valor capturado. */
+export interface ErrorCierre {
+  codigo: CodigoErrorCierre;
+  ruta: string;
   reglaId?: string;
 }
 
@@ -2664,6 +2707,8 @@ export interface PerfilEspecialidad {
    * esto", sí.
    */
   permiteOmitirSignosVitales?: boolean;
+  /** Bloques estructurados que pide la especialidad (ver BloqueClinico). */
+  bloques?: readonly BloqueClinico[];
 }
 
 const VITALES_COMPLETOS = ['ta', 'fc', 'fr', 'temp', 'spo2', 'peso', 'talla'] as const;

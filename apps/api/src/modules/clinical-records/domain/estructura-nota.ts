@@ -52,6 +52,9 @@ export function validarEstructuraNota(contenido: unknown): string[] {
   ]) {
     textoOpcional(c[campo], campo, LIMITES_NOTA.textoRico, errores);
   }
+  if (c.motivoConsulta !== undefined && !textoValido(c.motivoConsulta, LIMITES_NOTA.id)) {
+    errores.push('motivoConsulta');
+  }
   textoOpcional(c.motivoOmisionSignosVitales, 'motivoOmisionSignosVitales', LIMITES_NOTA.motivo, errores);
   if (c.signosVitalesOmitidos !== undefined && typeof c.signosVitalesOmitidos !== 'boolean') {
     errores.push('signosVitalesOmitidos');

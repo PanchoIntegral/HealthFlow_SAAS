@@ -5,7 +5,7 @@ import type {
   FirmaMedica,
   NotaEvolucionContent,
 } from '@healthflow/shared-types';
-import { EspecialidadValidator } from './especialidad-validator';
+import { evaluarEsquema, validarCierre } from './motor-reglas';
 import { validarEstructuraNota } from './estructura-nota';
 import {
   EstructuraNotaInvalidaError,
@@ -91,12 +91,15 @@ export class ClinicalNote {
       throw new FirmaIncompletaError(faltantesFirma);
     }
 
-    const missing = EspecialidadValidator.validar(sellado);
-    if (missing.length > 0) {
-      throw new IncompleteClinicalNoteError(missing);
+    const esquema = evaluarEsquema(sellado);
+    const errores = validarCierre(sellado, esquema);
+    if (errores.length > 0) {
+      throw new IncompleteClinicalNoteError(errores);
     }
 
-    this.props.contenido = { ...sellado, firma };
+    // El esquema se congela con la firma: dentro de años, la nota debe poder
+    // leerse con los requisitos que tenía el día que se firmó.
+    this.props.contenido = { ...sellado, firma, esquemaAlCierre: esquema };
     this.props.estatus = 'cerrada';
     this.props.cerradoEn = now;
   }
