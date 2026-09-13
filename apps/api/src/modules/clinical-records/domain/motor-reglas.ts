@@ -33,6 +33,8 @@ import { hasText } from './nom004-validator';
  * nota abierta con la plantilla vieja.
  */
 
+const RUTA_VERIFICACION = 'verificacionAntecedentes';
+
 /** Campos de antecedentes obligatorios SOLO en la historia clínica inicial. */
 const CAMPOS_HISTORIA_CLINICA = [
   'antecedentesHeredofamiliares',
@@ -66,7 +68,15 @@ export function evaluarEsquema(
   }
 
   if (contenido.tipoNota === 'historia_clinica') {
-    CAMPOS_HISTORIA_CLINICA.forEach((ruta) => fijo(ruta));
+    if (contenido.contextoNota === 'inicial_especialidad') {
+      // Ya hay historia general firmada (así se decidió el contexto): sus
+      // antecedentes no se recapturan. Lo que se exige es declarar si se
+      // verificaron, se actualizaron o no se pudo — y sólo lo propio de la
+      // especialidad es captura nueva.
+      fijo(RUTA_VERIFICACION);
+    } else {
+      CAMPOS_HISTORIA_CLINICA.forEach((ruta) => fijo(ruta));
+    }
   }
   if (perfil.key === 'heridas_estomas') fijo('mapaCorporal');
 
@@ -93,6 +103,10 @@ export function validarCierre(
     if (!error) continue;
     const esFinal = campo.ruta === 'mapaCorporal' || campo.ruta.startsWith('antecedentes');
     (esFinal ? finales : primeros).push(error);
+  }
+
+  if (esquema.campos.some((c) => c.ruta === RUTA_VERIFICACION)) {
+    finales.push(...erroresDeVerificacion(contenido));
   }
 
   return [
@@ -178,6 +192,8 @@ function tieneDato(contenido: NotaEvolucionContent, ruta: string): boolean {
       return mapaCorporalValido(contenido.mapaCorporal);
     case 'bloques':
       return bloqueLleno(contenido, clave);
+    case RUTA_VERIFICACION:
+      return Boolean(contenido.verificacionAntecedentes?.estado);
     default:
       return false;
   }
@@ -275,6 +291,23 @@ function fueraDeRango(
       return false;
     })
     .map((campo) => ({ codigo: 'FUERA_DE_RANGO' as const, ruta: `extension.${campo.key}` }));
+}
+
+/**
+ * Lo que cada declaración sobre los antecedentes exige además de elegirla:
+ * "no fue posible" necesita motivo, y "actualizados" necesita que lo
+ * actualizado esté escrito en esta nota.
+ */
+function erroresDeVerificacion(contenido: NotaEvolucionContent): ErrorCierre[] {
+  const v = contenido.verificacionAntecedentes;
+  if (!v) return [];
+  if (v.estado === 'no_fue_posible_verificar' && !hasText(v.motivo)) {
+    return [{ codigo: 'MOTIVO_REQUERIDO', ruta: RUTA_VERIFICACION }];
+  }
+  if (v.estado === 'actualizados' && !CAMPOS_HISTORIA_CLINICA.some((c) => hasText(contenido[c]))) {
+    return [{ codigo: 'CAMPO_REQUERIDO', ruta: `${RUTA_VERIFICACION}.actualizacion` }];
+  }
+  return [];
 }
 
 /** Reglas internas de los elementos de un bloque, se pida o no el bloque. */

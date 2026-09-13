@@ -6,7 +6,8 @@ import type {
   ModuloView,
   FacturaView,
   FinanzasResumen,
-  ClinicalNoteView,
+  ConsultationNoteView,
+  GuardarBorradorResponse,
   ClinicalRecordView,
   CreateAppointmentRequest,
   CreatePatientRequest,
@@ -283,10 +284,10 @@ export const api = {
     }),
 
   getConsultationNote: (token: string, appointmentId: string) =>
-    request<ClinicalNoteView>(`/consultations/${appointmentId}/note`, { token }),
+    request<ConsultationNoteView>(`/consultations/${appointmentId}/note`, { token }),
 
   saveNoteDraft: (token: string, appointmentId: string, contenido: NotaEvolucionContent) =>
-    request<{ ok: true }>(`/consultations/${appointmentId}/note`, {
+    request<GuardarBorradorResponse>(`/consultations/${appointmentId}/note`, {
       method: 'PUT',
       token,
       body: JSON.stringify({ contenido }),

@@ -216,6 +216,62 @@ describe('motor de reglas', () => {
     });
   });
 
+  describe('antecedentes en la primera valoración de especialidad', () => {
+    const perfilGeneral = PERFILES.general;
+    const historia = (over: Partial<NotaEvolucionContent> = {}): NotaEvolucionContent =>
+      nota({ tipoNota: 'historia_clinica', bloques: undefined, especialidad: 'general', ...over });
+    const errores = (c: NotaEvolucionContent) =>
+      validarCierre(c, evaluarEsquema(c, perfilGeneral), perfilGeneral);
+
+    it('la historia general sigue exigiendo los tres antecedentes', () => {
+      const c = historia({ contextoNota: 'general' });
+      expect(evaluarEsquema(c, perfilGeneral).campos.map((x) => x.ruta)).toEqual(
+        expect.arrayContaining(['antecedentesHeredofamiliares', 'antecedentesPersonalesPatologicos']),
+      );
+      expect(errores(c).map((e) => e.ruta)).toEqual([
+        'antecedentesHeredofamiliares',
+        'antecedentesPersonalesPatologicos',
+        'antecedentesPersonalesNoPatologicos',
+      ]);
+    });
+
+    it('la inicial de especialidad no los recaptura: pide declarar la verificación', () => {
+      const c = historia({ contextoNota: 'inicial_especialidad' });
+      const rutas = evaluarEsquema(c, perfilGeneral).campos.map((x) => x.ruta);
+      expect(rutas).toContain('verificacionAntecedentes');
+      expect(rutas).not.toContain('antecedentesHeredofamiliares');
+      expect(errores(c)).toEqual([{ codigo: 'CAMPO_REQUERIDO', ruta: 'verificacionAntecedentes' }]);
+    });
+
+    it('verificados sin cambios basta por sí solo', () => {
+      expect(
+        errores(historia({ contextoNota: 'inicial_especialidad', verificacionAntecedentes: { estado: 'verificados_sin_cambios' } })),
+      ).toEqual([]);
+    });
+
+    it('no fue posible verificar exige motivo', () => {
+      const sinMotivo = historia({
+        contextoNota: 'inicial_especialidad',
+        verificacionAntecedentes: { estado: 'no_fue_posible_verificar', motivo: ' ' },
+      });
+      expect(errores(sinMotivo)).toEqual([{ codigo: 'MOTIVO_REQUERIDO', ruta: 'verificacionAntecedentes' }]);
+      expect(
+        errores({ ...sinMotivo, verificacionAntecedentes: { estado: 'no_fue_posible_verificar', motivo: 'Paciente inconsciente' } }),
+      ).toEqual([]);
+    });
+
+    it('actualizados exige que la actualización quede escrita en esta nota', () => {
+      const c = historia({ contextoNota: 'inicial_especialidad', verificacionAntecedentes: { estado: 'actualizados' } });
+      expect(errores(c)).toEqual([{ codigo: 'CAMPO_REQUERIDO', ruta: 'verificacionAntecedentes.actualizacion' }]);
+      expect(errores({ ...c, antecedentesPersonalesPatologicos: '<p>Diagnóstico reciente de HTA</p>' })).toEqual([]);
+    });
+
+    it('una nota legacy no tiene contexto: sigue igual que siempre', () => {
+      const c = historia({ plantillaVersion: undefined, contextoNota: undefined });
+      expect(errores(c)).toHaveLength(3);
+    });
+  });
+
   describe('cierre de la entidad', () => {
     function borrador(contenido: NotaEvolucionContent): ClinicalNote {
       return ClinicalNote.fromState({

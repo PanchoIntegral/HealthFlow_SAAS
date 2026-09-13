@@ -1,12 +1,17 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type { ClinicalNoteView } from '@healthflow/shared-types';
+import type { ConsultationNoteView } from '@healthflow/shared-types';
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import {
   CLINICAL_RECORD_REPOSITORY,
   type ClinicalRecordRepository,
 } from '../domain/clinical-record.repository';
+import { evaluarEsquema, validarCierre } from '../domain/motor-reglas';
 
-/** Devuelve la nota (borrador o cerrada) ligada a una cita, para hidratar el editor. */
+/**
+ * Devuelve la nota (borrador o cerrada) ligada a una cita, para hidratar el
+ * editor, junto con lo que la API decide sobre ella: qué campos pide y qué
+ * falta para firmar. El editor pinta con eso; no reimplementa reglas.
+ */
 @Injectable()
 export class GetConsultationNoteUseCase {
   constructor(
@@ -14,7 +19,7 @@ export class GetConsultationNoteUseCase {
     @Inject(CLINICAL_RECORD_REPOSITORY) private readonly records: ClinicalRecordRepository,
   ) {}
 
-  async execute(appointmentId: string): Promise<ClinicalNoteView> {
+  async execute(appointmentId: string): Promise<ConsultationNoteView> {
     return this.tenantDb.run(async (tx) => {
       const note = await this.records.findNoteByAppointment(tx, appointmentId);
       if (!note) throw new NotFoundException('Nota no encontrada');
@@ -32,6 +37,13 @@ export class GetConsultationNoteUseCase {
         s.estatus === 'borrador' && !s.contenido.plantillaVersion
           ? await this.records.getDoctorEspecialidad(tx, s.doctorId)
           : s.contenido.especialidad;
+      const contenido = { ...s.contenido, especialidad };
+
+      const cerrada = s.estatus === 'cerrada';
+      // Cerrada: se lee con el esquema con que se firmó. Una nota firmada
+      // antes de existir la instantánea se evalúa como legacy, sin pendientes.
+      const esquema = (cerrada && s.contenido.esquemaAlCierre) || evaluarEsquema(contenido);
+      const pideVerificacion = esquema.campos.some((c) => c.ruta === 'verificacionAntecedentes');
 
       return {
         id: s.id,
@@ -39,13 +51,19 @@ export class GetConsultationNoteUseCase {
         doctorId: s.doctorId,
         tipoNota: s.tipoNota,
         estatus: s.estatus,
-        contenido: { ...s.contenido, especialidad },
+        contenido,
         cerradoEn: s.cerradoEn ? s.cerradoEn.toISOString() : null,
         createdAt: s.createdAt.toISOString(),
         // Un borrador no puede tener correcciones (todavía no se firma), así
         // que no se consulta la tabla en el caso más frecuente.
-        correcciones:
-          s.estatus === 'cerrada' ? await this.records.getCorrecciones(tx, s.id) : [],
+        correcciones: cerrada ? await this.records.getCorrecciones(tx, s.id) : [],
+        esquema,
+        pendientes: cerrada ? [] : validarCierre(contenido, esquema),
+        // Sólo en borrador: en una nota firmada, "lo vigente hoy" no es lo que
+        // el profesional tuvo a la vista al firmar, y mostrarlo confundiría.
+        referenciaAntecedentes: pideVerificacion && !cerrada
+          ? await this.records.getReferenciaAntecedentes(tx, s.clinicalRecordId)
+          : null,
       };
     });
   }

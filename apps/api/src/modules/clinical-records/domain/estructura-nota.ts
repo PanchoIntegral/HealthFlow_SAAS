@@ -4,6 +4,7 @@ import {
   ESTADOS_NO_CAPTURADO,
   ESTADOS_PROBLEMA,
   TIPOS_ESTUDIO,
+  VERIFICACIONES_ANTECEDENTES,
 } from '@healthflow/shared-types';
 
 /**
@@ -127,6 +128,17 @@ export function validarEstructuraNota(contenido: unknown): string[] {
           errores.push(`noCapturado.${rutaSegura}`);
         }
       }
+    }
+  }
+
+  if (c.verificacionAntecedentes !== undefined) {
+    const v = c.verificacionAntecedentes;
+    if (
+      !esObjeto(v) ||
+      !enCatalogo(v.estado, VERIFICACIONES_ANTECEDENTES) ||
+      (v.motivo !== undefined && !textoValido(v.motivo, LIMITES_NOTA.motivo))
+    ) {
+      errores.push('verificacionAntecedentes');
     }
   }
 

@@ -1850,6 +1850,14 @@ export interface NotaEvolucionContent {
   /** Datos clínicos estructurados que no caben como texto libre. */
   bloques?: BloquesNota;
   /**
+   * Sólo en una primera valoración de especialidad: el paciente ya tiene una
+   * historia clínica general firmada, así que sus antecedentes NO se
+   * recapturan — se muestran como referencia y el profesional declara qué
+   * hizo con ellos. Si los actualizó, lo nuevo va en los tres campos de
+   * antecedentes de ESTA nota.
+   */
+  verificacionAntecedentes?: VerificacionAntecedentes;
+  /**
    * Instantánea de los campos y requisitos con que se evaluó la nota al
    * firmarla, para poder interpretarla igual aunque el catálogo cambie.
    */
@@ -1870,6 +1878,33 @@ export const PLANTILLA_LEGACY: PlantillaVersion = 'legacy-v0';
 export function plantillaDe(contenido: Pick<NotaEvolucionContent, 'plantillaVersion'>): PlantillaVersion {
   const v = contenido.plantillaVersion;
   return (PLANTILLA_VERSIONES as readonly string[]).includes(v ?? '') ? v! : PLANTILLA_LEGACY;
+}
+
+export const VERIFICACIONES_ANTECEDENTES = [
+  'verificados_sin_cambios',
+  'actualizados',
+  'no_fue_posible_verificar',
+] as const;
+export type EstadoVerificacionAntecedentes = (typeof VERIFICACIONES_ANTECEDENTES)[number];
+
+export interface VerificacionAntecedentes {
+  estado: EstadoVerificacionAntecedentes;
+  /** Obligatorio cuando no fue posible verificar (lo valida el motor). */
+  motivo?: string;
+}
+
+/**
+ * Antecedentes vigentes del expediente, para mostrarlos como referencia: los
+ * de la nota firmada más reciente que los capturó (la historia general, o
+ * una valoración de especialidad que los actualizó).
+ */
+export interface ReferenciaAntecedentes {
+  noteId: string;
+  cerradoEn: string;
+  especialidad: string;
+  antecedentesHeredofamiliares: string;
+  antecedentesPersonalesPatologicos: string;
+  antecedentesPersonalesNoPatologicos: string;
 }
 
 export const CONTEXTOS_NOTA = ['general', 'inicial_especialidad', 'seguimiento'] as const;
@@ -2149,6 +2184,27 @@ export interface ClinicalNoteView {
    * corrección sería leer información que el médico ya rectificó.
    */
   correcciones: CorreccionNota[];
+}
+
+/**
+ * La nota de una consulta tal como la necesita el editor: además del
+ * contenido, QUÉ pide (el esquema evaluado por la API) y QUÉ falta para
+ * firmar. El editor pinta con esto y no reimplementa reglas.
+ */
+export interface ConsultationNoteView extends ClinicalNoteView {
+  /** Evaluado sobre el contenido actual; en una nota cerrada, el congelado al firmar. */
+  esquema: EsquemaNota;
+  /** Requisitos incumplidos hoy. Vacío en una nota cerrada. */
+  pendientes: ErrorCierre[];
+  /** Sólo cuando el esquema pide verificar antecedentes. */
+  referenciaAntecedentes: ReferenciaAntecedentes | null;
+}
+
+/** Respuesta del autosave: el esquema cambia con lo capturado (diagnósticos, motivo). */
+export interface GuardarBorradorResponse {
+  ok: true;
+  esquema: EsquemaNota;
+  pendientes: ErrorCierre[];
 }
 
 /** Tamaño de página por omisión y tope duro del historial del expediente. */

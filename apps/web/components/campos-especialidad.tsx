@@ -1,7 +1,14 @@
 'use client';
 
-import type { CampoExtra } from '@healthflow/shared-types';
+import type {
+  CampoExtra,
+  DatoNoCapturado,
+  ErrorCierre,
+  EsquemaNota,
+} from '@healthflow/shared-types';
 import { RichTextEditor } from './rich-text-editor';
+import { ControlNoCapturado } from './nota/control-no-capturado';
+import { campoDe, erroresDe } from './nota/esquema-ui';
 
 type Valor = string | number | null;
 
@@ -13,14 +20,24 @@ type Valor = string | number | null;
  */
 export function CamposEspecialidad({
   campos,
+  esquema,
+  pendientes,
   valores,
   onChange,
+  noCapturado,
+  onNoCapturado,
   readOnly,
   faltantes,
 }: {
+  /** Presentación de cada campo (catálogo); cuáles se muestran lo decide `esquema`. */
   campos: readonly CampoExtra[];
+  /** Esquema calculado por la API: requisito y estados de no captura de cada campo. */
+  esquema: EsquemaNota | undefined;
+  pendientes: ErrorCierre[];
   valores: Record<string, Valor>;
   onChange: (key: string, valor: Valor) => void;
+  noCapturado: Record<string, DatoNoCapturado>;
+  onNoCapturado: (ruta: string, valor: DatoNoCapturado | undefined) => void;
   readOnly?: boolean;
   /** Claves ya prefijadas con `extension.`, como las devuelve la API. */
   faltantes: string[];
@@ -30,7 +47,9 @@ export function CamposEspecialidad({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {campos.map((campo) => {
-        const falta = faltantes.includes(`extension.${campo.key}`);
+        const ruta = `extension.${campo.key}`;
+        const falta = faltantes.includes(ruta);
+        const enEsquema = campoDe(esquema, ruta);
         // Los campos largos ocupan el ancho completo; los cortos van en dos
         // columnas para que la nota no se convierta en un formulario infinito.
         // El checklist también, por lo mismo que el texto rico: una rejilla de
@@ -42,7 +61,7 @@ export function CamposEspecialidad({
             <label className="mb-1 block text-xs font-medium text-slate-500">
               {campo.label}
               {campo.unidad && <span className="text-slate-400"> ({campo.unidad})</span>}
-              {campo.obligatorio && <span className="text-red-500"> *</span>}
+              {enEsquema?.requisito === 'requerido' && <span className="text-red-500"> *</span>}
             </label>
 
             <CampoControl
@@ -54,6 +73,16 @@ export function CamposEspecialidad({
             />
 
             {campo.ayuda && <p className="mt-1 text-xs text-slate-400">{campo.ayuda}</p>}
+
+            {enEsquema && (
+              <ControlNoCapturado
+                campo={enEsquema}
+                valor={noCapturado[ruta]}
+                onChange={(v) => onNoCapturado(ruta, v)}
+                readOnly={readOnly}
+                errores={erroresDe(pendientes, ruta)}
+              />
+            )}
           </div>
         );
       })}

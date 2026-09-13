@@ -17,6 +17,7 @@ import {
   type NotaEvolucionContent,
   type Odontograma,
   type PlantillaVersion,
+  type ReferenciaAntecedentes,
   type Podograma,
   type SexoPaciente,
 } from '@healthflow/shared-types';
@@ -194,6 +195,39 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
     return {
       historiaGeneral: row?.historia_general === true,
       inicialEspecialidad: row?.inicial_especialidad === true,
+    };
+  }
+
+  async getReferenciaAntecedentes(
+    tx: Tx,
+    clinicalRecordId: string,
+  ): Promise<ReferenciaAntecedentes | null> {
+    const result = await tx.execute(sql`
+      SELECT id, cerrado_en,
+             coalesce(especialidad, contenido_nom004->>'especialidad', 'general') AS especialidad,
+             coalesce(contenido_nom004->>'antecedentesHeredofamiliares', '') AS heredofamiliares,
+             coalesce(contenido_nom004->>'antecedentesPersonalesPatologicos', '') AS patologicos,
+             coalesce(contenido_nom004->>'antecedentesPersonalesNoPatologicos', '') AS no_patologicos
+        FROM clinical_notes
+       WHERE clinical_record_id = ${clinicalRecordId}
+         AND estatus = 'cerrada'
+         AND tipo_nota = 'historia_clinica'
+         AND (coalesce(contexto_nota, 'general') = 'general'
+              OR contenido_nom004->'verificacionAntecedentes'->>'estado' = 'actualizados')
+       ORDER BY cerrado_en DESC
+       LIMIT 1
+    `);
+    const row = result.rows[0] as
+      | { id: string; cerrado_en: Date; especialidad: string; heredofamiliares: string; patologicos: string; no_patologicos: string }
+      | undefined;
+    if (!row) return null;
+    return {
+      noteId: row.id,
+      cerradoEn: new Date(row.cerrado_en).toISOString(),
+      especialidad: row.especialidad,
+      antecedentesHeredofamiliares: row.heredofamiliares,
+      antecedentesPersonalesPatologicos: row.patologicos,
+      antecedentesPersonalesNoPatologicos: row.no_patologicos,
     };
   }
 

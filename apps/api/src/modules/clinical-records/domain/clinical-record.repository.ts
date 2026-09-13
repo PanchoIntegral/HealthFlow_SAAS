@@ -3,6 +3,7 @@ import type {
   ClinicalNoteType,
   ClinicalRecordView,
   ContextoNota,
+  ReferenciaAntecedentes,
   EspecialidadKey,
   MapaCorporal,
   Odontograma,
@@ -60,6 +61,13 @@ export interface ClinicalRecordRepository {
     clinicalRecordId: string,
     especialidad: EspecialidadKey,
   ): Promise<HistorialContexto>;
+
+  /**
+   * Antecedentes vigentes del expediente: los de la nota FIRMADA más reciente
+   * que los capturó (historia general, o valoración de especialidad que los
+   * actualizó). null si no hay ninguna.
+   */
+  getReferenciaAntecedentes(tx: Tx, clinicalRecordId: string): Promise<ReferenciaAntecedentes | null>;
 
   /** True si el expediente ya tiene alguna nota (de cualquier tipo/estatus). */
   hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean>;

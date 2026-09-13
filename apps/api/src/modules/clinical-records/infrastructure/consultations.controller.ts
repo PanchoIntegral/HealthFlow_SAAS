@@ -17,7 +17,7 @@ import type {
 } from '@healthflow/shared-types';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PoliciesGuard, RequirePolicy } from '../../auth/casl/policies.guard';
-import type { ClinicalNoteView } from '@healthflow/shared-types';
+import type { ConsultationNoteView, GuardarBorradorResponse } from '@healthflow/shared-types';
 import { StartConsultationUseCase } from '../application/start-consultation.use-case';
 import { SaveNoteDraftUseCase } from '../application/save-note-draft.use-case';
 import { FinishConsultationUseCase } from '../application/finish-consultation.use-case';
@@ -79,7 +79,7 @@ export class ConsultationsController {
   @RequirePolicy('read', 'Consultation')
   note(
     @Param('appointmentId', ParseUUIDPipe) appointmentId: string,
-  ): Promise<ClinicalNoteView> {
+  ): Promise<ConsultationNoteView> {
     return this.getConsultationNote.execute(appointmentId);
   }
 
@@ -96,9 +96,8 @@ export class ConsultationsController {
   async saveDraft(
     @Param('appointmentId', ParseUUIDPipe) appointmentId: string,
     @Body() dto: NoteContentDto,
-  ): Promise<{ ok: true }> {
-    await this.saveNoteDraft.execute(appointmentId, dto.contenido);
-    return { ok: true };
+  ): Promise<GuardarBorradorResponse> {
+    return this.saveNoteDraft.execute(appointmentId, dto.contenido);
   }
 
   /** Firma y cierre: valida NOM-004, cierra la nota (inmutable), finaliza la cita. */

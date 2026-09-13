@@ -97,6 +97,8 @@ describe('Notas v2: contexto por especialidad y activación gradual', () => {
       antecedentesHeredofamiliares: '<p>Negados</p>',
       antecedentesPersonalesPatologicos: '<p>Negados</p>',
       antecedentesPersonalesNoPatologicos: '<p>Negados</p>',
+      // Sólo cuenta en una inicial de especialidad; en las demás se ignora.
+      verificacionAntecedentes: { estado: 'verificados_sin_cambios' },
     };
     await request(app.getHttpServer())
       .post(`/api/consultations/${citaId}/finish`)
@@ -242,6 +244,79 @@ describe('Notas v2: contexto por especialidad y activación gradual', () => {
         .set(auth(cardio))
         .expect(201);
       expect(await fila(noteId)).toEqual(antes);
+    });
+  });
+
+  describe('esquema calculado por la API', () => {
+    it('la inicial de especialidad expone la verificación y los antecedentes vigentes como referencia', async () => {
+      await flag('general', true);
+      await flag('cardiologia', true);
+      const paciente = await nuevoPaciente();
+      const gral = await abrir(general, paciente);
+      await request(app.getHttpServer())
+        .post(`/api/consultations/${gral.citaId}/finish`)
+        .set(auth(general))
+        .send({
+          contenido: {
+            ...EMPTY_HISTORIA_CLINICA,
+            padecimientoActual: '<p>Chequeo</p>',
+            exploracionFisica: { signosVitales: { ...EMPTY_HISTORIA_CLINICA.exploracionFisica.signosVitales, ta: '118/76' } },
+            diagnosticos: [{ cie10: 'Z00.0', descripcion: 'Examen general' }],
+            planTerapeutico: '<p>Control anual</p>',
+            antecedentesHeredofamiliares: '<p>Madre con DM2</p>',
+            antecedentesPersonalesPatologicos: '<p>Apendicectomía 2010</p>',
+            antecedentesPersonalesNoPatologicos: '<p>No fuma</p>',
+          },
+        })
+        .expect(201);
+
+      const { citaId } = await abrir(cardio, paciente);
+      const { body } = await request(app.getHttpServer())
+        .get(`/api/consultations/${citaId}/note`)
+        .set(auth(cardio))
+        .expect(200);
+
+      const rutas = body.esquema.campos.map((c: { ruta: string }) => c.ruta);
+      expect(rutas).toContain('verificacionAntecedentes');
+      expect(rutas).not.toContain('antecedentesHeredofamiliares');
+      expect(body.referenciaAntecedentes).toMatchObject({
+        noteId: gral.noteId,
+        especialidad: 'general',
+        antecedentesHeredofamiliares: '<p>Madre con DM2</p>',
+      });
+      expect(body.pendientes).toEqual(
+        expect.arrayContaining([{ codigo: 'CAMPO_REQUERIDO', ruta: 'verificacionAntecedentes' }]),
+      );
+
+      // El autosave devuelve el esquema y los pendientes recalculados.
+      const guardado = await request(app.getHttpServer())
+        .put(`/api/consultations/${citaId}/note`)
+        .set(auth(cardio))
+        .send({
+          contenido: {
+            ...body.contenido,
+            verificacionAntecedentes: { estado: 'no_fue_posible_verificar' },
+          },
+        })
+        .expect(200);
+      expect(guardado.body.pendientes).toEqual(
+        expect.arrayContaining([{ codigo: 'MOTIVO_REQUERIDO', ruta: 'verificacionAntecedentes' }]),
+      );
+      expect(JSON.stringify(guardado.body.pendientes)).not.toContain('DM2');
+    });
+
+    it('una nota legacy recibe su esquema legacy, sin referencia', async () => {
+      await flag('nutricion', false);
+      const { citaId } = await abrir(nutri, await nuevoPaciente());
+      const { body } = await request(app.getHttpServer())
+        .get(`/api/consultations/${citaId}/note`)
+        .set(auth(nutri))
+        .expect(200);
+      expect(body.esquema.plantillaVersion).toBe('legacy-v0');
+      expect(body.referenciaAntecedentes).toBeNull();
+      expect(body.pendientes.map((p: { ruta: string }) => p.ruta)).toEqual(
+        expect.arrayContaining(['padecimientoActual', 'antecedentesHeredofamiliares']),
+      );
     });
   });
 

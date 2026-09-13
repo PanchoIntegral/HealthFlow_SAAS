@@ -8,8 +8,6 @@ import {
   MAPA_CORPORAL_VACIO,
   ODONTOGRAMA_VACIO,
   PODOGRAMA_VACIO,
-  camposDeNota,
-  mapaCorporalValido,
   partidasDesdeOdontograma,
   perfilDe,
   type CampoBaseKey,
@@ -17,7 +15,11 @@ import {
   type Odontograma as OdontogramaData,
   type MapaCorporal as MapaCorporalData,
   type Podograma as PodogramaData,
+  type DatoNoCapturado,
   type DiagnosticoCie10,
+  type ErrorCierre,
+  type EsquemaNota,
+  type BloquesNota,
   type EspecialidadKey,
   type HistorialPaciente,
   type SugerenciaNotaIa,
@@ -42,6 +44,17 @@ import { NuevoPresupuestoModal } from '../../../components/nuevo-presupuesto-mod
 import { Modal } from '../../../components/modal';
 import { GrabadorIa } from '../../../components/grabador-ia';
 import { pesos } from '../../../components/presupuesto-panel';
+import { BloqueNota } from '../../../components/nota/bloques-nota';
+import { PendientesFirma } from '../../../components/nota/pendientes-firma';
+import { VerificacionAntecedentes } from '../../../components/nota/verificacion-antecedentes';
+import {
+  ETIQUETA_CONTEXTO,
+  bloquesDelEsquema,
+  campoDe,
+  clavesExtension,
+  erroresDe,
+  esRequerido,
+} from '../../../components/nota/esquema-ui';
 
 /** Etiqueta de cada signo vital. Qué subconjunto se muestra lo decide el perfil. */
 const ETIQUETA_VITAL: Record<keyof SignosVitales, string> = {
@@ -123,7 +136,15 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
   const { token, user, ready } = useAuth();
 
   const [content, setContent] = useState<NotaEvolucionContent>(EMPTY_NOTA_EVOLUCION);
-  const [missing, setMissing] = useState<string[]>([]);
+  /**
+   * Lo que la nota pide y lo que falta, SIEMPRE calculado por la API: llega con
+   * la nota, se refresca con cada autosave y con el rechazo de un cierre. La
+   * pantalla no evalúa reglas; si una regla cambia, aquí no se toca nada.
+   */
+  const [esquema, setEsquema] = useState<EsquemaNota | undefined>(undefined);
+  const [pendientes, setPendientes] = useState<ErrorCierre[]>([]);
+  /** Tras un intento de firma fallido se resaltan en rojo los campos pendientes. */
+  const [intentoFirma, setIntentoFirma] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const hydrated = useRef(false);
 
@@ -204,6 +225,8 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
   useEffect(() => {
     if (note.data && !hydrated.current) {
       setContent({ ...EMPTY_NOTA_EVOLUCION, ...note.data.contenido });
+      setEsquema(note.data.esquema);
+      setPendientes(note.data.pendientes);
       hydrated.current = true;
     }
   }, [note.data]);
@@ -222,7 +245,11 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
 
   const saveDraft = useMutation({
     mutationFn: (c: NotaEvolucionContent) => api.saveNoteDraft(token!, appointmentId, c),
-    onSuccess: () => setSavedAt(new Date()),
+    onSuccess: (r) => {
+      setSavedAt(new Date());
+      setEsquema(r.esquema);
+      setPendientes(r.pendientes);
+    },
   });
 
   // Autosave con debounce mientras la nota sea borrador.
@@ -237,8 +264,10 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
     mutationFn: () => api.finishConsultation(token!, appointmentId, content),
     onSuccess: () => router.push('/sala-de-espera'),
     onError: (err) => {
-      if (err instanceof ApiError && Array.isArray((err.body as { missing?: string[] })?.missing)) {
-        setMissing((err.body as { missing: string[] }).missing);
+      const errores = err instanceof ApiError ? (err.body as { errores?: ErrorCierre[] })?.errores : undefined;
+      if (Array.isArray(errores)) {
+        setPendientes(errores);
+        setIntentoFirma(true);
       } else {
         alert(err instanceof ApiError ? err.message : 'Error al cerrar la nota');
       }
@@ -372,23 +401,27 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
    * su autor haya cambiado de especialidad desde entonces.
    */
   const perfil = useMemo(() => perfilDe(content.especialidad), [content.especialidad]);
-  const progress = useMemo(() => computeProgress(content, perfil), [content, perfil]);
   /**
-   * Los campos de primera visita solo se muestran en la historia clínica. La
-   * regla la resuelve `camposDeNota`, la MISMA que usa el validador de la API:
-   * si difirieran, un campo oculto podría exigirse al cerrar y dejar la nota
-   * atorada sin que el médico pueda ver dónde está el problema.
+   * Qué campos de la especialidad se muestran lo dice el esquema de la API, en
+   * su orden; el catálogo sólo aporta cómo se ven (etiqueta, tipo, opciones).
+   * Así un campo oculto nunca puede exigirse al cerrar sin que se vea.
    *
    * Va aquí ARRIBA, junto a los demás hooks: abajo hay un `return null`
    * mientras carga la sesión, y un hook después de él se saltaría en esos
    * renders y rompería el orden de hooks.
    */
   const camposVisibles = useMemo(
-    () => camposDeNota(perfil.camposExtra, content.tipoNota),
-    [perfil.camposExtra, content.tipoNota],
+    () =>
+      clavesExtension(esquema).flatMap((key) => {
+        const def = perfil.camposExtra.find((c) => c.key === key);
+        return def ? [def] : [];
+      }),
+    [esquema, perfil.camposExtra],
   );
-  /** La bandera sola no basta: la especialidad tiene que permitirlo. */
-  const omitidos = perfil.permiteOmitirSignosVitales === true && content.signosVitalesOmitidos === true;
+  const bloquesVisibles = useMemo(() => bloquesDelEsquema(esquema, perfil), [esquema, perfil]);
+  /** Declarar la omisión de T/A sólo se ofrece si la API la admite para esta nota. */
+  const puedeOmitirVitales = !!campoDe(esquema, 'signosVitales.ta')?.estadosPermitidos.includes('no_valorado');
+  const omitidos = puedeOmitirVitales && content.signosVitalesOmitidos === true;
 
   if (!ready || !token || !user) return null;
 
@@ -401,7 +434,22 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
   const puedeCotizar =
     (user.rol === 'medico' || user.rol === 'admin') && !!patientId && perfil.key === 'odontologia';
 
-  const isMissing = (field: string) => missing.includes(field);
+  const resaltadas = intentoFirma ? pendientes.map((p) => p.ruta) : [];
+  const isMissing = (field: string) => resaltadas.includes(field);
+  const requerido = (ruta: string) => esRequerido(esquema, ruta);
+  const pideAntecedentes = !!campoDe(esquema, 'antecedentesHeredofamiliares');
+  const pideVerificacion = !!campoDe(esquema, 'verificacionAntecedentes');
+  const plantillaV1 = !!esquema && esquema.plantillaVersion !== 'legacy-v0';
+
+  const setNoCapturado = (ruta: string, valor: DatoNoCapturado | undefined) =>
+    setContent((c) => {
+      const siguiente = { ...(c.noCapturado ?? {}) };
+      if (valor) siguiente[ruta] = valor;
+      else delete siguiente[ruta];
+      return { ...c, noCapturado: siguiente };
+    });
+  const setBloques = (actualizar: (b: BloquesNota) => BloquesNota) =>
+    setContent((c) => ({ ...c, bloques: actualizar(c.bloques ?? {}) }));
   const setVital = (key: keyof SignosVitales, value: string) =>
     setContent((c) => ({
       ...c,
@@ -462,6 +510,12 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
               {content.tipoNota === 'historia_clinica' ? 'Historia clínica' : 'Nota de evolución'} ·{' '}
               {normaDe(perfil)} {readOnly && '· cerrada'}
             </p>
+            {plantillaV1 && (
+              <p className="text-xs text-brand-blue" data-testid="plantilla-nota">
+                Plantilla {esquema.plantillaVersion}
+                {esquema.contextoNota && ` · ${ETIQUETA_CONTEXTO[esquema.contextoNota]}`} · {perfil.nombre}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3 text-sm">
@@ -503,9 +557,13 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             />
           )}
 
-          {missing.length > 0 && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-              Faltan {missing.length} campo(s) obligatorio(s) para poder firmar.
+          {intentoFirma && pendientes.length > 0 && (
+            <div
+              role="alert"
+              data-testid="error-cierre"
+              className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800"
+            >
+              No se pudo firmar: faltan {pendientes.length} requisito(s). Revisa la lista de pendientes.
             </div>
           )}
 
@@ -525,7 +583,20 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             </div>
           )}
 
-          {content.tipoNota === 'historia_clinica' && (
+          {pideVerificacion && (
+            <Section title="Antecedentes" required missing={resaltadas.some((r) => r.startsWith('verificacionAntecedentes'))}>
+              <VerificacionAntecedentes
+                content={content}
+                referencia={note.data?.referenciaAntecedentes ?? null}
+                setContent={setContent}
+                readOnly={readOnly}
+                errores={erroresDe(pendientes, 'verificacionAntecedentes')}
+                resaltar={intentoFirma}
+              />
+            </Section>
+          )}
+
+          {pideAntecedentes && (
             <Section
               title="Antecedentes"
               required
@@ -562,7 +633,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             </Section>
           )}
 
-          <Section title="Padecimiento actual" required missing={isMissing('padecimientoActual')}>
+          <Section title="Padecimiento actual" required={requerido('padecimientoActual')} missing={isMissing('padecimientoActual')}>
             <RichTextEditor
               value={content.padecimientoActual}
               onChange={(html) => setContent((c) => ({ ...c, padecimientoActual: html }))}
@@ -573,7 +644,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
 
           <Section
             title="Exploración física · Signos vitales"
-            required={!omitidos}
+            required={requerido('signosVitales.ta') && !omitidos}
             missing={isMissing('signosVitales.ta')}
           >
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -600,7 +671,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             {/* Escape declarado, solo donde el perfil lo permite. No vuelve el
                 campo opcional: cambia "no lo llené" por "decidí no tomarlos",
                 que es lo que queda escrito en el expediente. */}
-            {perfil.permiteOmitirSignosVitales && (
+            {puedeOmitirVitales && (
               <div className="mt-4 rounded-lg bg-slate-50 p-3">
                 <label className="flex items-start gap-2 text-sm">
                   <input
@@ -704,7 +775,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
           {perfil.key === 'heridas_estomas' && (
             <Section
               title="Ubicación anatómica de heridas y estomas"
-              required
+              required={requerido('mapaCorporal')}
               missing={isMissing('mapaCorporal')}
             >
               <MapaCorporal
@@ -723,19 +794,41 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
           {camposVisibles.length > 0 && (
             <Section
               title={perfil.nombre}
-              missing={missing.some((m) => m.startsWith('extension.'))}
+              missing={resaltadas.some((m) => m.startsWith('extension.'))}
             >
               <CamposEspecialidad
                 campos={camposVisibles}
+                esquema={esquema}
+                pendientes={pendientes}
                 valores={content.extension ?? {}}
                 onChange={setCampoExtra}
+                noCapturado={content.noCapturado ?? {}}
+                onNoCapturado={setNoCapturado}
                 readOnly={readOnly}
-                faltantes={missing}
+                faltantes={resaltadas}
               />
             </Section>
           )}
 
-          <Section title={textoDe(perfil, 'diagnosticos').label} required missing={isMissing('diagnosticos')}>
+          {bloquesVisibles.map(({ def, campo }) => (
+            <Section
+              key={def.bloque}
+              title={def.label}
+              required={campo.requisito === 'requerido'}
+              missing={resaltadas.some((r) => r === campo.ruta || r.startsWith(`${campo.ruta}.`))}
+            >
+              <BloqueNota
+                def={def}
+                campo={campo}
+                bloques={content.bloques ?? {}}
+                onChange={setBloques}
+                readOnly={readOnly}
+                errores={erroresDe(pendientes, campo.ruta)}
+              />
+            </Section>
+          ))}
+
+          <Section title={textoDe(perfil, 'diagnosticos').label} required={requerido('diagnosticos')} missing={isMissing('diagnosticos')}>
             <DiagnosticoPicker
               token={token}
               seleccionados={content.diagnosticos}
@@ -745,7 +838,7 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
             />
           </Section>
 
-          <Section title={textoDe(perfil, 'planTerapeutico').label} required missing={isMissing('planTerapeutico')}>
+          <Section title={textoDe(perfil, 'planTerapeutico').label} required={requerido('planTerapeutico')} missing={isMissing('planTerapeutico')}>
             <textarea
               value={content.planTerapeutico}
               onChange={(e) => setContent((c) => ({ ...c, planTerapeutico: e.target.value }))}
@@ -761,13 +854,16 @@ function ConsultaPageInner({ appointmentId }: { appointmentId: string }) {
         <aside className="space-y-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Progreso</p>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="font-semibold">{progress.done} de {progress.total} secciones</span>
-              <span className="text-slate-400">{Math.round((progress.done / progress.total) * 100)}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full bg-gradient-to-r from-brand-blue to-brand-green" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
-            </div>
+            {readOnly ? (
+              <p className="text-xs text-slate-500">Nota cerrada.</p>
+            ) : (
+              <PendientesFirma
+                esquema={esquema}
+                pendientes={pendientes}
+                perfil={perfil}
+                guardando={saveDraft.isPending}
+              />
+            )}
             {readOnly && note.data?.contenido.firma && (
               <div className="mt-4 rounded-lg bg-emerald-50 p-3 text-emerald-800">
                 <p className="font-medium">Firmada</p>
@@ -1223,42 +1319,9 @@ function stripHtml(html: string): string {
 }
 
 /**
- * Progreso hacia poder cerrar la nota. Cuenta la base NOM-004 MÁS los campos
- * que la especialidad marque como obligatorios, para que la barra refleje lo
- * que de verdad va a exigir el backend al firmar.
+ * ¿El médico ya escribió algo aquí? Sólo decide si la IA puede llenar el
+ * campo sin pisar lo tecleado; qué exige la firma lo dice la API.
  */
-function computeProgress(
-  c: NotaEvolucionContent,
-  perfil: PerfilEspecialidad,
-): { done: number; total: number } {
-  const extension = c.extension ?? {};
-  // Misma regla que EspecialidadValidator: declarar la omisión cuenta como
-  // resuelto, para que la barra no se quede clavada en un requisito que el
-  // backend ya no va a exigir.
-  const omitidos = perfil.permiteOmitirSignosVitales === true && c.signosVitalesOmitidos === true;
-  const checks = [
-    stripHtml(c.padecimientoActual).length > 0,
-    omitidos || !!c.exploracionFisica.signosVitales.ta?.trim(),
-    c.diagnosticos.some((d) => d.cie10?.trim()),
-    c.planTerapeutico.trim().length > 0,
-    ...perfil.camposExtra
-      .filter((campo) => campo.obligatorio)
-      .map((campo) => tieneValor(extension[campo.key])),
-    ...(perfil.key === 'heridas_estomas'
-      ? [mapaCorporalValido(c.mapaCorporal)]
-      : []),
-    ...(c.tipoNota === 'historia_clinica'
-      ? [
-          tieneValor(c.antecedentesHeredofamiliares),
-          tieneValor(c.antecedentesPersonalesPatologicos),
-          tieneValor(c.antecedentesPersonalesNoPatologicos),
-        ]
-      : []),
-  ];
-  return { done: checks.filter(Boolean).length, total: checks.length };
-}
-
-/** Misma regla que el backend (ver especialidad-validator.ts): 0 cuenta como lleno. */
 function tieneValor(v: string | number | null | undefined): boolean {
   if (v === null || v === undefined) return false;
   if (typeof v === 'number') return Number.isFinite(v);
