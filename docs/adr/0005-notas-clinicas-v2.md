@@ -1,6 +1,7 @@
 # ADR 0005. Notas clínicas v2: reglas por especialidad, contexto y activación controlada
 
 - Estado: **técnico aceptado e implementado; catálogo clínico v1 en BORRADOR**, pendiente de aprobación clínico-legal
+- **Decisión bloqueante abierta: B1 (primera consulta con especialista, §6.1).** Cardiología y nutrición no se activan hasta resolverla.
 - Fecha: 2026-09-13
 - Rama: `main`, commits `3aa846f` → `d040d6f`
 - Contexto de referencia: `docs/plan-integracion-notas-clinicas.md` (especificación), memoria de producto sobre la frontera de dispositivo médico (COFEPRIS)
@@ -106,6 +107,8 @@ en otro caso                                         → nota_evolucion / seguim
 
 Los borradores abandonados no cuentan. Una historia legacy firmada cuenta como general y como inicial de la especialidad en que se firmó. En medicina general, la historia general ya es la inicial.
 
+> **Limitación conocida, bloqueante para cardiología y nutrición — ver B1 (§6.1).** Si la primera consulta del paciente en el expediente es con un especialista, hoy se abre sólo la historia general y la valoración inicial de la especialidad queda para una consulta posterior. Eso obligaría al paciente a volver únicamente para completar un requisito documental.
+
 ### D6. Antecedentes en la primera valoración de especialidad (decisión del producto, 2026-09-13)
 
 Con historia general firmada **no se recapturan** los tres antecedentes. Se muestran como referencia (los de la nota firmada más reciente que los capturó) y se exige declarar: *verificados sin cambios*, *actualizados en esta consulta* (lo nuevo escrito en la nota) o *no fue posible verificar* (con motivo). La referencia no se precarga al elegir "actualizados", porque entonces la regla se cumpliría sin escribir nada. En una nota cerrada no se muestra la referencia actual.
@@ -158,9 +161,44 @@ Nada de esta sección está activo. Para cada especialidad, revisar la lista de 
 **Cardiología** — primera valoración (antecedente CV, factores de riesgo, síntomas, exploración, medicamentos, alergias); insuficiencia cardiaca por I50 (NYHA, congestión, FEVI o motivo, tratamiento, seguimiento); signos de alarma por motivo (acción tomada, seguimiento); prevención por motivo (registro de riesgo o no valorado con motivo).
 **Nutrición** — primera valoración: fuentes de evaluación, PES, prescripción y monitoreo, cada uno con "no aplica" + motivo.
 
-Preguntas abiertas que el catálogo **no** resuelve por su cuenta:
+### 6.1 Decisión bloqueante B1 — primera consulta con especialista
 
-1. **Primer contacto en especialidad sin historia general.** Hoy se abre la historia general y la valoración inicial de especialidad queda para la siguiente consulta. ¿Debe una historia general firmada por el especialista contar también como su inicial (y aplicar ahí sus reglas)?
+**Problema.** Con la regla actual (D5), un paciente cuya primera consulta en la clínica es con cardiología o nutrición recibe una historia clínica *general*; la valoración inicial de la especialidad no se pide en esa nota y queda para la siguiente. **No se quiere obligar al paciente a regresar sólo para completar la valoración de especialidad.**
+
+**Bloquea:** la aprobación y activación de `cardiologia` y `nutricion`. No bloquea `general` (su valoración inicial ya es la historia general).
+
+**Propuesta (no implementada, requiere aprobación clínica): una sola primera nota combinada.**
+
+Cuando el expediente no tiene historia general cerrada y quien atiende es un especialista con catálogo, la primera nota incluye en el mismo documento:
+
+- la historia clínica general completa: los tres antecedentes, como hoy;
+- los requisitos de "primera valoración" de la especialidad: antecedente CV, factores de riesgo, síntomas, exploración, medicamentos y alergias en cardiología; fuentes, PES, prescripción y monitoreo en nutrición;
+- sin paso de verificación de antecedentes (D6), porque se están capturando por primera vez.
+
+Al firmarla cuenta a la vez como historia general y como valoración inicial de esa especialidad. La siguiente consulta con el mismo especialista es seguimiento; una con otra especialidad es su inicial, con antecedentes como referencia (D6).
+
+Esbozo técnico, para dimensionar y sin compromiso de forma final:
+
+| Pieza | Cambio propuesto |
+|---|---|
+| Contexto | Opción A: conservar `contexto_nota = 'general'` y que, en una especialidad distinta de `general`, las reglas de primera valoración apliquen a `['general', 'inicial_especialidad']`. Opción B: nuevo valor explícito `general_con_inicial_especialidad` (cambia el `CHECK` de 0053 y `CONTEXTOS_NOTA`). Recomendación preliminar: **B**, porque la nota combinada queda autodescrita y la auditoría la distingue sin deducirla de la especialidad. |
+| `decidirContexto` | Sin historia general cerrada **y** especialidad con catálogo activo ≠ `general` → contexto combinado. Sin catálogo activo, se conserva el comportamiento actual. |
+| `historialContexto` | Una nota combinada cerrada cuenta como historia general **y** como inicial de su especialidad. |
+| Catálogo | Las reglas `v1.cardiologia.primera_valoracion.*` y `v1.nutricion.primera_valoracion.*` incluyen el contexto combinado. Los ids no cambian si el escenario aprobado es el mismo. |
+| Notas existentes | Ninguna afectada: legacy no tiene contexto y en producción no existen notas v1 porque el flag no puede encenderse sin aprobación (D7, D8). |
+| Pruebas | Dominio del motor y del contexto; integración del recorrido "primera consulta con cardiología → seguimiento"; E2E de una primera nota combinada. |
+
+Preguntas para la aprobación clínica:
+
+1. ¿Es aceptable la carga de una primera nota combinada en tiempo de consulta, o se prefiere permitir firmar la historia general y dejar la valoración de especialidad en borrador dentro de la misma atención?
+2. Si el especialista no puede completar su parte ese día, ¿se admite "no valorado" con motivo en esos requisitos, o la nota no debe firmarse?
+3. ¿Aplica igual a nutrición que a cardiología?
+
+### 6.2 Otras preguntas abiertas
+
+Preguntas que el catálogo **no** resuelve por su cuenta:
+
+1. *(Movida a B1, §6.1.)*
 2. **"Al modificar tratamiento"** no se detecta por regla; lo cubre la razón obligatoria por cada cambio de fármaco. ¿Suficiente?
 3. **NYHA y congestión en I50** no ofrecen "no valorado". ¿Es correcto no dar alternativa?
 4. **Alergias en primera cardiología** aceptan "no valorado" con motivo. ¿Correcto?
@@ -171,6 +209,7 @@ Preguntas abiertas que el catálogo **no** resuelve por su cuenta:
 
 ### Procedimiento para aprobar y activar una especialidad
 
+0. Para `cardiologia` y `nutricion`: resolver B1 (§6.1) e implementar lo aprobado **antes** de aprobar su catálogo.
 1. Revisión clínico-legal de sus reglas por id; cambios al catálogo en un commit.
 2. Commit de aprobación: `estado: 'aprobado'` y `aprobacion` completa (responsables, fecha, referencia del acta).
 3. Revisión de muestras impresas/PDF y del lenguaje de ayudas.
@@ -207,3 +246,4 @@ Preguntas abiertas que el catálogo **no** resuelve por su cuenta:
 2. **Editores de bloques** no están ejercitados por E2E: ningún perfil activo los expone hasta aprobar un catálogo.
 3. **Borradores v1 creados en entornos de prueba** (flag encendido por SQL) se evaluarían con el catálogo si éste se aprueba antes de cerrarlos. En producción no ocurre porque el script no enciende sin aprobación.
 4. **Aprobar el catálogo de una especialidad cambia notas v1 en borrador de esa especialidad**; conviene aprobar con el flag apagado y encender después.
+5. **B1 sin resolver**: activar cardiología o nutrición con la regla actual haría que un paciente nuevo tuviera que volver para completar su valoración de especialidad. Por eso es bloqueante (§6.1).
