@@ -11,10 +11,9 @@ import {
   type SugerenciaNotaIa,
 } from '@healthflow/shared-types';
 import { AsistenteIaRespuestaInvalidaError } from '../domain/asistente-ia.errors';
+import { sanitizarHtml, sanitizarTextoPlano } from '../../../common/sanitizacion/html-clinico';
 import type { ExtraccionClinicaResult } from '../domain/asistente-clinico-ia.port';
 
-/** Etiquetas permitidas en los campos de texto rico (mismo set que pide el prompt). */
-const TAGS_PERMITIDOS = ['p', 'ul', 'ol', 'li', 'strong', 'em', 'br'];
 
 /**
  * Convierte el texto que devolvió el modelo en un `Partial<NotaEvolucionContent>`.
@@ -97,10 +96,11 @@ function parsearJson(texto: string): Record<string, unknown> {
  */
 function htmlLimpio(valor: unknown): string | undefined {
   if (typeof valor !== 'string') return undefined;
-  const sinTags = valor.replace(/<\/?([a-zA-Z0-9]+)(?:\s[^>]*)?>/g, (match, tag: string) =>
-    TAGS_PERMITIDOS.includes(tag.toLowerCase()) ? `<${match.startsWith('</') ? '/' : ''}${tag.toLowerCase()}>` : '',
-  );
-  return sinTags.replace(/<[^>]*>/g, '').trim().length > 0 ? sinTags.trim() : undefined;
+  // La misma allowlist con la que el servidor guarda la nota. Antes era un
+  // filtro por regex con su propia lista, que dejaba el código de un <script>
+  // como texto y se evadía con HTML mal formado.
+  const limpio = sanitizarHtml(valor).trim();
+  return limpio.replace(/<[^>]*>/g, '').trim().length > 0 ? limpio : undefined;
 }
 
 /**
@@ -110,12 +110,10 @@ function htmlLimpio(valor: unknown): string | undefined {
  */
 function textoPlano(valor: unknown): string | undefined {
   if (typeof valor !== 'string') return undefined;
-  const plano = valor
+  const conSaltos = valor
     .replace(/<\/(p|li|div)>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .replace(/<br\s*\/?>/gi, '\n');
+  const plano = sanitizarTextoPlano(conSaltos).replace(/\n{3,}/g, '\n\n').trim();
   return plano.length > 0 ? plano : undefined;
 }
 

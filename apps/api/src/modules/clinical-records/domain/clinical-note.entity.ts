@@ -8,6 +8,7 @@ import {
 } from '@healthflow/shared-types';
 import { evaluarEsquema, validarCierre } from './motor-reglas';
 import { validarEstructuraNota } from './estructura-nota';
+import { sanitizarNota } from './sanitizar-nota';
 import {
   EstructuraNotaInvalidaError,
   FirmaIncompletaError,
@@ -118,13 +119,18 @@ export class ClinicalNote {
     contenido: NotaEvolucionContent,
     especialidad: EspecialidadKey | undefined,
   ): NotaEvolucionContent {
-    const errores = validarEstructuraNota(contenido);
+    const guardado = this.props.contenido;
+    const especialidadSellada = guardado.plantillaVersion ? guardado.especialidad : especialidad;
+
+    // Primero se sanea (HTML con allowlist, el resto como texto plano) y
+    // después se valida la forma: el límite de tamaño aplica a lo que de
+    // verdad se va a guardar. Vale igual para autosave y cierre.
+    const saneado = sanitizarNota(contenido, perfilDe(especialidadSellada, guardado.plantillaVersion));
+    const errores = validarEstructuraNota(saneado);
     if (errores.length > 0) throw new EstructuraNotaInvalidaError(errores);
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { firma, esquemaAlCierre, ...resto } = contenido;
-    const guardado = this.props.contenido;
-    const especialidadSellada = guardado.plantillaVersion ? guardado.especialidad : especialidad;
+    const { firma, esquemaAlCierre, ...resto } = saneado;
 
     // El motivo de consulta activa reglas, así que sólo vale uno del catálogo
     // ACTIVO de la nota; un borrador no aprobado no ofrece ninguno.

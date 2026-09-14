@@ -274,6 +274,34 @@ describe('Notas clínicas cerradas inmutables', () => {
       expect(con_plantilla).toBe(false);
     });
 
+    it('guarda saneado lo que llega por autosave y por cierre', async () => {
+      const { citaId, noteId } = await abrirConsulta(tokenMedico, medico, 390);
+      const xss = '<img src=x onerror=alert(1)><script>alert(2)</script><a href="javascript:alert(3)">x</a>';
+      await request(app.getHttpServer())
+        .put(`/api/consultations/${citaId}/note`)
+        .set(auth(tokenMedico))
+        .send({ contenido: { ...completa(), padecimientoActual: `<p>Cefalea</p>${xss}`, exploracionFisica: { ...completa().exploracionFisica, hallazgos: `Normal${xss}` } } })
+        .expect(200);
+      const guardado = await runInTenant(appDb.db, tenantId, (tx) =>
+        tx.execute(sql`SELECT contenido_nom004::text AS c FROM clinical_notes WHERE id = ${noteId}`),
+      );
+      const c1 = (guardado.rows[0] as { c: string }).c;
+      expect(c1).not.toMatch(/<\s*(script|img|a)\b|onerror|javascript:|alert\(2\)/i);
+      expect(c1).toContain('<p>Cefalea</p>');
+
+      await request(app.getHttpServer())
+        .post(`/api/consultations/${citaId}/finish`)
+        .set(auth(tokenMedico))
+        .send({ contenido: { ...completa(), planTerapeutico: `<p>Reposo</p>${xss}` } })
+        .expect(201);
+      const firmado = await runInTenant(appDb.db, tenantId, (tx) =>
+        tx.execute(sql`SELECT estatus, contenido_nom004::text AS c FROM clinical_notes WHERE id = ${noteId}`),
+      );
+      const fila = firmado.rows[0] as { estatus: string; c: string };
+      expect(fila.estatus).toBe('cerrada');
+      expect(fila.c).not.toMatch(/<\s*(script|img|a)\b|onerror|javascript:|alert\(2\)/i);
+    });
+
     it('rechaza contenido con forma inválida devolviendo sólo rutas', async () => {
       const { citaId } = await abrirConsulta(tokenMedico, medico, 330);
       const res = await request(app.getHttpServer())
