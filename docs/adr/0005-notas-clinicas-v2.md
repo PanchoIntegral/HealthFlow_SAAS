@@ -226,8 +226,8 @@ Preguntas que el catálogo **no** resuelve por su cuenta:
 | Trigger de inmutabilidad y permisos SQL | **Hecho** (0052, 0053). |
 | RLS y sin contenido clínico en errores | **Hecho**: errores y auditoría llevan rutas, códigos y metadatos de plantilla. |
 | Auditoría de apertura con versión de plantilla | **Hecho**. |
-| Auditoría de guardado de borrador e intento de cierre fallido | **Pendiente.** |
-| Sanitización del HTML enriquecido en servidor | **Pendiente.** Hoy se valida forma y tamaño, no el HTML. |
+| Auditoría de guardado de borrador e intento de cierre fallido | **Hecho** (0054). Sólo metadatos: nota, usuario, fecha, códigos y rutas. El autosave se registra si cambia la huella HMAC del contenido y pasaron 5 minutos; el cierre fallido, en transacción propia. |
+| Sanitización del HTML enriquecido en servidor | **Hecho.** `sanitize-html` ≥ 2.17.7 con allowlist compatible con TipTap (sin atributos, enlaces ni imágenes) en autosave, cierre y contenido de IA; el resto del contenido, como texto plano. |
 | IA: no marcar revisado ni cerrar | Se mantiene lo existente (la IA no cierra; marca en sesión lo que llenó). Los bloques estructurados no los llena todavía la IA. |
 
 ---

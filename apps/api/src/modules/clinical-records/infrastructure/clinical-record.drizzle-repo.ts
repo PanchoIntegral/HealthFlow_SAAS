@@ -30,6 +30,7 @@ import type {
   PaginaNotas,
 } from '../domain/clinical-record.repository';
 import type { HistorialContexto } from '../domain/contexto-nota';
+import type { UltimaAuditoriaAutosave } from '../domain/auditoria-nota';
 
 /**
  * El cursor es opaco a propósito: es `<created_at ISO>|<id>` en base64url, y
@@ -229,6 +230,18 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       antecedentesPersonalesPatologicos: row.patologicos,
       antecedentesPersonalesNoPatologicos: row.no_patologicos,
     };
+  }
+
+  async ultimaAuditoriaAutosave(tx: Tx, noteId: string): Promise<UltimaAuditoriaAutosave | null> {
+    const result = await tx.execute(sql`
+      SELECT detalle->>'huella' AS huella, created_at
+        FROM audit_log
+       WHERE entidad_id = ${noteId} AND accion = 'save_draft'
+       ORDER BY created_at DESC
+       LIMIT 1
+    `);
+    const row = result.rows[0] as { huella: string | null; created_at: Date } | undefined;
+    return row ? { huella: row.huella, registradaEn: new Date(row.created_at) } : null;
   }
 
   async hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean> {

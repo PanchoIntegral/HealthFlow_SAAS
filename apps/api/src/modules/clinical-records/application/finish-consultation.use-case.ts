@@ -1,8 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type {
-  FinishConsultationResponse,
-  NotaEvolucionContent,
-  WaitingRoomEntry,
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  plantillaDe,
+  type FinishConsultationResponse,
+  type NotaEvolucionContent,
+  type WaitingRoomEntry,
 } from '@healthflow/shared-types';
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { RequestContextService } from '../../../common/tenant-context/request-context';
@@ -21,6 +22,7 @@ import {
   type ClinicalRecordRepository,
 } from '../domain/clinical-record.repository';
 import { NotaDeOtroMedicoError, NoteAlreadyClosedError } from '../domain/clinical-note.errors';
+import { detalleCierreFallido } from '../domain/auditoria-nota';
 
 /**
  * Cierre de consulta: en_consulta → finalizada. Valida NOM-004 (dominio), cierra
@@ -29,6 +31,8 @@ import { NotaDeOtroMedicoError, NoteAlreadyClosedError } from '../domain/clinica
  */
 @Injectable()
 export class FinishConsultationUseCase {
+  private readonly logger = new Logger(FinishConsultationUseCase.name);
+
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly ctx: RequestContextService,
@@ -40,6 +44,48 @@ export class FinishConsultationUseCase {
   ) {}
 
   async execute(
+    appointmentId: string,
+    contenido: NotaEvolucionContent,
+  ): Promise<FinishConsultationResponse> {
+    try {
+      return await this.cerrar(appointmentId, contenido);
+    } catch (error) {
+      await this.auditarCierreFallido(appointmentId, error);
+      throw error;
+    }
+  }
+
+  /**
+   * El rechazo revierte la transacción del cierre, y con ella cualquier
+   * auditoría escrita dentro. Por eso el intento fallido se registra en una
+   * transacción PROPIA, sólo con metadatos (ver detalleCierreFallido).
+   *
+   * Si registrar falla, se deja rastro técnico sin contenido y se propaga el
+   * error ORIGINAL: el médico debe ver por qué no pudo firmar, no un error de
+   * bitácora.
+   */
+  private async auditarCierreFallido(appointmentId: string, error: unknown): Promise<void> {
+    const detalle = detalleCierreFallido(error, appointmentId);
+    if (!detalle) return;
+    try {
+      await this.tenantDb.run(async (tx) => {
+        const note = await this.records.findNoteByAppointment(tx, appointmentId);
+        if (!note) return;
+        await this.audit.record(tx, {
+          entidad: 'clinical_note',
+          entidadId: note.id,
+          accion: 'close_note_failed',
+          detalle: { ...detalle, plantillaVersion: plantillaDe(note.contenido) },
+        });
+      });
+    } catch (fallo) {
+      this.logger.warn(
+        `No se pudo auditar el cierre fallido de la cita ${appointmentId}: ${fallo instanceof Error ? fallo.name : 'error'}`,
+      );
+    }
+  }
+
+  private async cerrar(
     appointmentId: string,
     contenido: NotaEvolucionContent,
   ): Promise<FinishConsultationResponse> {
@@ -80,7 +126,7 @@ export class FinishConsultationUseCase {
         entidad: 'clinical_note',
         entidadId: note.id,
         accion: 'close_note',
-        detalle: { appointmentId },
+        detalle: { appointmentId, plantillaVersion: plantillaDe(note.contenido) },
       });
 
       // La cita se atendió de verdad: es lo que cierra el ciclo de un control

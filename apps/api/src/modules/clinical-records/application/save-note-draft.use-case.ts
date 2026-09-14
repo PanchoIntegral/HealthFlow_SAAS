@@ -1,6 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type { GuardarBorradorResponse, NotaEvolucionContent } from '@healthflow/shared-types';
+import {
+  plantillaDe,
+  type GuardarBorradorResponse,
+  type NotaEvolucionContent,
+} from '@healthflow/shared-types';
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
+import { AuditService } from '../../../common/audit/audit.service';
+import { env } from '../../../config/env';
+import { debeAuditarAutosave, huellaContenido } from '../domain/auditoria-nota';
 import {
   CLINICAL_RECORD_REPOSITORY,
   type ClinicalRecordRepository,
@@ -13,6 +20,7 @@ import { evaluarEsquema, validarCierre } from '../domain/motor-reglas';
 export class SaveNoteDraftUseCase {
   constructor(
     private readonly tenantDb: TenantDbService,
+    private readonly audit: AuditService,
     @Inject(CLINICAL_RECORD_REPOSITORY) private readonly records: ClinicalRecordRepository,
   ) {}
 
@@ -34,6 +42,20 @@ export class SaveNoteDraftUseCase {
       if (!(await this.records.saveDraftContent(tx, note))) {
         throw new NoteAlreadyClosedError();
       }
+      // Auditoría sin ruido y sin contenido: sólo si cambió la huella y pasó
+      // la ventana (ver debeAuditarAutosave). La huella se calcula sobre lo
+      // que de verdad se guardó, ya saneado y sellado.
+      const huella = huellaContenido(note.contenido, env.auditoriaHuellaSecret);
+      const ultima = await this.records.ultimaAuditoriaAutosave(tx, note.id);
+      if (debeAuditarAutosave(ultima, huella, new Date())) {
+        await this.audit.record(tx, {
+          entidad: 'clinical_note',
+          entidadId: note.id,
+          accion: 'save_draft',
+          detalle: { appointmentId, plantillaVersion: plantillaDe(note.contenido), huella },
+        });
+      }
+
       const esquema = evaluarEsquema(note.contenido);
       return { ok: true as const, esquema, pendientes: validarCierre(note.contenido, esquema) };
     });

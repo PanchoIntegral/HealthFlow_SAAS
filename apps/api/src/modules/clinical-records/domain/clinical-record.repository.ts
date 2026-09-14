@@ -13,6 +13,7 @@ import type {
 import type { Tx } from '../../../db/drizzle';
 import type { ClinicalNote } from './clinical-note.entity';
 import type { HistorialContexto } from './contexto-nota';
+import type { UltimaAuditoriaAutosave } from './auditoria-nota';
 
 export interface CreateDraftNoteInput {
   clinicalRecordId: string;
@@ -68,6 +69,9 @@ export interface ClinicalRecordRepository {
    * actualizó). null si no hay ninguna.
    */
   getReferenciaAntecedentes(tx: Tx, clinicalRecordId: string): Promise<ReferenciaAntecedentes | null>;
+
+  /** Último registro de auditoría de autosave de la nota, para no repetirlo. null si no hay. */
+  ultimaAuditoriaAutosave(tx: Tx, noteId: string): Promise<UltimaAuditoriaAutosave | null>;
 
   /** True si el expediente ya tiene alguna nota (de cualquier tipo/estatus). */
   hasAnyNoteForRecord(tx: Tx, clinicalRecordId: string): Promise<boolean>;

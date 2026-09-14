@@ -266,5 +266,7 @@ export const env = {
   get resendWebhookSecret(): string { return required('RESEND_WEBHOOK_SECRET'); },
   /** Firma enlaces de acción enviados por mensajería; independiente del JWT de usuarios. */
   get publicLinkSecret(): string { return process.env.PUBLIC_LINK_SECRET ?? this.jwtSecret; },
+  /** Llave de la huella de contenido en la auditoría de autosave; independiente si se define. */
+  get auditoriaHuellaSecret(): string { return process.env.AUDIT_FINGERPRINT_SECRET ?? this.jwtSecret; },
   get workerPollMs(): number { return Math.max(500,Number(process.env.WORKER_POLL_MS ?? 5000)); },
 };

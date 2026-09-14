@@ -314,6 +314,97 @@ describe('Notas clínicas cerradas inmutables', () => {
     });
   });
 
+  describe('auditoría de edición (sólo metadatos)', () => {
+    const TEXTO = 'Dolor torácico opresivo de 20 minutos';
+
+    async function registros(noteId: string, accion: string) {
+      const res = await admin.db.execute(sql`
+        SELECT user_id, created_at, detalle, detalle::text AS crudo FROM audit_log
+         WHERE tenant_id = ${tenantId}::uuid AND entidad_id = ${noteId}::uuid AND accion = ${accion}
+         ORDER BY created_at
+      `);
+      return res.rows as { user_id: string; created_at: Date; detalle: Record<string, unknown>; crudo: string }[];
+    }
+
+    function guardar(citaId: string, padecimiento: string) {
+      return request(app.getHttpServer())
+        .put(`/api/consultations/${citaId}/note`)
+        .set(auth(tokenMedico))
+        .send({ contenido: { ...completa(), padecimientoActual: `<p>${padecimiento}</p>` } })
+        .expect(200);
+    }
+
+    it('audita el autosave sólo cuando cambia el contenido y pasó la ventana', async () => {
+      const { citaId, noteId } = await abrirConsulta(tokenMedico, medico, 450);
+
+      await guardar(citaId, TEXTO);
+      await guardar(citaId, TEXTO); // idéntico
+      await guardar(citaId, `${TEXTO}.`); // cambio dentro de la ventana
+      let filas = await registros(noteId, 'save_draft');
+      expect(filas).toHaveLength(1);
+
+      // Simula que la ventana ya pasó.
+      await admin.db.execute(sql`
+        UPDATE audit_log SET created_at = created_at - interval '6 minutes'
+         WHERE tenant_id = ${tenantId}::uuid AND entidad_id = ${noteId}::uuid AND accion = 'save_draft'
+      `);
+      await guardar(citaId, `${TEXTO}.`); // mismo contenido que el último guardado, pero no que el último AUDITADO
+      filas = await registros(noteId, 'save_draft');
+      expect(filas).toHaveLength(2);
+
+      await admin.db.execute(sql`
+        UPDATE audit_log SET created_at = created_at - interval '6 minutes'
+         WHERE tenant_id = ${tenantId}::uuid AND entidad_id = ${noteId}::uuid AND accion = 'save_draft'
+      `);
+      await guardar(citaId, `${TEXTO}.`); // idéntico al último auditado: nunca se repite
+      filas = await registros(noteId, 'save_draft');
+      expect(filas).toHaveLength(2);
+
+      for (const f of filas) {
+        expect(f.user_id).toBe(medico);
+        expect(Object.keys(f.detalle).sort()).toEqual(['appointmentId', 'huella', 'plantillaVersion']);
+        expect(f.crudo).not.toContain('torácico');
+      }
+    });
+
+    it('audita el intento de cierre fallido con códigos y rutas, sin contenido', async () => {
+      const { citaId, noteId } = await abrirConsulta(tokenMedico, medico, 510);
+      await request(app.getHttpServer())
+        .post(`/api/consultations/${citaId}/finish`)
+        .set(auth(tokenMedico))
+        .send({ contenido: { ...completa(), padecimientoActual: `<p>${TEXTO}</p>`, planTerapeutico: '' } })
+        .expect(422);
+
+      const [fila] = await registros(noteId, 'close_note_failed');
+      expect(fila).toBeDefined();
+      expect(fila!.user_id).toBe(medico);
+      expect(fila!.detalle).toMatchObject({
+        appointmentId: citaId,
+        motivo: 'IncompleteClinicalNote',
+        errores: [{ codigo: 'CAMPO_REQUERIDO', ruta: 'planTerapeutico' }],
+        totalErrores: 1,
+      });
+      expect(fila!.crudo).not.toContain('torácico');
+
+      // El rechazo no dejó la nota cerrada ni borró su propio rastro.
+      const estatus = await runInTenant(appDb.db, tenantId, (tx) =>
+        tx.execute(sql`SELECT estatus FROM clinical_notes WHERE id = ${noteId}`),
+      );
+      expect(estatus.rows[0]).toEqual({ estatus: 'borrador' });
+    });
+
+    it('audita también la firma incompleta', async () => {
+      const { citaId, noteId } = await abrirConsulta(tokenSinCedula, medicoSinCedula, 570);
+      await request(app.getHttpServer())
+        .post(`/api/consultations/${citaId}/finish`)
+        .set(auth(tokenSinCedula))
+        .send({ contenido: completa() })
+        .expect(422);
+      const [fila] = await registros(noteId, 'close_note_failed');
+      expect(fila!.detalle).toMatchObject({ motivo: 'FirmaIncompleta', faltantes: ['cedula'] });
+    });
+  });
+
   it('un autosave que leyó el borrador antes del cierre no lo reabre', async () => {
     const { citaId, noteId } = await abrirConsulta(tokenMedico, medico, 210);
 
