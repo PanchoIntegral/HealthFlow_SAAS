@@ -534,13 +534,47 @@ export function resumirPodograma(podograma: Podograma): string[] {
 // apuntando al mismo sitio aunque el SVG se vea grande en escritorio, pequeño
 // en teléfono o se renderice después en un documento impreso.
 
-export const VISTAS_CORPORALES = ['anterior', 'posterior'] as const;
+export const VISTAS_CORPORALES = [
+  'lateral_derecha',
+  'anterior',
+  'posterior',
+  'lateral_izquierda',
+  'pies_lateral',
+  'pies_dorsal',
+  'pies_posterior',
+  'pies_plantar',
+] as const;
 export type VistaCorporal = (typeof VISTAS_CORPORALES)[number];
 
+/**
+ * Sigue el orden de la hoja de papel de la clínica de heridas: cuatro
+ * siluetas de cuerpo completo (lateral derecha, anterior, posterior, lateral
+ * izquierda) y cuatro recuadros de pies, porque en pie diabético y úlceras
+ * venosas la lesión típica no se distingue en una silueta de cuerpo entero.
+ */
 export const ETIQUETA_VISTA_CORPORAL: Record<VistaCorporal, string> = {
+  lateral_derecha: 'Lateral derecha',
   anterior: 'Vista anterior',
   posterior: 'Vista posterior',
+  lateral_izquierda: 'Lateral izquierda',
+  pies_lateral: 'Pies · caras lateral y medial',
+  pies_dorsal: 'Pies · dorso',
+  pies_posterior: 'Pies · talones',
+  pies_plantar: 'Pies · plantas',
 };
+
+export const VISTAS_CUERPO_COMPLETO: readonly VistaCorporal[] = [
+  'lateral_derecha',
+  'anterior',
+  'posterior',
+  'lateral_izquierda',
+];
+export const VISTAS_PIES: readonly VistaCorporal[] = [
+  'pies_lateral',
+  'pies_dorsal',
+  'pies_posterior',
+  'pies_plantar',
+];
 
 export const TIPOS_MARCA_CORPORAL = [
   { key: 'herida', label: 'Herida', color: '#dc2626' },
@@ -560,7 +594,7 @@ export interface MarcaCorporal {
   /** Identidad estable: permite editar o retirar una marca sin depender del orden. */
   id: string;
   vista: VistaCorporal;
-  /** Posición normalizada dentro del lienzo, en el intervalo cerrado 0–1000. */
+  /** Posición normalizada dentro del lienzo de su vista, en el intervalo cerrado 0–1000. */
   x: number;
   y: number;
   tipo: TipoMarcaCorporal;
@@ -599,13 +633,52 @@ export function mapaCorporalValido(mapa: MapaCorporal | null | undefined): boole
   return new Set(ids).size === ids.length && mapa.marcas.every(marcaCorporalValida);
 }
 
+/**
+ * Lado anatómico que se deduce de la posición de la marca dentro de su lienzo.
+ *
+ * Marcar el lado equivocado es el error clásico de estos esquemas, así que el
+ * dato viaja en el resumen aunque el médico no lo escriba. Las reglas dependen
+ * de cómo se dibujan las vistas (la silueta anterior muestra el lado derecho
+ * del paciente a la IZQUIERDA del lienzo; la posterior y los talones, al
+ * revés). Una franja central de la silueta se reporta como línea media para no
+ * inventar lateralidad en sacro, columna o abdomen.
+ */
+export function ladoMarcaCorporal(marca: Pick<MarcaCorporal, 'vista' | 'x' | 'y'>): string | undefined {
+  const izquierdaDelLienzo = marca.x < 500;
+  switch (marca.vista) {
+    case 'anterior':
+    case 'posterior': {
+      if (Math.abs(marca.x - 500) <= 40) return 'línea media';
+      const derecho = marca.vista === 'anterior' ? izquierdaDelLienzo : !izquierdaDelLienzo;
+      return derecho ? 'lado derecho' : 'lado izquierdo';
+    }
+    case 'pies_dorsal':
+    case 'pies_plantar':
+      return izquierdaDelLienzo ? 'pie derecho' : 'pie izquierdo';
+    case 'pies_posterior':
+      return izquierdaDelLienzo ? 'pie izquierdo' : 'pie derecho';
+    case 'pies_lateral': {
+      const pie = izquierdaDelLienzo ? 'pie derecho' : 'pie izquierdo';
+      return `${pie}, cara ${marca.y < 500 ? 'lateral' : 'medial'}`;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** "Vista anterior, lado derecho": la vista más el lado deducido, listo para leerse. */
+export function sitioMarcaCorporal(marca: Pick<MarcaCorporal, 'vista' | 'x' | 'y'>): string {
+  const vista = ETIQUETA_VISTA_CORPORAL[marca.vista] ?? marca.vista;
+  const lado = ladoMarcaCorporal(marca);
+  return lado ? `${vista}, ${lado}` : vista;
+}
+
 /** Resumen textual para que el dato siga siendo legible sin depender del SVG. */
 export function resumirMapaCorporal(mapa: MapaCorporal): string[] {
   return mapa.marcas.map((marca, indice) => {
     const tipo = tipoMarcaCorporalPorKey(marca.tipo)?.label ?? marca.tipo;
-    const vista = ETIQUETA_VISTA_CORPORAL[marca.vista] ?? marca.vista;
     const sitio = marca.descripcion?.trim();
-    return `${indice + 1}. ${tipo} · ${vista}${sitio ? ` · ${sitio}` : ''}`;
+    return `${indice + 1}. ${tipo} · ${sitioMarcaCorporal(marca)}${sitio ? ` · ${sitio}` : ''}`;
   });
 }
 

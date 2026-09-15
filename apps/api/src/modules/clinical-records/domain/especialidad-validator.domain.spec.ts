@@ -81,8 +81,21 @@ describe('EspecialidadValidator', () => {
 
     it('produce un resumen clínico legible sin depender del dibujo', () => {
       expect(resumirMapaCorporal(mapaCorporalCompleto())).toEqual([
-        '1. Herida · Vista anterior · Maléolo medial derecho',
+        '1. Herida · Vista anterior, lado derecho · Maléolo medial derecho',
       ]);
+      // La lateralidad se deduce de la posición: misma x en la vista posterior es el lado contrario.
+      expect(resumirMapaCorporal(mapaCorporalCompleto({ vista: 'posterior', descripcion: undefined }))).toEqual([
+        '1. Herida · Vista posterior, lado izquierdo',
+      ]);
+      expect(resumirMapaCorporal(mapaCorporalCompleto({ x: 500, descripcion: 'Región umbilical' }))).toEqual([
+        '1. Herida · Vista anterior, línea media · Región umbilical',
+      ]);
+      expect(
+        resumirMapaCorporal(mapaCorporalCompleto({ vista: 'pies_lateral', x: 700, y: 800, descripcion: undefined })),
+      ).toEqual(['1. Herida · Pies · caras lateral y medial, pie izquierdo, cara medial']);
+      expect(
+        resumirMapaCorporal(mapaCorporalCompleto({ vista: 'lateral_derecha', descripcion: 'Trocánter mayor' })),
+      ).toEqual(['1. Herida · Lateral derecha · Trocánter mayor']);
     });
 
     it('rechaza EVA y porcentajes fuera de sus límites clínicos', () => {
