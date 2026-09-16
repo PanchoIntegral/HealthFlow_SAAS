@@ -92,7 +92,7 @@ describe('EspecialidadValidator', () => {
       ]);
       expect(
         resumirMapaCorporal(mapaCorporalCompleto({ vista: 'pies_lateral', x: 700, y: 800, descripcion: undefined })),
-      ).toEqual(['1. Herida · Pies · caras lateral y medial, pie izquierdo, cara medial']);
+      ).toEqual(['1. Herida · Pies · lateral y medial, pie izquierdo, cara medial']);
       expect(
         resumirMapaCorporal(mapaCorporalCompleto({ vista: 'lateral_derecha', descripcion: 'Trocánter mayor' })),
       ).toEqual(['1. Herida · Lateral derecha · Trocánter mayor']);

@@ -557,7 +557,7 @@ export const ETIQUETA_VISTA_CORPORAL: Record<VistaCorporal, string> = {
   anterior: 'Vista anterior',
   posterior: 'Vista posterior',
   lateral_izquierda: 'Lateral izquierda',
-  pies_lateral: 'Pies · caras lateral y medial',
+  pies_lateral: 'Pies · lateral y medial',
   pies_dorsal: 'Pies · dorso',
   pies_posterior: 'Pies · talones',
   pies_plantar: 'Pies · plantas',

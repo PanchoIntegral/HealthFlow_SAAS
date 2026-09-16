@@ -149,7 +149,7 @@ export function MapaCorporal({
 
         <div className="p-3 sm:p-4">
           {cuerpoVisible.length > 0 && (
-            <div className="mx-auto grid w-fit grid-cols-2 items-end justify-items-center gap-3 sm:gap-5 lg:grid-cols-4">
+            <div className="mx-auto grid max-w-[860px] grid-cols-2 items-start gap-x-4 gap-y-5 sm:grid-cols-[15fr_22fr_22fr_15fr] sm:gap-x-6">
               {cuerpoVisible.map((vista) => (
                 <Lienzo key={vista} vista={vista} marcas={marcasDe(vista)} {...propsLienzo}>
                   {vista === 'anterior' || vista === 'posterior' ? (
@@ -167,7 +167,7 @@ export function MapaCorporal({
               <p className="mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 Pies
               </p>
-              <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="mx-auto grid max-w-[680px] grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                 {piesVisibles.map((vista) => (
                   <Lienzo key={vista} vista={vista} marcas={marcasDe(vista)} {...propsLienzo}>
                     {vista === 'pies_lateral' && <PiesLateralMedial />}
@@ -238,23 +238,31 @@ export function MapaCorporal({
 
 // ── Lienzo genérico ────────────────────────────────────────────────
 
+/**
+ * Las columnas de cuerpo completo son proporcionales al ancho de cada lienzo
+ * (15 : 22 : 22 : 15) y las figuras llenan su columna. Con anchos fijos en
+ * píxeles las siluetas se enciman cuando la nota es más angosta que la
+ * ventana, porque los breakpoints de Tailwind miden la ventana, no la nota.
+ * En teléfono (2 columnas) los perfiles se reducen al 68 % para que su altura
+ * coincida con la de las vistas anterior y posterior.
+ */
 const ANCHO_CSS: Record<VistaCorporal, string> = {
-  lateral_derecha: 'w-[100px] sm:w-[140px]',
-  anterior: 'w-[145px] sm:w-[205px]',
-  posterior: 'w-[145px] sm:w-[205px]',
-  lateral_izquierda: 'w-[100px] sm:w-[140px]',
-  pies_lateral: 'w-full',
-  pies_dorsal: 'w-full',
-  pies_posterior: 'w-full',
-  pies_plantar: 'w-full',
+  lateral_derecha: 'w-[68%] sm:w-full',
+  anterior: 'w-full',
+  posterior: 'w-full',
+  lateral_izquierda: 'w-[68%] sm:w-full',
+  pies_lateral: 'w-full max-w-[320px] sm:max-w-none',
+  pies_dorsal: 'w-full max-w-[320px] sm:max-w-none',
+  pies_posterior: 'w-full max-w-[320px] sm:max-w-none',
+  pies_plantar: 'w-full max-w-[320px] sm:max-w-none',
 };
 
 /** En teléfono conviene ver primero anterior/posterior; en escritorio, el orden de la hoja. */
 const ORDEN_CSS: Partial<Record<VistaCorporal, string>> = {
-  lateral_derecha: 'order-3 lg:order-1',
-  anterior: 'order-1 lg:order-2',
-  posterior: 'order-2 lg:order-3',
-  lateral_izquierda: 'order-4 lg:order-4',
+  lateral_derecha: 'order-3 sm:order-1',
+  anterior: 'order-1 sm:order-2',
+  posterior: 'order-2 sm:order-3',
+  lateral_izquierda: 'order-4 sm:order-4',
 };
 
 function Lienzo({
@@ -276,8 +284,8 @@ function Lienzo({
   const esPies = VISTAS_PIES.includes(vista);
 
   return (
-    <figure className={`m-0 ${ANCHO_CSS[vista]} ${ORDEN_CSS[vista] ?? ''} ${esPies ? 'mx-auto max-w-[280px]' : ''}`}>
-      <figcaption className="mb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
+    <figure className={`m-0 mx-auto flex min-w-0 flex-col ${ANCHO_CSS[vista]} ${ORDEN_CSS[vista] ?? ''}`}>
+      <figcaption className="mb-1.5 flex min-h-[2rem] items-end justify-center text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500 sm:text-[11px]">
         {ETIQUETA_VISTA_CORPORAL[vista]}
       </figcaption>
       <svg
