@@ -1,5 +1,5 @@
 /**
- * Prepara el clúster para desarrollo local:
+ * Prepara el clúster para desarrollo local o un entorno ya desplegado:
  *   1. crea la base de datos `healthflow` si no existe,
  *   2. crea el rol de aplicación `healthflow_app` (NO superusuario) si no existe.
  *
@@ -62,13 +62,39 @@ async function main() {
   await onTarget.query(`GRANT CONNECT ON DATABASE ${quoteIdent(targetDb)} TO ${quoteIdent(appUser)}`);
   await onTarget.query(`GRANT CONNECT ON DATABASE ${quoteIdent(targetDb)} TO ${quoteIdent(workerUser)}`);
   await onTarget.query(`GRANT USAGE ON SCHEMA public TO ${quoteIdent(workerUser)}`);
-  const workerFunctions = await onTarget.query(
-    `SELECT to_regprocedure('claim_outbound_messages(integer)') AS claim,
-            to_regprocedure('complete_outbound_message(uuid,text,text,text)') AS complete`,
-  );
-  if (workerFunctions.rows[0]?.claim && workerFunctions.rows[0]?.complete) {
-    await onTarget.query(`GRANT EXECUTE ON FUNCTION claim_outbound_messages(integer) TO ${quoteIdent(workerUser)}`);
-    await onTarget.query(`GRANT EXECUTE ON FUNCTION complete_outbound_message(uuid,text,text,text) TO ${quoteIdent(workerUser)}`);
+
+  // Las migraciones conceden estos permisos sólo si el rol ya existe. En un
+  // entorno que aplicó migraciones ANTES de crear healthflow_worker (p.ej.
+  // Railway), este bloque reconcilia el mínimo privilegio sin reejecutarlas.
+  const grantFunction = async (signature: string): Promise<void> => {
+    const exists = await onTarget.query('SELECT to_regprocedure($1) AS fn', [signature]);
+    if (exists.rows[0]?.fn) {
+      await onTarget.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${quoteIdent(workerUser)}`);
+    }
+  };
+  const grantTable = async (privileges: string, table: string): Promise<void> => {
+    const exists = await onTarget.query('SELECT to_regclass($1) AS tab', [`public.${table}`]);
+    if (exists.rows[0]?.tab) {
+      await onTarget.query(`GRANT ${privileges} ON TABLE ${quoteIdent(table)} TO ${quoteIdent(workerUser)}`);
+    }
+  };
+
+  for (const signature of [
+    'claim_outbound_messages(integer)',
+    'complete_outbound_message(uuid,text,text,text)',
+    'claim_app_events(text,integer)',
+    'complete_app_event(uuid,text,boolean,text)',
+    'defer_app_event(uuid,text,text,interval)',
+    'record_system_audit(uuid,text,uuid,text,jsonb)',
+    'cancel_recall_attempt_messages(uuid)',
+    'cancel_recall_pending_messages(uuid)',
+  ]) await grantFunction(signature);
+
+  for (const table of ['tenant_feature_flags', 'tenant_module_entitlements', 'recall_types', 'patients', 'appointments', 'tenants', 'booking_settings', 'recall_settings', 'presupuesto_partidas']) {
+    await grantTable('SELECT', table);
+  }
+  for (const table of ['patient_recalls', 'recall_attempts']) {
+    await grantTable('SELECT, INSERT, UPDATE', table);
   }
   await onTarget.end();
 
