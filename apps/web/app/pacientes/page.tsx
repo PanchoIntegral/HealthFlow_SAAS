@@ -7,12 +7,14 @@ import {
   ETIQUETAS_SEXO,
   SEXOS_PACIENTE,
   type CreatePatientRequest,
+  type PatientSummary,
   type SexoPaciente,
 } from '@healthflow/shared-types';
 import { useAuth } from '../../lib/auth';
 import { api, ApiError } from '../../lib/api';
 import { AppShell } from '../../components/app-shell';
 import { IconPhone, IconRecords, IconSearch } from '../../components/icons';
+import { Modal } from '../../components/modal';
 
 /** Pacientes por página. El backend lo acota a 100 como máximo. */
 const TAMANO_PAGINA = 25;
@@ -42,6 +44,7 @@ export default function PacientesPage() {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [pacienteCorreo, setPacienteCorreo] = useState<PatientSummary | null>(null);
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -125,8 +128,13 @@ export default function PacientesPage() {
             <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               {pacientes.map((p) => (
                 <li key={p.id}>
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => router.push(`/pacientes/${p.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') router.push(`/pacientes/${p.id}`);
+                    }}
                     className="group flex w-full cursor-pointer items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50"
                   >
                     <div
@@ -154,10 +162,23 @@ export default function PacientesPage() {
                       </span>
                     )}
 
+                    {canCreate && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPacienteCorreo(p);
+                        }}
+                        className="hidden shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue sm:block"
+                      >
+                        Agregar correo
+                      </button>
+                    )}
+
                     <span className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-brand-blue transition group-hover:border-brand-blue">
                       Ver expediente →
                     </span>
-                  </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -188,9 +209,89 @@ export default function PacientesPage() {
               </p>
             </div>
           )}
+
+          {pacienteCorreo && (
+            <CapturarCorreoPaciente
+              token={token}
+              paciente={pacienteCorreo}
+              onClose={() => setPacienteCorreo(null)}
+              onSaved={() => {
+                setPacienteCorreo(null);
+                queryClient.invalidateQueries({ queryKey: ['patients'] });
+              }}
+            />
+          )}
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function CapturarCorreoPaciente({
+  token,
+  paciente,
+  onClose,
+  onSaved,
+}: {
+  token: string;
+  paciente: PatientSummary;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [autorizado, setAutorizado] = useState(false);
+  const mutation = useMutation({
+    mutationFn: () => api.updatePatient(token, paciente.id, { email: email.trim(), canalPreferido: 'email' }),
+    onSuccess: onSaved,
+  });
+
+  return (
+    <Modal titulo="Agregar correo para avisos" subtitulo={paciente.nombre} onClose={onClose}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          mutation.mutate();
+        }}
+      >
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">Correo electrónico</span>
+          <input
+            required
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            maxLength={254}
+            placeholder="nombre@correo.com"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue"
+          />
+        </label>
+        <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm">
+          <input
+            required
+            type="checkbox"
+            checked={autorizado}
+            onChange={(event) => setAutorizado(event.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-blue"
+          />
+          <span className="text-slate-600">El paciente autorizó recibir confirmaciones y recordatorios de citas en este correo.</span>
+        </label>
+        {mutation.isError && (
+          <p className="mt-3 text-sm text-red-600">
+            {mutation.error instanceof ApiError ? mutation.error.message : 'No se pudo guardar el correo'}
+          </p>
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium">Cancelar</button>
+          <button
+            type="submit"
+            disabled={!autorizado || !email.trim() || mutation.isPending}
+            className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {mutation.isPending ? 'Guardando…' : 'Guardar y activar correo'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
