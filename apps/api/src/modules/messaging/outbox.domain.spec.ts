@@ -160,14 +160,14 @@ describe('worker: cierra cada intento con el resultado clasificado (P0.2)', () =
     const execute = jest.fn().mockResolvedValueOnce({ rows: [row] }).mockResolvedValue({ rows: [] });
     const worker = new MessagingWorker({ execute } as never, provider as never);
     await worker.tick();
-    const call = execute.mock.calls[1]![0] as { queryChunks?: unknown[] };
-    return JSON.stringify(call);
+    return execute.mock.calls.slice(1).map(([query]) => JSON.stringify(query)).join('\n');
   }
 
   it('un resultado incierto se persiste como uncertain y no se reintenta', async () => {
     const q = await run({ send: jest.fn().mockResolvedValue({ outcome: 'uncertain', code: 'net_TimeoutError' }) });
     expect(q).toContain('"uncertain"');
     expect(q).toContain('net_TimeoutError');
+    expect(q).toContain('ensure_public_appointment_manage_token');
   });
 
   it('un adaptador que lanza se trata como incierto, nunca como reintentable', async () => {

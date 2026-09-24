@@ -88,6 +88,7 @@ async function main() {
     'record_system_audit(uuid,text,uuid,text,jsonb)',
     'cancel_recall_attempt_messages(uuid)',
     'cancel_recall_pending_messages(uuid)',
+    'ensure_public_appointment_manage_token(uuid,text)',
   ]) await grantFunction(signature);
 
   for (const table of ['tenant_feature_flags', 'tenant_module_entitlements', 'recall_types', 'patients', 'appointments', 'tenants', 'booking_settings', 'recall_settings', 'presupuesto_partidas']) {
