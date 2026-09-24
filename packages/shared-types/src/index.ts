@@ -2549,6 +2549,8 @@ export interface PublicAppointmentSummary {
   confirmationStatus: ConfirmationStatus;
   /** Zona IANA de la clínica; todas las horas públicas deben renderizarse aquí. */
   timezone: string;
+  /** Sólo las reservas vinculadas a un servicio público pueden reprogramarse en línea. */
+  canReschedule: boolean;
   manageUrl?: string;
 }
 
