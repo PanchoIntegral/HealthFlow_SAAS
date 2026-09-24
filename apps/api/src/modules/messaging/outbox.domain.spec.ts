@@ -1,5 +1,5 @@
 import { buildOutboxJobs, outboxKey } from './outbox.service';
-import { FakeMessagingProvider, LiveMessagingProvider, renderPrivacySafeBody } from './providers';
+import { FakeMessagingProvider, LiveMessagingProvider, renderPrivacySafeBody, renderPrivacySafeEmail } from './providers';
 import type { ProviderMessage, ScheduleMessagesInput } from './messaging.types';
 
 const now = new Date('2026-09-10T12:00:00Z');
@@ -74,6 +74,11 @@ describe('adaptadores de proveedor y clave de idempotencia (P0.1)', () => {
       expect(result).toEqual({ outcome: 'accepted', providerMessageId: 'email_123' });
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe('cita-1:v1:reminder:24h:email');
+      const payload = JSON.parse(init.body as string) as { subject: string; html: string; text: string };
+      expect(payload.subject).toBe('Recordatorio: tu cita es pronto · Sonrisa');
+      expect(payload.html).toContain('Te recordamos tu cita');
+      expect(payload.html).toContain('Ver mi cita');
+      expect(payload.text).toBe(renderPrivacySafeBody(message));
     } finally {
       global.fetch = original;
       delete process.env.RESEND_API_KEY;
@@ -101,6 +106,19 @@ describe('adaptadores de proveedor y clave de idempotencia (P0.1)', () => {
     expect(body).toContain('Clínica Sonrisa');
     expect(body).toContain('https://app.example/reservar/sonrisa');
     expect(body).not.toMatch(/limpieza|tratamiento|diagnóstico|pieza|presupuesto/i);
+  });
+
+  it('el correo HTML tiene llamada a la acción y escapa los datos variables', () => {
+    const html = renderPrivacySafeEmail({
+      ...message,
+      clinicName: 'Sonrisa <Centro>',
+      manageUrl: 'https://app.example/cita?a=1&b=2',
+    });
+    expect(html).toContain('Sonrisa &lt;Centro&gt;');
+    expect(html).not.toContain('Sonrisa <Centro>');
+    expect(html).toContain('https://app.example/cita?a=1&amp;b=2');
+    expect(html).toContain('Hora local de la clínica');
+    expect(html).not.toMatch(/limpieza|tratamiento|diagnóstico|pieza|presupuesto/i);
   });
 });
 
