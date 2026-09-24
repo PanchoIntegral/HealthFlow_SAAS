@@ -169,7 +169,7 @@ export default function PacientesPage() {
                           event.stopPropagation();
                           setPacienteCorreo(p);
                         }}
-                        className="hidden shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue sm:block"
+                        className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-brand-blue hover:text-brand-blue"
                       >
                         Agregar correo
                       </button>
