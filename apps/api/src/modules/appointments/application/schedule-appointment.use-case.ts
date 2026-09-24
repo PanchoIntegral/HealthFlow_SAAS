@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type {
   AppointmentView,
@@ -20,6 +21,7 @@ import {
   type WaitingRoomNotifier,
 } from './waiting-room-notifier.port';
 import { MESSAGE_SCHEDULER, type MessageScheduler } from '../../messaging/messaging.types';
+import { publicAppointmentTokenExpiry, publicAppointmentTokenHash } from '../../../common/public-links';
 
 /**
  * Caso de uso: agendar una cita nueva. Valida el rango horario (dominio) y
@@ -51,12 +53,16 @@ export class ScheduleAppointmentUseCase {
       const overlap = await this.repo.hasOverlap(tx, input.doctorId, inicioProgramado, finProgramado);
       if (overlap) throw new DoctorDoubleBookedError();
 
-      const id = await this.repo.create(tx, {
+      const id = randomUUID();
+      await this.repo.create(tx, {
+        id,
         patientId: input.patientId,
         doctorId: input.doctorId,
         motivo: input.motivo ?? null,
         inicioProgramado,
         finProgramado,
+        publicManageTokenHash: publicAppointmentTokenHash(this.ctx.get().tenantId, id),
+        manageTokenExpiresAt: publicAppointmentTokenExpiry(finProgramado),
       });
 
       await this.audit.record(tx, {

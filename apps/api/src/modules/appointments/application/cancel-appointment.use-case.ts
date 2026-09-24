@@ -26,6 +26,7 @@ import {
   type NotificationsNotifier,
 } from '../../notifications/application/notifications-notifier.port';
 import { MESSAGE_SCHEDULER, type MessageScheduler } from '../../messaging/messaging.types';
+import { publicAppointmentTokenExpiry, publicAppointmentTokenHash } from '../../../common/public-links';
 
 /**
  * Cancela una cita: agendada → cancelada (única transición previa al check-in;
@@ -76,7 +77,14 @@ export class CancelAppointmentUseCase {
       if (this.messages) {
         await this.messages.cancelPending(tx, appointmentId);
         const contact=(await tx.execute(sql`SELECT p.id,p.email,p.telefono_normalizado,p.whatsapp_opt_in_at,p.canal_preferido,a.inicio_programado FROM appointments a JOIN patients p ON p.id=a.patient_id WHERE a.id=${appointmentId}`)).rows[0] as any;
-        if(contact) await this.messages.schedule(tx,{appointmentId,patientId:contact.id,startsAt:new Date(contact.inicio_programado),email:contact.email,phone:contact.telefono_normalizado,whatsappOptIn:!!contact.whatsapp_opt_in_at,preferredChannel:contact.canal_preferido??'ninguno',reminderHours:[],kind:'cancelled'});
+        if(contact) {
+          const endsAt = appointment.toState().finProgramado;
+          // Las citas antiguas creadas antes de los recordatorios no tenían
+          // hash. Lo completamos antes de encolar la cancelación para que el
+          // enlace enviado sea usable de inmediato.
+          await tx.execute(sql`UPDATE appointments SET public_manage_token_hash=${publicAppointmentTokenHash(this.ctx.get().tenantId, appointmentId)},manage_token_expires_at=${publicAppointmentTokenExpiry(endsAt).toISOString()} WHERE id=${appointmentId} AND public_manage_token_hash IS NULL`);
+          await this.messages.schedule(tx,{appointmentId,patientId:contact.id,startsAt:new Date(contact.inicio_programado),email:contact.email,phone:contact.telefono_normalizado,whatsappOptIn:!!contact.whatsapp_opt_in_at,preferredChannel:contact.canal_preferido??'ninguno',reminderHours:[],kind:'cancelled'});
+        }
       }
 
       const view = await this.repo.findView(tx, appointmentId);

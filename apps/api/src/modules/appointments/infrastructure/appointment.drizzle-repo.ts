@@ -132,9 +132,10 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
   async create(tx: Tx, input: NewAppointmentInput): Promise<string> {
     // tenant_id se autocompleta por DEFAULT current_tenant_id() (ver 0005).
     const result = await tx.execute(sql`
-      INSERT INTO appointments (patient_id, doctor_id, motivo, inicio_programado, fin_programado, estatus)
-      VALUES (${input.patientId}, ${input.doctorId}, ${input.motivo},
-              ${input.inicioProgramado.toISOString()}, ${input.finProgramado.toISOString()}, 'agendada')
+      INSERT INTO appointments (id, patient_id, doctor_id, motivo, inicio_programado, fin_programado, estatus, public_manage_token_hash, manage_token_expires_at)
+      VALUES (${input.id}, ${input.patientId}, ${input.doctorId}, ${input.motivo},
+              ${input.inicioProgramado.toISOString()}, ${input.finProgramado.toISOString()}, 'agendada',
+              ${input.publicManageTokenHash}, ${input.manageTokenExpiresAt.toISOString()})
       RETURNING id
     `);
     return (result.rows[0] as { id: string }).id;

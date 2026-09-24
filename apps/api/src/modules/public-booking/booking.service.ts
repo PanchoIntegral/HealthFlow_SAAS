@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { createHash, randomBytes, randomUUID, createHmac } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { normalizeEmail, normalizeMxPhone, validateBirthDate } from '@healthflow/shared-types';
 import type { AvailabilitySlot, BookingService, BookingSettings, CreatePublicAppointmentRequest, PublicAppointmentSummary, PublicBookingPage, BookingReadiness, PublicDirectoryPage, PublicDirectorySpecialty } from '@healthflow/shared-types';
@@ -7,6 +7,7 @@ import { DB } from '../../db/drizzle.module';
 import { runInTenant, type Database, type Tx } from '../../db/drizzle';
 import { TenantDbService } from '../../common/tenant-context/tenant-db.service';
 import { env } from '../../config/env';
+import { publicAppointmentToken, publicAppointmentTokenExpiry } from '../../common/public-links';
 import { OutboxService } from '../messaging/outbox.service';
 import { AppEventsService } from '../../common/events/app-events.service';
 import type { AvailabilityExceptionDto, AvailabilityRuleDto, UpdateBookingSettingsDto, UpsertBookingServiceDto } from './booking.dto';
@@ -111,8 +112,8 @@ export class BookingServiceApp {
       }
       const optIn=contact.whatsappOptIn||!!((await tx.execute(sql`SELECT whatsapp_opt_in_at FROM patients WHERE id=${patient.id}`)).rows[0] as {whatsapp_opt_in_at:string|null}).whatsapp_opt_in_at;
       const appointmentId=randomUUID();
-      const token=createHmac('sha256',env.publicLinkSecret).update(`${tenant}.${appointmentId}`).digest('base64url'),hash=hashToken(token);
-      const appointment=(await tx.execute(sql`INSERT INTO appointments(id,tenant_id,patient_id,doctor_id,service_id,motivo,inicio_programado,fin_programado,estatus,origen,estado_confirmacion,public_manage_token_hash,manage_token_expires_at) VALUES(${appointmentId},current_tenant_id(),${patient.id},${chosen.doctorId},${input.serviceId},NULL,${start.toISOString()},${end.toISOString()},'agendada','publico','pendiente',${hash},${new Date(end.getTime()+86400000).toISOString()}) RETURNING id`)).rows[0] as {id:string};
+      const token=publicAppointmentToken(tenant,appointmentId),hash=hashToken(token);
+      const appointment=(await tx.execute(sql`INSERT INTO appointments(id,tenant_id,patient_id,doctor_id,service_id,motivo,inicio_programado,fin_programado,estatus,origen,estado_confirmacion,public_manage_token_hash,manage_token_expires_at) VALUES(${appointmentId},current_tenant_id(),${patient.id},${chosen.doctorId},${input.serviceId},NULL,${start.toISOString()},${end.toISOString()},'agendada','publico','pendiente',${hash},${publicAppointmentTokenExpiry(end).toISOString()}) RETURNING id`)).rows[0] as {id:string};
       await tx.execute(sql`INSERT INTO audit_log(tenant_id,user_id,entidad,entidad_id,accion,detalle) VALUES(current_tenant_id(),NULL,'appointment',${appointment.id},'public_schedule',jsonb_build_object('doctorId',${chosen.doctorId}::text,'serviceId',${input.serviceId}::text))`);
       await this.outbox.schedule(tx,{appointmentId:appointment.id,patientId:patient.id,startsAt:start,email:contact.email,phone:contact.phone,whatsappOptIn:optIn,preferredChannel:contact.channel,reminderHours:cfg.recordatorios_horas});
       // Éste es el camino que cierra el ciclo de Recall: el paciente que

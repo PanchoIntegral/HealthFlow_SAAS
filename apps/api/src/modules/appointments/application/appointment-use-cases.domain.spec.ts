@@ -38,6 +38,7 @@ import { ListDoctorsUseCase } from './list-doctors.use-case';
 class FakeAppointmentRepository implements AppointmentRepository {
   citas = new Map<string, Appointment>();
   vistas = new Map<string, AppointmentView>();
+  lastCreateInput: NewAppointmentInput | null = null;
   private seq = 0;
 
   /** Da de alta una cita ya "agendada", lista para transicionar en la prueba. */
@@ -101,7 +102,9 @@ class FakeAppointmentRepository implements AppointmentRepository {
   }
 
   async create(_tx: Tx, input: NewAppointmentInput): Promise<string> {
+    this.lastCreateInput = input;
     return this.seed({
+      id: input.id,
       patientId: input.patientId,
       doctorId: input.doctorId,
       motivo: input.motivo,
@@ -258,6 +261,8 @@ describe('ScheduleAppointmentUseCase', () => {
 
     expect(view.patientId).toBe('pac-ana');
     expect(view.estatus).toBe('agendada');
+    expect(repo.lastCreateInput?.publicManageTokenHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(repo.lastCreateInput?.manageTokenExpiresAt.getTime()).toBe(new Date(view.finProgramado).getTime() + 24 * 60 * 60 * 1000);
   });
 
   it('rechaza el rango horario inválido ANTES de tocar el repositorio', async () => {

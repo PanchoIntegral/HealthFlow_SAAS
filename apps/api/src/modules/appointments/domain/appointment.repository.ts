@@ -3,11 +3,14 @@ import type { Tx } from '../../../db/drizzle';
 import type { Appointment } from './appointment.entity';
 
 export interface NewAppointmentInput {
+  id: string;
   patientId: string;
   doctorId: string;
   motivo: string | null;
   inicioProgramado: Date;
   finProgramado: Date;
+  publicManageTokenHash: string;
+  manageTokenExpiresAt: Date;
 }
 
 /**

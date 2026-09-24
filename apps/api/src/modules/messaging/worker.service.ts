@@ -1,9 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import { createHmac } from 'node:crypto';
 import { DB } from '../../db/drizzle.module';
 import type { Database } from '../../db/drizzle';
 import { env } from '../../config/env';
+import { publicAppointmentToken } from '../../common/public-links';
 import { MESSAGING_PROVIDER, type MessagingProvider, type MessageChannel, type MessageKind, type SendResult } from './messaging.types';
 
 interface Claimed { id:string; tenant_id:string; channel:MessageChannel; kind:MessageKind; clinic_name:string; clinic_timezone:string; destination:string|null; appointment_id:string|null; recall_attempt_id:string|null; starts_at:Date|string|null; booking_slug:string|null; attempts:number; idempotency_key:string }
@@ -47,8 +47,7 @@ export class MessagingWorker {
       } else {
         // Enlaces de citas existentes conservan el contrato previo. Recall sólo
         // apunta a la página pública de reserva y nunca inventa una cita.
-        const actionToken = createHmac('sha256', env.publicLinkSecret)
-          .update(`${row.tenant_id}.${row.appointment_id}`).digest('base64url');
+        const actionToken = publicAppointmentToken(row.tenant_id, row.appointment_id);
         result = await this.provider.send({
           ...base,
           kind: row.kind,
