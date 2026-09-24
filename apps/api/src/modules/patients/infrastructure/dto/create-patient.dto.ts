@@ -1,5 +1,5 @@
-import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { SEXOS_PACIENTE, type SexoPaciente } from '@healthflow/shared-types';
+import { IsEmail, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { SEXOS_PACIENTE, type BookingChannel, type SexoPaciente } from '@healthflow/shared-types';
 
 export class CreatePatientDto {
   @IsString()
@@ -23,4 +23,13 @@ export class CreatePatientDto {
   @IsString()
   @MaxLength(20)
   telefono?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  email?: string;
+
+  @IsOptional()
+  @IsIn(['whatsapp', 'email', 'ninguno'])
+  canalPreferido?: BookingChannel;
 }

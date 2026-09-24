@@ -1,5 +1,6 @@
 import type {
   ActividadClinicaPaciente,
+  BookingChannel,
   HistorialPaciente,
   PatientSummary,
   UpdateHistorialRequest,
@@ -58,13 +59,13 @@ export interface PatientRepository {
   ): Promise<HistorialPaciente | null>;
 
   /**
-   * Corrige nombre, teléfono y/o fecha de nacimiento. `undefined` = no se toca
+   * Corrige identificación y canal de avisos. `undefined` = no se toca
    * ese campo. Devuelve null si el paciente no existe en el tenant activo.
    */
   actualizarDatos(
     tx: Tx,
     patientId: string,
-    datos: { nombre?: string; telefono?: string | null; fechaNacimiento?: string },
+    datos: { nombre?: string; telefono?: string | null; fechaNacimiento?: string; email?: string | null; canalPreferido?: BookingChannel },
   ): Promise<PatientSummary | null>;
 
   /** true si el paciente existe en el tenant activo. */

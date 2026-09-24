@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import type { ActividadClinicaPaciente } from '@healthflow/shared-types';
+import type { ActividadClinicaPaciente, BookingChannel } from '@healthflow/shared-types';
 import { api, ApiError } from '../lib/api';
 import { Modal } from './modal';
 import { IconArchive, IconPencil, IconTrash } from './icons';
@@ -27,12 +27,16 @@ export function FichaPaciente({
   patientId,
   nombre,
   telefono,
+  email,
+  canalPreferido,
   fechaNacimiento,
 }: {
   token: string;
   patientId: string;
   nombre: string;
   telefono: string | null;
+  email: string | null;
+  canalPreferido: BookingChannel;
   fechaNacimiento: string;
 }) {
   const [editando, setEditando] = useState(false);
@@ -65,6 +69,8 @@ export function FichaPaciente({
           patientId={patientId}
           nombre={nombre}
           telefono={telefono}
+          email={email}
+          canalPreferido={canalPreferido}
           fechaNacimiento={fechaNacimiento}
           onClose={() => setEditando(false)}
         />
@@ -87,6 +93,8 @@ function EditarDatosModal({
   patientId,
   nombre,
   telefono,
+  email,
+  canalPreferido,
   fechaNacimiento,
   onClose,
 }: {
@@ -94,12 +102,16 @@ function EditarDatosModal({
   patientId: string;
   nombre: string;
   telefono: string | null;
+  email: string | null;
+  canalPreferido: BookingChannel;
   fechaNacimiento: string;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [n, setN] = useState(nombre);
   const [t, setT] = useState(telefono ?? '');
+  const [e, setE] = useState(email ?? '');
+  const [usarCorreo, setUsarCorreo] = useState(canalPreferido === 'email');
   const [f, setF] = useState(fechaNacimiento);
 
   const guardar = useMutation({
@@ -107,6 +119,8 @@ function EditarDatosModal({
       api.updatePatient(token, patientId, {
         nombre: n.trim(),
         telefono: t.trim(),
+        email: e.trim(),
+        canalPreferido: usarCorreo ? 'email' : canalPreferido === 'email' ? 'ninguno' : undefined,
         fechaNacimiento: f,
       }),
     onSuccess: () => {
@@ -123,6 +137,28 @@ function EditarDatosModal({
       <label className="mb-3 block text-sm">
         <span className="mb-1 block font-medium text-slate-600">Nombre completo</span>
         <input value={n} onChange={(e) => setN(e.target.value)} maxLength={160} className={CAMPO} />
+      </label>
+
+      <label className="mb-3 block text-sm">
+        <span className="mb-1 block font-medium text-slate-600">Correo electrónico</span>
+        <input
+          type="email"
+          value={e}
+          onChange={(event) => setE(event.target.value)}
+          maxLength={254}
+          placeholder="Opcional"
+          className={CAMPO}
+        />
+      </label>
+      <label className="mb-4 flex cursor-pointer items-start gap-3 text-sm">
+        <input
+          type="checkbox"
+          checked={usarCorreo}
+          disabled={!e.trim()}
+          onChange={(event) => setUsarCorreo(event.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-blue"
+        />
+        <span className="text-slate-600">Enviar confirmaciones y recordatorios de citas a este correo.</span>
       </label>
 
       <label className="mb-3 block text-sm">
@@ -177,7 +213,7 @@ function EditarDatosModal({
         </button>
         <button
           type="button"
-          disabled={n.trim().length < 2 || !f || guardar.isPending}
+          disabled={n.trim().length < 2 || !f || (usarCorreo && !e.trim()) || guardar.isPending}
           onClick={() => guardar.mutate()}
           className="rounded-lg bg-gradient-to-r from-brand-blue to-brand-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >

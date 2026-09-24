@@ -13,6 +13,8 @@ function vistaConDosNotas(): ClinicalRecordView {
     patientId: 'pac-1',
     patientNombre: 'Ana',
     patientTelefono: null,
+    patientEmail: null,
+    patientCanalPreferido: 'ninguno',
     patientFechaNacimiento: '1990-01-01',
     abiertoEn: '2026-01-01T00:00:00.000Z',
     nextCursor: null,

@@ -1,4 +1,5 @@
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import type { BookingChannel } from '@healthflow/shared-types';
 
 /**
  * Corrección de los datos de identificación. Todos opcionales: es un PATCH y
@@ -29,4 +30,15 @@ export class UpdatePatientDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'fechaNacimiento debe ser YYYY-MM-DD' })
   fechaNacimiento?: string;
+
+  /** Cadena vacía borra el correo; los valores no vacíos se validan como email. */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== '')
+  @IsEmail()
+  @MaxLength(254)
+  email?: string;
+
+  @IsOptional()
+  @IsIn(['whatsapp', 'email', 'ninguno'])
+  canalPreferido?: BookingChannel;
 }

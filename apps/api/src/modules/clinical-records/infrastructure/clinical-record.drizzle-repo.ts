@@ -373,7 +373,7 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
   ): Promise<ClinicalRecordView | null> {
     const recordRes = await tx.execute(sql`
       SELECT cr.id AS record_id, cr.patient_id, cr.abierto_en, p.nombre AS patient_nombre,
-             p.sin_alergias_conocidas, p.alergias, p.antecedentes, p.sexo, p.telefono,
+             p.sin_alergias_conocidas, p.alergias, p.antecedentes, p.sexo, p.telefono, p.email, p.canal_preferido,
              p.fecha_nacimiento
         FROM clinical_records cr
         JOIN patients p ON p.id = cr.patient_id
@@ -387,6 +387,8 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
         abierto_en: Date;
         patient_nombre: string;
         telefono: string | null;
+        email: string | null;
+        canal_preferido: 'whatsapp' | 'email' | 'ninguno';
         fecha_nacimiento: string;
         sin_alergias_conocidas: boolean;
         sexo: SexoPaciente | null;
@@ -445,6 +447,8 @@ export class DrizzleClinicalRecordRepository implements ClinicalRecordRepository
       patientId: record.patient_id,
       patientNombre: record.patient_nombre,
       patientTelefono: record.telefono,
+      patientEmail: record.email,
+      patientCanalPreferido: record.canal_preferido,
       patientFechaNacimiento: record.fecha_nacimiento,
       abiertoEn: new Date(record.abierto_en).toISOString(),
       nextCursor: hayMas && ultima ? codificarCursor(ultima) : null,

@@ -1,5 +1,5 @@
-import { SEXOS_PACIENTE, type SexoPaciente } from '@healthflow/shared-types';
-import { InvalidBirthDateError, InvalidCurpError } from './patient.errors';
+import { normalizeEmail, SEXOS_PACIENTE, type BookingChannel, type SexoPaciente } from '@healthflow/shared-types';
+import { CanalCorreoSinEmailError, InvalidBirthDateError, InvalidCurpError } from './patient.errors';
 
 /**
  * Estructura oficial de la CURP mexicana (18 caracteres):
@@ -15,6 +15,8 @@ export interface NewPatientInput {
   sexo?: SexoPaciente | null;
   curp?: string | null;
   telefono?: string | null;
+  email?: string | null;
+  canalPreferido?: BookingChannel;
 }
 
 export interface PatientProps {
@@ -30,6 +32,8 @@ export interface PatientProps {
   sexo: SexoPaciente | null;
   curp: string | null;
   telefono: string | null;
+  email: string | null;
+  canalPreferido: BookingChannel;
 }
 
 /**
@@ -50,6 +54,11 @@ export class Patient {
     }
 
     const fechaNacimiento = normalizeBirthDate(input.fechaNacimiento);
+    const email = normalizeEmail(input.email);
+    const canalPreferido = input.canalPreferido ?? 'ninguno';
+    if (canalPreferido === 'email' && !email) {
+      throw new CanalCorreoSinEmailError();
+    }
 
     return new Patient({
       nombre,
@@ -57,6 +66,8 @@ export class Patient {
       sexo: normalizeSexo(input.sexo),
       curp,
       telefono: input.telefono?.trim() || null,
+      email,
+      canalPreferido,
     });
   }
 

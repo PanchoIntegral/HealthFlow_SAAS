@@ -207,6 +207,8 @@ function NewPatientForm({
     sexo: null,
     curp: '',
     telefono: '',
+    email: '',
+    canalPreferido: 'ninguno',
   });
 
   const mutation = useMutation({
@@ -217,6 +219,8 @@ function NewPatientForm({
         sexo: form.sexo || null,
         curp: form.curp?.trim() || null,
         telefono: form.telefono?.trim() || null,
+        email: form.email?.trim() || null,
+        canalPreferido: form.canalPreferido ?? 'ninguno',
       }),
     onSuccess: onCreated,
   });
@@ -242,6 +246,31 @@ function NewPatientForm({
           onChange={set('nombre')}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue"
         />
+      </label>
+
+      <label className="text-sm sm:col-span-2">
+        <span className="mb-1 block font-medium text-slate-600">Correo electrónico</span>
+        <input
+          type="email"
+          value={form.email ?? ''}
+          onChange={set('email')}
+          maxLength={254}
+          placeholder="Opcional"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-brand-blue"
+        />
+      </label>
+      <label className="flex cursor-pointer items-start gap-3 text-sm sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={form.canalPreferido === 'email'}
+          disabled={!form.email?.trim()}
+          onChange={(e) => setForm((f) => ({ ...f, canalPreferido: e.target.checked ? 'email' : 'ninguno' }))}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-blue"
+        />
+        <span className="text-slate-600">
+          Enviar confirmaciones y recordatorios de citas a este correo.
+          {!form.email?.trim() && <span className="block text-xs text-slate-400">Captura primero un correo válido.</span>}
+        </span>
       </label>
       <label className="text-sm">
         <span className="mb-1 block font-medium text-slate-600">Fecha de nacimiento *</span>

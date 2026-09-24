@@ -54,6 +54,8 @@ export interface Patient {
   sexo: SexoPaciente | null;
   curp: string | null;
   telefono: string | null;
+  email: string | null;
+  canalPreferido: BookingChannel;
 }
 
 /** Datos para dar de alta un paciente (el tenant lo asigna el backend). */
@@ -63,6 +65,9 @@ export interface CreatePatientRequest {
   sexo?: SexoPaciente | null;
   curp?: string | null;
   telefono?: string | null;
+  email?: string | null;
+  /** Sólo se elige correo si el paciente autorizó recibir avisos ahí. */
+  canalPreferido?: BookingChannel;
 }
 
 // ── Alergias y antecedentes del paciente ─────────────────────────
@@ -735,6 +740,9 @@ export interface UpdatePatientRequest {
    * expediente y las recetas futuras.
    */
   fechaNacimiento?: string;
+  /** Cadena vacía = borrar el correo guardado. */
+  email?: string;
+  canalPreferido?: BookingChannel;
 }
 
 /**
@@ -2298,6 +2306,9 @@ export interface ClinicalRecordView {
   patientNombre: string;
   /** Viaja con el expediente para poder corregirlo sin una petición aparte. */
   patientTelefono: string | null;
+  /** Viaja con el expediente para capturar o corregir el correo sin otro GET. */
+  patientEmail: string | null;
+  patientCanalPreferido: BookingChannel;
   /** YYYY-MM-DD. Viaja con el expediente por el mismo motivo que el teléfono. */
   patientFechaNacimiento: string;
   abiertoEn: string;

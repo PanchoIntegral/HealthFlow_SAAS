@@ -101,3 +101,13 @@ export class NombrePacienteInvalidoError extends DomainError {
     super('El nombre del paciente debe tener al menos 2 caracteres');
   }
 }
+
+/** No se puede elegir correo como canal si no hay una dirección válida. */
+export class CanalCorreoSinEmailError extends DomainError {
+  readonly code = 'CanalCorreoSinEmail';
+  readonly httpStatus = 422;
+
+  constructor() {
+    super('Captura un correo válido para enviar avisos por email');
+  }
+}

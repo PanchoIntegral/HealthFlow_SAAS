@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { PatientSummary, UpdatePatientRequest } from '@healthflow/shared-types';
+import { normalizeEmail, type PatientSummary, type UpdatePatientRequest } from '@healthflow/shared-types';
 import { TenantDbService } from '../../../common/tenant-context/tenant-db.service';
 import { AuditService } from '../../../common/audit/audit.service';
 import { normalizeBirthDate } from '../domain/patient.entity';
-import { NombrePacienteInvalidoError, PacienteNoEncontradoError } from '../domain/patient.errors';
+import { CanalCorreoSinEmailError, NombrePacienteInvalidoError, PacienteNoEncontradoError } from '../domain/patient.errors';
 import { PATIENT_REPOSITORY, type PatientRepository } from '../domain/patient.repository';
 
 /**
@@ -39,6 +39,10 @@ export class ActualizarPacienteUseCase {
     // InvalidBirthDateError si no la cumple.
     const fechaNacimiento =
       input.fechaNacimiento === undefined ? undefined : normalizeBirthDate(input.fechaNacimiento);
+    const email = input.email === undefined ? undefined : normalizeEmail(input.email);
+    if (input.canalPreferido === 'email' && !email) {
+      throw new CanalCorreoSinEmailError();
+    }
 
     return this.tenantDb.run(async (tx) => {
       // El nombre anterior se lee ANTES del UPDATE: es lo que hace que la
@@ -51,6 +55,8 @@ export class ActualizarPacienteUseCase {
         // `undefined` = no se está editando ese campo.
         telefono: input.telefono === undefined ? undefined : input.telefono.trim() || null,
         fechaNacimiento,
+        email,
+        canalPreferido: input.canalPreferido,
       });
       if (!actualizado) throw new PacienteNoEncontradoError();
 
@@ -63,6 +69,8 @@ export class ActualizarPacienteUseCase {
           nombreNuevo: nombre === undefined ? null : actualizado.nombre,
           cambioTelefono: input.telefono !== undefined,
           cambioFechaNacimiento: fechaNacimiento !== undefined,
+          cambioEmail: email !== undefined,
+          cambioCanalAvisos: input.canalPreferido !== undefined,
         },
       });
 

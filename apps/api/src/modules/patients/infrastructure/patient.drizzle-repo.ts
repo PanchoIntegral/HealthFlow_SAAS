@@ -8,6 +8,7 @@ import {
   type HistorialPaciente,
   type PatientSummary,
   type SexoPaciente,
+  type BookingChannel,
   type UpdateHistorialRequest,
 } from '@healthflow/shared-types';
 import type { Tx } from '../../../db/drizzle';
@@ -46,8 +47,8 @@ export class DrizzlePatientRepository implements PatientRepository {
     const p = patient.toProps();
     // tenant_id se autocompleta por DEFAULT current_tenant_id() (ver 0003).
     const result = await tx.execute(sql`
-      INSERT INTO patients (nombre, fecha_nacimiento, sexo, curp, telefono)
-      VALUES (${p.nombre}, ${p.fechaNacimiento}, ${p.sexo}, ${p.curp}, ${p.telefono})
+      INSERT INTO patients (nombre, fecha_nacimiento, sexo, curp, telefono, email, canal_preferido)
+      VALUES (${p.nombre}, ${p.fechaNacimiento}, ${p.sexo}, ${p.curp}, ${p.telefono}, ${p.email}, ${p.canalPreferido})
       RETURNING id
     `);
     return (result.rows[0] as { id: string }).id;
@@ -208,7 +209,7 @@ export class DrizzlePatientRepository implements PatientRepository {
   async actualizarDatos(
     tx: Tx,
     patientId: string,
-    datos: { nombre?: string; telefono?: string | null; fechaNacimiento?: string },
+    datos: { nombre?: string; telefono?: string | null; fechaNacimiento?: string; email?: string | null; canalPreferido?: BookingChannel },
   ): Promise<PatientSummary | null> {
     // COALESCE con parámetro NULL conserva lo guardado: es lo que da la
     // semántica de PATCH (campo ausente = no se toca) sin construir el SQL a
@@ -222,7 +223,15 @@ export class DrizzlePatientRepository implements PatientRepository {
          SET nombre           = COALESCE(${datos.nombre ?? null}, nombre),
              telefono         = CASE WHEN ${datos.telefono === undefined} THEN telefono
                              ELSE ${datos.telefono ?? null} END,
-             fecha_nacimiento = COALESCE(${datos.fechaNacimiento ?? null}, fecha_nacimiento)
+             fecha_nacimiento = COALESCE(${datos.fechaNacimiento ?? null}, fecha_nacimiento),
+             email            = CASE WHEN ${datos.email === undefined} THEN email
+                              ELSE ${datos.email ?? null} END,
+             canal_preferido  = COALESCE(${datos.canalPreferido ?? null}, canal_preferido),
+             email_suppressed_at = CASE
+               WHEN ${datos.email === undefined} OR email IS NOT DISTINCT FROM ${datos.email ?? null}
+                 THEN email_suppressed_at
+               ELSE NULL
+             END
        WHERE id = ${patientId}
       RETURNING id, nombre,
                 date_part('year', age(fecha_nacimiento))::int AS edad,
