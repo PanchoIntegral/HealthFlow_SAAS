@@ -141,6 +141,20 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     return (result.rows[0] as { id: string }).id;
   }
 
+  async reschedule(tx: Tx, appointmentId: string, input: Pick<NewAppointmentInput, 'doctorId' | 'inicioProgramado' | 'finProgramado'>): Promise<void> {
+    await tx.execute(sql`
+      UPDATE appointments
+         SET doctor_id=${input.doctorId},
+             inicio_programado=${input.inicioProgramado.toISOString()},
+             fin_programado=${input.finProgramado.toISOString()},
+             estado_confirmacion='pendiente',
+             confirmada_at=NULL,
+             messaging_version=messaging_version+1,
+             manage_token_expires_at=${new Date(input.finProgramado.getTime() + 24 * 60 * 60 * 1000).toISOString()}
+       WHERE id=${appointmentId}
+    `);
+  }
+
   async listByRange(tx: Tx, from: Date, to: Date): Promise<AppointmentView[]> {
     const result = await tx.execute(sql`
       SELECT a.id, a.patient_id, p.nombre AS patient_nombre,

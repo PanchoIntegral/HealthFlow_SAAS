@@ -585,6 +585,13 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  rescheduleAppointment: (token: string, appointmentId: string, body: import('@healthflow/shared-types').RescheduleAppointmentRequest) =>
+    request<AppointmentView>(`/appointments/${appointmentId}/reschedule`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
   cancelAppointment: (token: string, appointmentId: string, body: CancelAppointmentRequest = {}) =>
     request<AppointmentView>(`/appointments/${appointmentId}/cancel`, {
       method: 'POST',

@@ -172,6 +172,16 @@ function CalendarioContent() {
     onError: (err) => alert(err instanceof ApiError ? err.message : 'Error al cancelar'),
   });
 
+  const reschedule = useMutation({
+    mutationFn: ({ id, doctorId, inicioProgramado, finProgramado }: { id: string; doctorId: string; inicioProgramado: string; finProgramado: string }) =>
+      api.rescheduleAppointment(token!, id, { doctorId, inicioProgramado, finProgramado }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      setSelected(null);
+    },
+    onError: (err) => alert(err instanceof ApiError ? err.message : 'No se pudo reprogramar la cita'),
+  });
+
   if (!user) return null;
 
   return (
@@ -259,9 +269,13 @@ function CalendarioContent() {
         <DetailModal
           appointment={selected}
           canCancel={canManage && selected.estatus === 'agendada'}
-          pending={cancel.isPending}
+          canReschedule={canManage && selected.estatus === 'agendada'}
+          cancelPending={cancel.isPending}
+          reschedulePending={reschedule.isPending}
+          token={token!}
           formatoHora={formatoHora}
           onCancel={(motivo) => cancel.mutate({ id: selected.id, motivo })}
+          onReschedule={(doctorId, inicioProgramado, finProgramado) => reschedule.mutate({ id: selected.id, doctorId, inicioProgramado, finProgramado })}
           onClose={() => setSelected(null)}
         />
       )}
@@ -617,20 +631,33 @@ function NewAppointmentModal({
 function DetailModal({
   appointment,
   canCancel,
-  pending,
+  canReschedule,
+  cancelPending,
+  reschedulePending,
+  token,
   formatoHora,
   onCancel,
+  onReschedule,
   onClose,
 }: {
   appointment: AppointmentView;
   canCancel: boolean;
-  pending: boolean;
+  canReschedule: boolean;
+  cancelPending: boolean;
+  reschedulePending: boolean;
+  token: string;
   formatoHora: FormatoHora;
   onCancel: (motivo?: string) => void;
+  onReschedule: (doctorId: string, inicioProgramado: string, finProgramado: string) => void;
   onClose: () => void;
 }) {
   const [motivo, setMotivo] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [doctorId, setDoctorId] = useState(appointment.doctorId);
+  const [start, setStart] = useState(toLocalInput(new Date(appointment.inicioProgramado)));
+  const [end, setEnd] = useState(toLocalInput(new Date(appointment.finProgramado)));
+  const doctors = useQuery({ queryKey: ['doctors'], queryFn: () => api.listDoctors(token), enabled: editing });
 
   const fechaHoraCita = (iso: string) =>
     `${new Date(iso).toLocaleDateString('es-MX')}, ${formatearHora(iso, formatoHora)}`;
@@ -661,6 +688,34 @@ function DetailModal({
           </button>
         )}
 
+        {canReschedule && !editing && (
+          <button
+            onClick={() => setEditing(true)}
+            className="mt-2 w-full rounded-lg border border-blue-300 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+          >
+            Cambiar fecha u hora
+          </button>
+        )}
+
+        {canReschedule && editing && (
+          <div className="mt-2 space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <p className="text-sm font-semibold text-blue-900">Reprogramar cita</p>
+            <label className="block text-xs font-medium text-blue-800">Médico
+              <select value={doctorId} onChange={(event) => setDoctorId(event.target.value)} className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-900">
+                {doctors.data?.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.nombre}{doctor.especialidad ? ` · ${doctor.especialidad}` : ''}</option>)}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs font-medium text-blue-800">Inicio<input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-2 text-sm text-slate-900" /></label>
+              <label className="text-xs font-medium text-blue-800">Fin<input type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-2 text-sm text-slate-900" /></label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEditing(false)} disabled={reschedulePending} className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-white">Cancelar</button>
+              <button disabled={!doctorId || !start || !end || reschedulePending} onClick={() => onReschedule(doctorId, new Date(start).toISOString(), new Date(end).toISOString())} className="rounded-lg bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{reschedulePending ? 'Guardando…' : 'Guardar nuevo horario'}</button>
+            </div>
+          </div>
+        )}
+
         {canCancel && confirming && (
           <div className="mt-2 space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
             <label className="block text-xs font-medium text-red-700">Motivo de cancelación (opcional)</label>
@@ -675,11 +730,11 @@ function DetailModal({
                 Volver
               </button>
               <button
-                disabled={pending}
+                disabled={cancelPending}
                 onClick={() => onCancel(motivo.trim() || undefined)}
                 className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
               >
-                {pending ? 'Cancelando…' : 'Confirmar cancelación'}
+                {cancelPending ? 'Cancelando…' : 'Confirmar cancelación'}
               </button>
             </div>
           </div>

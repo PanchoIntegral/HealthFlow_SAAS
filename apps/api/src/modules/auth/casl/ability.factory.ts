@@ -9,6 +9,7 @@ export type Action =
   | 'write'
   | 'checkin'
   | 'cancel'
+  | 'reschedule'
   | 'start'
   | 'finish'
   /** Registrar un abono: es cobrar, no cotizar — por eso es su propia acción. */
@@ -127,6 +128,7 @@ export class CaslAbilityFactory {
         can('start', 'Consultation');
         can('create', 'Appointment');
         can('cancel', 'Appointment');
+        can('reschedule', 'Appointment');
         can('create', 'Patient');
         // Alergias y antecedentes: sí, aunque el asistente no toque el
         // contenido clínico. Es el dato que se captura en recepción al llenar
@@ -209,6 +211,7 @@ export class CaslAbilityFactory {
         can('checkin', 'Appointment');
         can('create', 'Appointment');
         can('cancel', 'Appointment');
+        can('reschedule', 'Appointment');
         can('create', 'Patient');
         can('write', 'Patient');
         // Archivar y eliminar. `delete` sobre Patient NO significa borrar un

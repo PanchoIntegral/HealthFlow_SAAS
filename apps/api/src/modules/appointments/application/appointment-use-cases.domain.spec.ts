@@ -20,6 +20,7 @@ import type {
 import type { WaitingRoomNotifier } from './waiting-room-notifier.port';
 import type { NotificationsNotifier } from '../../notifications/application/notifications-notifier.port';
 import { ScheduleAppointmentUseCase } from './schedule-appointment.use-case';
+import { RescheduleAppointmentUseCase } from './reschedule-appointment.use-case';
 import { CheckInUseCase } from './check-in.use-case';
 import { CancelAppointmentUseCase } from './cancel-appointment.use-case';
 import { ListAppointmentsUseCase } from './list-appointments.use-case';
@@ -111,6 +112,24 @@ class FakeAppointmentRepository implements AppointmentRepository {
       inicioProgramado: input.inicioProgramado.toISOString(),
       finProgramado: input.finProgramado.toISOString(),
       estatus: 'agendada',
+    });
+  }
+
+  async reschedule(
+    _tx: Tx,
+    appointmentId: string,
+    input: Pick<NewAppointmentInput, 'doctorId' | 'inicioProgramado' | 'finProgramado'>,
+  ): Promise<void> {
+    const appointment = this.citas.get(appointmentId);
+    const view = this.vistas.get(appointmentId);
+    if (!appointment || !view) return;
+    this.citas.set(appointmentId, Appointment.fromState({
+      ...appointment.toState(), doctorId: input.doctorId, finProgramado: input.finProgramado,
+    }));
+    this.vistas.set(appointmentId, {
+      ...view, doctorId: input.doctorId, doctorNombre: `Doctor ${input.doctorId}`,
+      inicioProgramado: input.inicioProgramado.toISOString(), finProgramado: input.finProgramado.toISOString(),
+      estadoConfirmacion: 'pendiente',
     });
   }
 
@@ -341,6 +360,35 @@ describe('ScheduleAppointmentUseCase', () => {
     expect(llamadas).toHaveLength(1);
     expect(llamadas[0]?.accion).toBe('schedule');
     expect(llamadas[0]?.detalle).toMatchObject({ patientId: 'pac-ana', doctorId: 'doc-1' });
+  });
+});
+
+describe('RescheduleAppointmentUseCase', () => {
+  it('conserva la cita y cambia horario, médico y confirmación sin crear otra', async () => {
+    const repo = new FakeAppointmentRepository();
+    const oldStart = new Date(Date.now() + 3_600_000);
+    const id = repo.seed({
+      patientId: 'pac-ana', doctorId: 'doc-1', estadoConfirmacion: 'confirmada',
+      inicioProgramado: oldStart.toISOString(), finProgramado: new Date(oldStart.getTime() + 30 * 60_000).toISOString(),
+    });
+    const { audit, llamadas } = fakeAudit();
+    const { eventos, emitidos } = fakeEventos();
+    const { notifier } = fakeWaitingRoomNotifier();
+    const useCase = new RescheduleAppointmentUseCase(fakeTenantDb, fakeCtx(), audit, eventos, repo, notifier);
+    const newStart = new Date(oldStart.getTime() + 2 * 3_600_000);
+
+    const view = await useCase.execute(id, {
+      doctorId: 'doc-2', inicioProgramado: newStart.toISOString(),
+      finProgramado: new Date(newStart.getTime() + 45 * 60_000).toISOString(),
+    });
+
+    expect(repo.citas.size).toBe(1);
+    expect(view.id).toBe(id);
+    expect(view.doctorId).toBe('doc-2');
+    expect(view.inicioProgramado).toBe(newStart.toISOString());
+    expect(view.estadoConfirmacion).toBe('pendiente');
+    expect(llamadas[0]?.accion).toBe('reschedule');
+    expect(emitidos[0]?.tipo).toBe('appointment.rescheduled');
   });
 });
 

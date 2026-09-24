@@ -2415,6 +2415,13 @@ export interface CreateAppointmentRequest {
   finProgramado: string; // ISO datetime
 }
 
+/** Cambio interno de horario; conserva la misma cita y su historial. */
+export interface RescheduleAppointmentRequest {
+  doctorId: string;
+  inicioProgramado: string;
+  finProgramado: string;
+}
+
 export interface CancelAppointmentRequest {
   motivo?: string | null;
 }

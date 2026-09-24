@@ -37,6 +37,9 @@ export interface AppointmentRepository {
   /** Agenda una cita nueva (estatus 'agendada') y devuelve su id. */
   create(tx: Tx, input: NewAppointmentInput): Promise<string>;
 
+  /** Cambia horario y médico sin reemplazar la cita ni perder su historial. */
+  reschedule(tx: Tx, appointmentId: string, input: Pick<NewAppointmentInput, 'doctorId' | 'inicioProgramado' | 'finProgramado'>): Promise<void>;
+
   /** Citas del rango [from, to], enriquecidas con nombres, para el calendario. */
   listByRange(tx: Tx, from: Date, to: Date): Promise<AppointmentView[]>;
 
